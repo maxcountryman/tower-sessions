@@ -1,0 +1,10 @@
+[package]
+name = "tower-sessions"
+description = "Session manager middleware for tower."
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
