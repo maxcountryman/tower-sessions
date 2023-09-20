@@ -46,6 +46,10 @@ name = "counter"
 required-features = ["axum-core", "memory-store"]
 
 [[example]]
+name = "counter-extractor"
+required-features = ["axum-core", "memory-store"]
+
+[[example]]
 name = "redis-store"
 required-features = ["axum-core", "redis-store"]
 
