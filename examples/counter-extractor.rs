@@ -23,16 +23,16 @@ where
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let session = Session::from_request_parts(req, state).await?;
 
-        let count: usize = session
-            .get("count")
+        let counter: Counter = session
+            .get("counter")
             .expect("Could not deserialize.")
             .unwrap_or_default();
 
         session
-            .insert("count", count + 1)
+            .insert("counter", counter.0 + 1)
             .expect("Could not serialize.");
 
-        Ok(Counter(count))
+        Ok(counter)
     }
 }
 
