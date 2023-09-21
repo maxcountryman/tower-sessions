@@ -17,6 +17,13 @@ async fn main() {
     let pool = PgPool::connect(database_url).await.unwrap();
     let session_store = PostgresStore::new(pool);
     session_store.migrate().await.unwrap();
+
+    tokio::task::spawn(
+        session_store
+            .clone()
+            .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    );
+
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST

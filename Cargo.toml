@@ -12,6 +12,7 @@ redis-store = ["fred"]
 sqlx-store = ["sqlx"]
 sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
+tokio = ["dep:tokio"]
 
 [dependencies]
 async-trait = "0.1"
@@ -32,12 +33,14 @@ sqlx = { optional = true, version = "0.7.1", features = [
     "uuid",
     "runtime-tokio",
 ] }
+tokio = { optional = true, version = "1", features = ["full"] }
 
 [dev-dependencies]
 axum = "0.6"
 hyper = "0.14"
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
+tokio-test = "0.4"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -57,8 +60,8 @@ required-features = ["axum-core", "redis-store"]
 
 [[example]]
 name = "sqlite-store"
-required-features = ["axum-core", "sqlite-store"]
+required-features = ["axum-core", "sqlite-store", "tokio"]
 
 [[example]]
 name = "postgres-store"
-required-features = ["axum-core", "postgres-store"]
+required-features = ["axum-core", "postgres-store", "tokio"]

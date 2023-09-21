@@ -7,7 +7,7 @@ use crate::{
     Session, SessionStore, SqlxStoreError,
 };
 
-/// A SQLite session store.
+/// A PostgreSQL session store.
 #[derive(Clone, Debug)]
 pub struct PostgresStore {
     pool: PgPool,
@@ -17,6 +17,18 @@ pub struct PostgresStore {
 
 impl PostgresStore {
     /// Create a new PostgreSQL store with the provided connection pool.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tower_sessions::{sqlx::PgPool, PostgresStore};
+    ///
+    /// # tokio_test::block_on(async {
+    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
+    /// let pool = PgPool::connect(database_url).await.unwrap();
+    /// let session_store = PostgresStore::new(pool);
+    /// # })
+    /// ```
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
@@ -26,6 +38,19 @@ impl PostgresStore {
     }
 
     /// Migrate the session schema.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tower_sessions::{sqlx::PgPool, PostgresStore};
+    ///
+    /// # tokio_test::block_on(async {
+    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
+    /// let pool = PgPool::connect(database_url).await.unwrap();
+    /// let session_store = PostgresStore::new(pool);
+    /// session_store.migrate().await.unwrap();
+    /// # })
+    /// ```
     pub async fn migrate(&self) -> sqlx::Result<()> {
         let mut tx = self.pool.begin().await?;
 
@@ -51,6 +76,63 @@ impl PostgresStore {
 
         tx.commit().await?;
 
+        Ok(())
+    }
+
+    #[cfg(feature = "tokio")]
+    /// This function will keep running indefinitely, deleting expired rows and
+    /// then waiting for the specified period before deleting again.
+    ///
+    /// Generally this will be used as a task, for example via
+    /// `tokio::task::spawn`.
+    ///
+    /// # Arguments
+    ///
+    /// * `period` - The interval at which expired rows should be deleted.
+    ///
+    /// # Errors
+    ///
+    /// This function returns a `Result` that contains an error of type
+    /// `sqlx::Error` if the deletion operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tower_sessions::{sqlx::PgPool, PostgresStore};
+    ///
+    /// # tokio_test::block_on(async {
+    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
+    /// let pool = PgPool::connect(database_url).await.unwrap();
+    /// let session_store = PostgresStore::new(pool);
+    ///
+    /// tokio::task::spawn(
+    ///     session_store
+    ///         .clone()
+    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    /// );
+    /// # })
+    /// ```
+    pub async fn continuously_delete_expired(
+        self,
+        period: tokio::time::Duration,
+    ) -> Result<(), sqlx::Error> {
+        let mut interval = tokio::time::interval(period);
+        loop {
+            self.delete_expired().await?;
+            interval.tick().await;
+        }
+    }
+
+    async fn delete_expired(&self) -> sqlx::Result<()> {
+        let query = format!(
+            r#"
+            delete from {schema_name}.{table_name}
+            where expiration_time < (now() at time zone 'utc')
+            "#,
+            schema_name = self.schema_name,
+            table_name = self.table_name
+        );
+        sqlx::query(&query).execute(&self.pool).await?;
         Ok(())
     }
 }
@@ -109,9 +191,7 @@ impl SessionStore for PostgresStore {
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
         let query = format!(
-            r#"
-            delete from {schema_name}.{table_name} where id = $1
-            "#,
+            r#"delete from {schema_name}.{table_name} where id = $1"#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
