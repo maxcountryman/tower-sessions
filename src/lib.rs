@@ -104,6 +104,7 @@ pub use fred;
 #[cfg(feature = "sqlx-store")]
 pub use sqlx;
 pub use time;
+pub use tower_cookies;
 
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]

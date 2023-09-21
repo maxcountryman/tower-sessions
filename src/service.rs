@@ -140,6 +140,15 @@ pub struct SessionManagerLayer<Store: SessionStore> {
 
 impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Configures the name of the cookie used for the session.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
+    /// ```
     pub fn with_name(mut self, name: &str) -> Self {
         self.cookie_config.name = name.to_string();
         self
@@ -147,30 +156,67 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 
     /// Configures the `"SameSite"` attribute of the cookie used for the
     /// session.
+    ///
+    /// ```rust
+    /// use tower_sessions::{tower_cookies::cookie::SameSite, MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
+    /// ```
     pub fn with_same_site(mut self, same_site: SameSite) -> Self {
         self.cookie_config.same_site = same_site;
         self
     }
 
     /// Configures the `"Max-Age"` attribute of the cookie used for the session.
+    ///
+    /// ```rust
+    /// use tower_sessions::{time::Duration, MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store).with_max_age(Duration::hours(1));
+    /// ```
     pub fn with_max_age(mut self, max_age: Duration) -> Self {
         self.cookie_config.max_age = Some(max_age);
         self
     }
 
     /// Configures the `"Secure"` attribute of the cookie used for the session.
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store).with_secure(true);
+    /// ```
     pub fn with_secure(mut self, secure: bool) -> Self {
         self.cookie_config.secure = secure;
         self
     }
 
     /// Configures the `"Path"` attribute of the cookie used for the session.
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service =
+    ///     SessionManagerLayer::new(session_store).with_path("/some/path".to_string());
+    /// ```
     pub fn with_path(mut self, path: String) -> Self {
         self.cookie_config.path = path;
         self
     }
 
     /// Configures the `"Domain"` attribute of the cookie used for the session.
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service =
+    ///     SessionManagerLayer::new(session_store).with_domain("localhost".to_string());
+    /// ```
     pub fn with_domain(mut self, domain: String) -> Self {
         self.cookie_config.domain = Some(domain);
         self
@@ -180,6 +226,15 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Create a new [`SessionManagerLayer`] with the provided session store
     /// and default cookie configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store);
+    /// ```
     pub fn new(session_store: Store) -> Self {
         let cookie_config = CookieConfig::default();
 
