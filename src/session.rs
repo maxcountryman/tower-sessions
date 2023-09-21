@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use time::Duration;
-use tower_cookies::{cookie::time::OffsetDateTime, Cookie};
+use tower_cookies::cookie::time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::CookieConfig;
@@ -137,7 +137,6 @@ impl Session {
     /// # Errors
     ///
     /// This method can fail when [`serde_json::from_value`] fails.
-
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> SessionResult<Option<T>> {
         Ok(self
             .get_value(key)
@@ -396,38 +395,6 @@ impl Session {
         } else {
             true
         }
-    }
-
-    /// Given a [`CookieConfig`], builds a `Cookie` from the session.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{CookieConfig, Session};
-    /// let session = Session::new();
-    /// let cookie_config = CookieConfig::default();
-    /// let cookie = session.build_cookie(&cookie_config);
-    /// assert_eq!(cookie.value(), session.id().to_string());
-    /// ```
-    pub fn build_cookie<'c>(&self, cookie_config: &CookieConfig) -> Cookie<'c> {
-        let mut cookie_builder = Cookie::build(cookie_config.name.clone(), self.id.to_string())
-            .http_only(true)
-            .same_site(cookie_config.same_site)
-            .secure(cookie_config.secure)
-            .path(cookie_config.path.clone());
-
-        if let Some(max_age) = self
-            .expiration_time
-            .map(|dt| dt - OffsetDateTime::now_utc())
-        {
-            cookie_builder = cookie_builder.max_age(max_age);
-        }
-
-        if let Some(domain) = &cookie_config.domain {
-            cookie_builder = cookie_builder.domain(domain.clone());
-        }
-
-        cookie_builder.finish()
     }
 
     /// Returns `true` if the session has been modified and `false` otherwise.

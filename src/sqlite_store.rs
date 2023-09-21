@@ -76,7 +76,7 @@ impl SessionStore for SqliteStore {
         let query = format!(
             r#"
             insert into {}
-              (id, data, expiration_time) values (?, ?, ?)
+              (id, expiration_time, data) values (?, ?, ?)
             on conflict(id) do update set
               expiration_time = excluded.expiration_time,
               data = excluded.data
@@ -85,8 +85,8 @@ impl SessionStore for SqliteStore {
         );
         sqlx::query(&query)
             .bind(&session_record.id().to_string())
-            .bind(serde_json::to_string(&session_record)?)
             .bind(session_record.expiration_time())
+            .bind(serde_json::to_string(&session_record)?)
             .execute(&self.pool)
             .await?;
 

@@ -104,8 +104,6 @@ pub use fred;
 #[cfg(feature = "sqlite-store")]
 pub use sqlx;
 pub use time;
-use time::Duration;
-use tower_cookies::cookie::SameSite;
 
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
@@ -118,6 +116,7 @@ pub use self::redis_store::RedisStore;
 pub use self::sqlite_store::SqliteStore;
 #[doc(inline)]
 pub use self::{
+    cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
     session::Session,
     session_store::SessionStore,
@@ -139,30 +138,7 @@ mod redis_store;
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
 mod sqlite_store;
 
+pub mod cookie_config;
 pub mod service;
 pub mod session;
 pub mod session_store;
-
-/// Defines the configuration for the cookie belonging to the session.
-#[derive(Debug, Clone)]
-pub struct CookieConfig {
-    name: String,
-    same_site: SameSite,
-    max_age: Option<Duration>,
-    secure: bool,
-    path: String,
-    domain: Option<String>,
-}
-
-impl Default for CookieConfig {
-    fn default() -> Self {
-        Self {
-            name: String::from("tower.sid"),
-            same_site: SameSite::Strict,
-            max_age: None, // TODO: Is `Max-Age: "Session"` the right default?
-            secure: false,
-            path: String::from("/"),
-            domain: None,
-        }
-    }
-}

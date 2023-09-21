@@ -22,8 +22,8 @@ tower-sessions
 
 This crate provides cookie-based sessions as a `tower` middleware.
 
-- Wraps `tower-cookies` for cookie management
-- Decouples sessions from their storage (`SessionStore`)
+- Wraps `tower-cookies` for ergonomic and correct cookie management
+- Decouples sessions from their storage via `SessionStore`
 - `Session` works as an extractor when using `axum`
 - Redis and SQLx stores provided via feature flags
 - Works directly with types that implement `Serialize` and `Deserialize`

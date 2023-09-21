@@ -72,7 +72,7 @@ where
                 // We do have a session cookie, so let's see if our store has the associated
                 // session.
                 //
-                // N.B.: Our store will *not* have the session if we've not put data in it yet.
+                // N.B.: Our store will *not* have the session if the session is empty.
                 let session_id = session_cookie.value().try_into()?;
                 session_store.load(&session_id).await?
             } else {
@@ -81,12 +81,16 @@ where
             }
             .filter(Session::active)
             .unwrap_or_else(|| {
-                // The session was expired so we create a new one here.
+                // We either:
+                //
+                // 1. Didn't find the session in the store (but had a cookie) or,
+                // 2. We found a session but it was filtered out by `Session::active`.
+                //
+                // In both cases we want to create a new session.
                 (&cookie_config).into()
             });
 
             req.extensions_mut().insert(session.clone());
-
 
             let res = Ok(inner.call(req).await.map_err(Into::into)?);
 
@@ -94,7 +98,7 @@ where
                 match session_deletion {
                     SessionDeletion::Deleted => {
                         session_store.delete(&session.id()).await?;
-                        cookies.remove(session.build_cookie(&cookie_config));
+                        cookies.remove(cookie_config.build_cookie(&session));
 
                         // Since the session has been deleted, there's no need for further
                         // processing.
@@ -119,7 +123,7 @@ where
             if session.modified() {
                 let session_record = (&session).into();
                 session_store.save(&session_record).await?;
-                cookies.add(session.build_cookie(&cookie_config))
+                cookies.add(cookie_config.build_cookie(&session))
             }
 
             res
