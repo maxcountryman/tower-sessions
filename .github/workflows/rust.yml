@@ -81,7 +81,7 @@ jobs:
           command: test
           args: --all --all-features --all-targets
       - name: Coverage
-        run: cargo tarpaulin -o Lcov --output-dir ./coverage
+        run: cargo tarpaulin -o lcov --output-dir ./coverage
       - name: Coveralls
         uses: coverallsapp/github-action@master
         with:
