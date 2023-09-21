@@ -56,6 +56,22 @@ jobs:
           RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links"
         run: cargo doc --all-features --no-deps
 
+  integration-test:
+    needs: check
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Run integration tests
+        run: cargo test --test integration_tests --all-features --all-targets
+
   test:
     needs: check
 
