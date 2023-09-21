@@ -4,20 +4,8 @@ use time::OffsetDateTime;
 
 use crate::{
     session::{SessionId, SessionRecord},
-    Session, SessionStore,
+    Session, SessionStore, SqlxStoreError,
 };
-
-/// An error type for `SqliteStore`.
-#[derive(thiserror::Error, Debug)]
-pub enum SqliteStoreError {
-    /// A variant to map `sqlite` errors.
-    #[error("SQLx error: {0}")]
-    SqlxError(#[from] sqlx::Error),
-
-    /// A variant to map `serde_json` errors.
-    #[error("JSON serialization/deserialization error: {0}")]
-    SerdeJsonError(#[from] serde_json::Error),
-}
 
 /// A SQLite session store.
 #[derive(Clone, Debug)]
@@ -70,7 +58,7 @@ impl SqliteStore {
 
 #[async_trait]
 impl SessionStore for SqliteStore {
-    type Error = SqliteStoreError;
+    type Error = SqlxStoreError;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
         let query = format!(
@@ -86,7 +74,7 @@ impl SessionStore for SqliteStore {
         sqlx::query(&query)
             .bind(&session_record.id().to_string())
             .bind(session_record.expiration_time())
-            .bind(serde_json::to_string(&session_record)?)
+            .bind(serde_json::to_string(&session_record.data())?)
             .execute(&self.pool)
             .await?;
 
@@ -96,21 +84,25 @@ impl SessionStore for SqliteStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
-            select data from {}
+            select * from {}
             where id = ? and (expiration_time is null or expiration_time > ?)
             "#,
             self.table_name
         );
-        let record_value: Option<String> = sqlx::query_scalar(&query)
+        let record_value: Option<(String, Option<OffsetDateTime>, String)> = sqlx::query_as(&query)
             .bind(session_id.to_string())
             .bind(OffsetDateTime::now_utc())
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(record_value
-            .map(|json| serde_json::from_str::<SessionRecord>(&json))
-            .transpose()?
-            .map(Into::into))
+        if let Some((session_id, expiration_time, data)) = record_value {
+            let session_id = SessionId::try_from(session_id)?;
+            let session_record =
+                SessionRecord::new(session_id, expiration_time, serde_json::from_str(&data)?);
+            Ok(Some(session_record.into()))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {

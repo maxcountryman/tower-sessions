@@ -9,7 +9,9 @@ license = "MIT"
 default = ["axum-core", "memory-store"]
 memory-store = []
 redis-store = ["fred"]
-sqlite-store = ["sqlx", "sqlx/sqlite"]
+sqlx-store = ["sqlx"]
+sqlite-store = ["sqlx/sqlite", "sqlx-store"]
+postgres-store = ["sqlx/postgres", "sqlx-store"]
 
 [dependencies]
 async-trait = "0.1"
@@ -56,3 +58,7 @@ required-features = ["axum-core", "redis-store"]
 [[example]]
 name = "sqlite-store"
 required-features = ["axum-core", "sqlite-store"]
+
+[[example]]
+name = "postgres-store"
+required-features = ["axum-core", "postgres-store"]

@@ -497,6 +497,14 @@ impl TryFrom<&str> for SessionId {
     }
 }
 
+impl TryFrom<String> for SessionId {
+    type Error = SessionError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(Self(Uuid::parse_str(&value)?))
+    }
+}
+
 /// Session deletion, represented as an enumeration of possible deletion types.
 #[derive(Debug, Copy, Clone)]
 pub enum SessionDeletion {
@@ -519,6 +527,19 @@ pub struct SessionRecord {
 }
 
 impl SessionRecord {
+    /// Create a session record.
+    pub fn new(
+        id: SessionId,
+        expiration_time: Option<OffsetDateTime>,
+        data: HashMap<String, Value>,
+    ) -> Self {
+        Self {
+            id,
+            expiration_time,
+            data,
+        }
+    }
+
     /// Gets the session ID.
     pub fn id(&self) -> SessionId {
         self.id
@@ -527,6 +548,11 @@ impl SessionRecord {
     /// Gets the session expiration time.
     pub fn expiration_time(&self) -> Option<OffsetDateTime> {
         self.expiration_time
+    }
+
+    /// Gets the data belonging to the record.
+    pub fn data(&self) -> HashMap<String, Value> {
+        self.data.clone()
     }
 }
 

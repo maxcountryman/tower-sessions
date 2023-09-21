@@ -101,7 +101,7 @@
 
 #[cfg(feature = "redis-store")]
 pub use fred;
-#[cfg(feature = "sqlite-store")]
+#[cfg(feature = "sqlx-store")]
 pub use sqlx;
 pub use time;
 
@@ -111,9 +111,15 @@ pub use self::memory_store::MemoryStore;
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 pub use self::redis_store::RedisStore;
+#[cfg(feature = "postgres-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
+pub use self::sqlx_store::PostgresStore;
 #[cfg(feature = "sqlite-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
-pub use self::sqlite_store::SqliteStore;
+pub use self::sqlx_store::SqliteStore;
+#[cfg(feature = "sqlx-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
+pub use self::sqlx_store::SqlxStoreError;
 #[doc(inline)]
 pub use self::{
     cookie_config::CookieConfig,
@@ -134,9 +140,9 @@ mod memory_store;
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 mod redis_store;
 
-#[cfg(feature = "sqlite-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
-mod sqlite_store;
+#[cfg(feature = "sqlx-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
+mod sqlx_store;
 
 pub mod cookie_config;
 pub mod service;
