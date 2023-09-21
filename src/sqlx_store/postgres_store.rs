@@ -27,13 +27,13 @@ impl PostgresStore {
 
     /// Migrate the session schema.
     pub async fn migrate(&self) -> sqlx::Result<()> {
+        let mut tx = self.pool.begin().await?;
+
         let create_schema_query = format!(
             "create schema if not exists {schema_name}",
             schema_name = self.schema_name,
         );
-        sqlx::query(&create_schema_query)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(&create_schema_query).execute(&mut *tx).await?;
 
         let create_table_query = format!(
             r#"
@@ -47,7 +47,9 @@ impl PostgresStore {
             schema_name = self.schema_name,
             table_name = self.table_name
         );
-        sqlx::query(&create_table_query).execute(&self.pool).await?;
+        sqlx::query(&create_table_query).execute(&mut *tx).await?;
+
+        tx.commit().await?;
 
         Ok(())
     }
