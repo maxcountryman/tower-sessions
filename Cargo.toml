@@ -65,3 +65,7 @@ required-features = ["axum-core", "sqlite-store", "tokio"]
 [[example]]
 name = "postgres-store"
 required-features = ["axum-core", "postgres-store", "tokio"]
+
+[[example]]
+name = "strongly-typed"
+required-features = ["axum-core", "memory-store"]
