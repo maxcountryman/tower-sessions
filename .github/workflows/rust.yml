@@ -1,10 +1,6 @@
 name: Rust
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [ push, pull_request ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,13 +16,9 @@ jobs:
           - examples
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-          profile: minimal
-          components: clippy, rustfmt
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install nightly --profile minimal --component fmt --component clippy
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.pwd }}
@@ -42,46 +34,34 @@ jobs:
 
   check-docs:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          profile: minimal
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
       - name: cargo doc
         env:
           RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links"
-        run: cargo doc --all-features --no-deps
+        run: |
+          cargo doc --all-features --no-deps
 
   test:
     needs: check
-
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          profile: minimal
-      - name: Install Tarpaulin
-        uses: actions-rs/install@v0.1
-        with:
-          crate: cargo-tarpaulin
-          version: 0.27.0
-          use-tool-cache: true
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all --all-features --all-targets
+        run: |
+          cargo test --all --all-features --all-targets
+      - name: Install Tarpaulin
+        run: |
+          cargo install cargo-tarpaulin
       - name: Coverage
-        run: cargo tarpaulin -o lcov --output-dir ./coverage
+        run: |
+          cargo tarpaulin -o lcov --output-dir ./coverage
       - name: Coveralls
         uses: coverallsapp/github-action@master
         with:
@@ -89,19 +69,12 @@ jobs:
 
   test-docs:
     needs: check
-
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          profile: minimal
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
       - name: Run doc tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all-features --doc
+        run: |
+          cargo test --all-features --doc
