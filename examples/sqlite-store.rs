@@ -12,12 +12,12 @@ use tower_sessions::{sqlx::SqlitePool, time::Duration, Session, SessionManagerLa
 struct Counter(usize);
 
 #[tokio::main]
-async fn main() {
-    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let pool = SqlitePool::connect("sqlite::memory:").await?;
     let session_store = SqliteStore::new(pool);
-    session_store.migrate().await.unwrap();
+    session_store.migrate().await?;
 
-    tokio::task::spawn(
+    let deletion_task = tokio::task::spawn(
         session_store
             .clone()
             .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
@@ -40,8 +40,11 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    deletion_task.await??;
+
+    Ok(())
 }
 
 async fn handler(session: Session) -> impl IntoResponse {

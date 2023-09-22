@@ -157,6 +157,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Configures the `"SameSite"` attribute of the cookie used for the
     /// session.
     ///
+    /// # Examples
+    ///
     /// ```rust
     /// use tower_sessions::{tower_cookies::cookie::SameSite, MemoryStore, SessionManagerLayer};
     ///
@@ -169,6 +171,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Max-Age"` attribute of the cookie used for the session.
+    ///
+    /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{time::Duration, MemoryStore, SessionManagerLayer};
@@ -183,6 +187,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 
     /// Configures the `"Secure"` attribute of the cookie used for the session.
     ///
+    /// # Examples
+    ///
     /// ```rust
     /// use tower_sessions::{MemoryStore, SessionManagerLayer};
     ///
@@ -195,6 +201,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Path"` attribute of the cookie used for the session.
+    ///
+    /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{MemoryStore, SessionManagerLayer};
@@ -209,6 +217,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Domain"` attribute of the cookie used for the session.
+    ///
+    /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{MemoryStore, SessionManagerLayer};

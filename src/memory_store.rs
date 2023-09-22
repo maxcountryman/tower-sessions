@@ -17,8 +17,16 @@ pub enum MemoryStoreError {
     SerdeJsonError(#[from] serde_json::Error),
 }
 
-/// A session store that lives only in memory. This is useful for testing but
-/// not recommended for real applications.
+/// A session store that lives only in memory.
+///
+/// This is useful for testing but not recommended for real applications.
+///
+/// # Examples
+///
+/// ```rust
+/// use tower_sessions::MemoryStore;
+/// MemoryStore::default();
+/// ```
 #[derive(Clone, Default)]
 pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, Value>>>);
 

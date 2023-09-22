@@ -12,13 +12,13 @@ use tower_sessions::{sqlx::PgPool, time::Duration, PostgresStore, Session, Sessi
 struct Counter(usize);
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = std::option_env!("DATABASE_URL").expect("Missing DATABASE_URL.");
-    let pool = PgPool::connect(database_url).await.unwrap();
+    let pool = PgPool::connect(database_url).await?;
     let session_store = PostgresStore::new(pool);
-    session_store.migrate().await.unwrap();
+    session_store.migrate().await?;
 
-    tokio::task::spawn(
+    let deletion_task = tokio::task::spawn(
         session_store
             .clone()
             .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
@@ -41,8 +41,11 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    deletion_task.await??;
+
+    Ok(())
 }
 
 async fn handler(session: Session) -> impl IntoResponse {
