@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_sessions::{sqlx::SqlitePool, time::Duration, Session, SessionManagerLayer, SqliteStore};
 
+const COUNTER_KEY: &str = "counter";
+
 #[derive(Serialize, Deserialize, Default)]
 struct Counter(usize);
 
@@ -49,12 +51,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn handler(session: Session) -> impl IntoResponse {
     let counter: Counter = session
-        .get("counter")
+        .get(COUNTER_KEY)
         .expect("Could not deserialize.")
         .unwrap_or_default();
 
     session
-        .insert("counter", counter.0 + 1)
+        .insert(COUNTER_KEY, counter.0 + 1)
         .expect("Could not serialize.");
 
     format!("Current count: {}", counter.0)
