@@ -1,21 +1,24 @@
 <h1 align="center">
-tower-sessions
+    tower-sessions
 </h1>
 
 <p align="center">
-🥠 Cookie-based sessions as a `tower` middleware.
+    🥠 Cookie-based sessions as a `tower` middleware.
 </p>
 
 <div align="center">
-<a href="https://crates.io/crates/tower-sessions">
-<img src="https://img.shields.io/crates/v/tower-sessions.svg" />
-</a>
-<a href="https://docs.rs/tower-sessions">
-<img src="https://docs.rs/tower-sessions/badge.svg" />
-</a>
-<a href="https://github.com/maxcountryman/tower-sessions/actions/workflows/rust.yml">
-<img src="https://github.com/maxcountryman/tower-sessions/actions/workflows/rust.yml/badge.svg" />
-</a>
+    <a href="https://crates.io/crates/tower-sessions">
+        <img src="https://img.shields.io/crates/v/tower-sessions.svg" />
+    </a>
+    <a href="https://docs.rs/tower-sessions">
+        <img src="https://docs.rs/tower-sessions/badge.svg" />
+    </a>
+    <a href="https://github.com/maxcountryman/tower-sessions/actions/workflows/rust.yml">
+        <img src="https://github.com/maxcountryman/tower-sessions/actions/workflows/rust.yml/badge.svg" />
+    </a>
+    <a href="https://codecov.io/gh/maxcountryman/tower-sessions" > 
+        <img src="https://codecov.io/gh/maxcountryman/tower-sessions/graph/badge.svg?token=74POF0TJDN"/> 
+    </a>
 </div>
 
 ## 🎨 Overview
