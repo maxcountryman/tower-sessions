@@ -53,19 +53,21 @@ jobs:
       - run: |
           rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
       - name: Run tests
         run: |
-          cargo test --all --all-features --all-targets
-      - name: Install Tarpaulin
+          cargo nextest run --all --all-features --all-targets
+      - name: Generate code coverage
         run: |
-          cargo install cargo-tarpaulin
-      - name: Coverage
-        run: |
-          cargo tarpaulin -o lcov --output-dir ./coverage
-      - name: Coveralls
-        uses: coverallsapp/github-action@master
+          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          files: codecov.json
+          fail_ci_if_error: true
 
   test-docs:
     needs: check
