@@ -14,16 +14,17 @@ const COUNTER_KEY: &str = "counter";
 struct Counter(usize);
 
 #[tokio::main]
-async fn main() {
-    let config = RedisConfig::from_url("redis://127.0.0.1:6379/1").unwrap();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = RedisConfig::from_url("redis://127.0.0.1:6379/1")?;
     let client = RedisClient::new(config, None, None);
 
-    let _ = client.connect();
-    let _ = client.wait_for_connect().await.unwrap();
+    let redis_conn = client.connect();
+    client.wait_for_connect().await?;
 
     let session_store = RedisStore::new(client);
     let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|_: BoxError| async {
+        .layer(HandleErrorLayer::new(|err: BoxError| async {
+            dbg!(err);
             StatusCode::BAD_REQUEST
         }))
         .layer(
@@ -39,8 +40,11 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    redis_conn.await??;
+
+    Ok(())
 }
 
 async fn handler(session: Session) -> impl IntoResponse {

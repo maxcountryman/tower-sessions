@@ -8,15 +8,20 @@ use crate::{
 };
 
 /// An error type for `RedisStore`.
+#[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
 pub enum RedisStoreError {
     /// A variant to map to `fred::error::RedisError` errors.
     #[error("Redis error: {0}")]
     RedisError(#[from] fred::error::RedisError),
 
-    /// A variant to map `serde_json` errors.
-    #[error("JSON serialization/deserialization error: {0}")]
-    SerdeJsonError(#[from] serde_json::Error),
+    /// A variant to map `rmp_serde` encode errors.
+    #[error("Rust MsgPack encode error: {0}")]
+    RmpSerdeEncodeError(#[from] rmp_serde::encode::Error),
+
+    /// A variant to map `rmp_serde` decode errors.
+    #[error("Rust MsgPack decode error: {0}")]
+    RmpSerdeDecodeError(#[from] rmp_serde::decode::Error),
 }
 
 /// A Redis session store.
@@ -27,6 +32,23 @@ pub struct RedisStore {
 
 impl RedisStore {
     /// Create a new Redis store with the provided client.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use fred::prelude::*;
+    /// use tower_sessions::RedisStore;
+    ///
+    /// # tokio_test::block_on(async {
+    /// let config = RedisConfig::from_url("redis://127.0.0.1:6379/1").unwrap();
+    /// let client = RedisClient::new(config, None, None);
+    ///
+    /// let _ = client.connect();
+    /// client.wait_for_connect().await.unwrap();
+    ///
+    /// let session_store = RedisStore::new(client);
+    /// })
+    /// ```
     pub fn new(client: RedisClient) -> Self {
         Self { client }
     }
@@ -45,7 +67,7 @@ impl SessionStore for RedisStore {
         self.client
             .set(
                 session_record.id().to_string(),
-                serde_json::to_string(&session_record)?,
+                rmp_serde::to_vec(&session_record)?.as_slice(),
                 expiration,
                 None,
                 false,
@@ -58,16 +80,16 @@ impl SessionStore for RedisStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let record_value = self
             .client
-            .get::<serde_json::Value, _>(session_id.to_string())
+            .get::<Option<Vec<u8>>, _>(session_id.to_string())
             .await?;
 
         let session = match record_value {
-            serde_json::Value::Null => None,
-
-            record_value => {
-                let session_record: SessionRecord = serde_json::from_value(record_value.clone())?;
+            Some(record_value) => {
+                let session_record: SessionRecord = rmp_serde::from_slice(&record_value)?;
                 Some(session_record.into())
             }
+
+            None => None,
         };
 
         Ok(session)

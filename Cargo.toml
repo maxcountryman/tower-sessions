@@ -8,7 +8,7 @@ license = "MIT"
 [features]
 default = ["axum-core", "memory-store"]
 memory-store = []
-redis-store = ["fred"]
+redis-store = ["fred", "rmp-serde"]
 sqlx-store = ["sqlx"]
 sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
@@ -27,8 +27,10 @@ tower-cookies = "0.9"
 tower-layer = "0.3"
 tower-service = "0.3"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
+
 axum-core = { optional = true, version = "0.3" }
-fred = { optional = true, version = "6", features = ["serde-json"] }
+fred = { optional = true, version = "6" }
+rmp-serde = { optional = true, version = "1.1.2" }
 sqlx = { optional = true, version = "0.7.1", features = [
     "time",
     "uuid",
