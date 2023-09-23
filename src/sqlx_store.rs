@@ -36,4 +36,12 @@ pub enum SqlxStoreError {
     /// A variant to map `serde_json` errors.
     #[error("JSON serialization/deserialization error: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
+
+    /// A variant to map `rmp_serde` encode errors.
+    #[error("Rust MsgPack encode error: {0}")]
+    RmpSerdeEncodeError(#[from] rmp_serde::encode::Error),
+
+    /// A variant to map `rmp_serde` decode errors.
+    #[error("Rust MsgPack decode error: {0}")]
+    RmpSerdeDecodeError(#[from] rmp_serde::decode::Error),
 }

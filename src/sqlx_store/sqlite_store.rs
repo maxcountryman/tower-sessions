@@ -57,7 +57,7 @@ impl SqliteStore {
             (
                 id text primary key not null,
                 expiration_time integer null,
-                data text not null
+                data blob not null
             )
             "#,
             self.table_name
@@ -140,7 +140,7 @@ impl SessionStore for SqliteStore {
         sqlx::query(&query)
             .bind(&session_record.id().to_string())
             .bind(session_record.expiration_time())
-            .bind(serde_json::to_string(&session_record.data())?)
+            .bind(rmp_serde::to_vec(&session_record.data())?)
             .execute(&self.pool)
             .await?;
 
@@ -155,16 +155,17 @@ impl SessionStore for SqliteStore {
             "#,
             self.table_name
         );
-        let record_value: Option<(String, Option<OffsetDateTime>, String)> = sqlx::query_as(&query)
-            .bind(session_id.to_string())
-            .bind(OffsetDateTime::now_utc())
-            .fetch_optional(&self.pool)
-            .await?;
+        let record_value: Option<(String, Option<OffsetDateTime>, Vec<u8>)> =
+            sqlx::query_as(&query)
+                .bind(session_id.to_string())
+                .bind(OffsetDateTime::now_utc())
+                .fetch_optional(&self.pool)
+                .await?;
 
         if let Some((session_id, expiration_time, data)) = record_value {
             let session_id = SessionId::try_from(session_id)?;
             let session_record =
-                SessionRecord::new(session_id, expiration_time, serde_json::from_str(&data)?);
+                SessionRecord::new(session_id, expiration_time, rmp_serde::from_slice(&data)?);
             Ok(Some(session_record.into()))
         } else {
             Ok(None)
