@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use serde_json::Value;
 
 use crate::{
     session::{SessionId, SessionRecord},
@@ -28,28 +27,25 @@ pub enum MemoryStoreError {
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, Value>>>);
+pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, SessionRecord>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
     type Error = MemoryStoreError;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        self.0.lock().insert(
-            session_record.id(),
-            serde_json::to_value(session_record).map_err(MemoryStoreError::from)?,
-        );
+        self.0
+            .lock()
+            .insert(session_record.id(), session_record.clone());
         Ok(())
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
-        let session = if let Some(record_value) = self.0.lock().get(session_id) {
-            let session_record: SessionRecord =
-                serde_json::from_value(record_value.clone()).map_err(MemoryStoreError::from)?;
-            Some(session_record.into())
-        } else {
-            None
-        };
+        let session = self
+            .0
+            .lock()
+            .get(session_id)
+            .map(|session_record| session_record.clone().into());
         Ok(session)
     }
 
