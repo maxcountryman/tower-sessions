@@ -57,12 +57,12 @@ impl Guest {
 
     fn mark_pageview(&mut self) {
         self.guest_data.pageviews += 1;
-        self.update_session()
+        Self::update_session(&self.session, &self.guest_data)
     }
 
-    fn update_session(&self) {
-        self.session
-            .insert(Self::GUEST_DATA_KEY, self.guest_data.clone())
+    fn update_session(session: &Session, guest_data: &GuestData) {
+        session
+            .insert(Self::GUEST_DATA_KEY, guest_data.clone())
             .expect("infallible")
     }
 }
@@ -102,11 +102,10 @@ where
             .unwrap_or_default();
 
         guest_data.last_seen = OffsetDateTime::now_utc();
-        session
-            .insert(Self::GUEST_DATA_KEY, guest_data.clone())
-            .expect("infallible");
 
-        Ok(Guest {
+        Self::update_session(&session, &guest_data);
+
+        Ok(Self {
             session,
             guest_data,
         })
