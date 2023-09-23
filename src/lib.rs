@@ -112,6 +112,9 @@ pub use self::memory_store::MemoryStore;
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 pub use self::redis_store::RedisStore;
+#[cfg(feature = "mysql-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
+pub use self::sqlx_store::MySqlStore;
 #[cfg(feature = "postgres-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
 pub use self::sqlx_store::PostgresStore;

@@ -12,6 +12,7 @@ redis-store = ["fred"]
 sqlx-store = ["sqlx"]
 sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
+mysql-store = ["sqlx/mysql", "sqlx-store"]
 tokio = ["dep:tokio"]
 
 [dependencies]
@@ -65,6 +66,10 @@ required-features = ["axum-core", "sqlite-store", "tokio"]
 [[example]]
 name = "postgres-store"
 required-features = ["axum-core", "postgres-store", "tokio"]
+
+[[example]]
+name = "mysql-store"
+required-features = ["axum-core", "mysql-store", "tokio"]
 
 [[example]]
 name = "strongly-typed"

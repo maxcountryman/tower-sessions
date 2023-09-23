@@ -1,3 +1,6 @@
+#[cfg(feature = "mysql-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
+pub use self::mysql_store::MySqlStore;
 #[cfg(feature = "postgres-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
 pub use self::postgres_store::PostgresStore;
@@ -13,6 +16,10 @@ mod sqlite_store;
 #[cfg(feature = "postgres-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
 mod postgres_store;
+
+#[cfg(feature = "mysql-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
+mod mysql_store;
 
 /// An error type for SQLx stores.
 #[allow(clippy::enum_variant_names)]
