@@ -78,21 +78,13 @@ impl SessionStore for RedisStore {
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
-        let record_value = self
+        Ok(self
             .client
             .get::<Option<Vec<u8>>, _>(session_id.to_string())
-            .await?;
-
-        let session = match record_value {
-            Some(record_value) => {
-                let session_record: SessionRecord = rmp_serde::from_slice(&record_value)?;
-                Some(session_record.into())
-            }
-
-            None => None,
-        };
-
-        Ok(session)
+            .await?
+            .map(|bs| rmp_serde::from_slice::<SessionRecord>(&bs))
+            .transpose()?
+            .map(Into::into))
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
