@@ -23,8 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let session_store = RedisStore::new(client);
     let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|err: BoxError| async {
-            dbg!(err);
+        .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
