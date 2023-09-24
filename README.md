@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-    🥠 Cookie-based sessions as a `tower` middleware.
+    🥠 Sessions as a `tower` middleware.
 </p>
 
 <div align="center">
@@ -23,13 +23,25 @@
 
 ## 🎨 Overview
 
-This crate provides cookie-based sessions as a `tower` middleware.
+This crate provides sessions, key-value pairs associated with a site
+visitor, as a `tower` middleware.
 
-- Wraps `tower-cookies` for ergonomic and correct cookie management
-- Decouples sessions from their storage via `SessionStore`
-- `Session` works as an extractor when using `axum`
-- Redis and SQLx stores provided via feature flags
-- Works directly with types that implement `Serialize` and `Deserialize`
+It offers:
+
+- **Pluggable storage backends.** Arbitrary storage backends are implemented
+  with the `SessionStore` trait.
+- **`axum` extractor for `Session`.** Applications built with `axum` can
+  use `Session` as an
+  extractor directly in their handlers.
+- **Common backends out-of-the-box.** `RedisStore` and SQLx
+  (`SqliteStore`, `PostgresStore`, `MySqlStore`) are available via
+  their respective feature flags.
+- **A simple key-value interface.** Rust types are natively supported
+  provided they are `impl
+Serialize` and can be safely converted to JSON.
+- **Strongly-typed sessions.** Strong typing guarantees are easy to layer on
+  top of this
+  foundational key-value interface.
 
 ## 📦 Install
 
