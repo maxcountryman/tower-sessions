@@ -36,7 +36,7 @@ pub struct Session {
 impl Session {
     /// Create a new session with defaults.
     ///
-    /// Note that an `expiration_time` of none results in a cookie with
+    /// Note that an `expiration_time` of `None` results in a cookie with
     /// expiration `"Session"`.
     ///
     /// # Examples

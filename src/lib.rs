@@ -157,8 +157,8 @@
 //! 1. Deleted, invoking the [`delete`](SessionStore::delete) method and setting
 //!    a removal cookie or,
 //! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
-//!    the session will have been marked as modified and so this will also
-//!    append a `Set-Cookie` header to the request.
+//!    the session will have been marked as modified and so this will also set a
+//!    `Set-Cookie` header on the response.
 //!
 //! # Extractor pattern
 //!
