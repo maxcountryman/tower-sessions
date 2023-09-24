@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-    🥠 Sessions as a `tower` middleware.
+    🥠 Sessions as a `tower` and `axum` middleware.
 </p>
 
 <div align="center">
@@ -50,7 +50,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.0.0"
+tower-sessions = "0.1.0"
 ```
 
 ## 🤸 Usage
