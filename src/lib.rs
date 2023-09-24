@@ -5,20 +5,21 @@
 //!
 //! It offers:
 //!
-//! - **Pluggable storage backends.** Arbitrary storage backends are implemented
-//!   with the  [`SessionStore`] trait.
-//! - **`axum` extractor for [`Session`].** Applications built with `axum` can
-//!   use `Session` as an
-//! extractor directly in their handlers.
-//! - **Common backends out-of-the-box.** [`RedisStore`] and SQLx
-//!   ([`SqliteStore`], [`PostgresStore`], [`MySqlStore`]) are available via
-//!   their respective feature flags.
-//! - **A simple key-value interface.** Rust types are natively supported
-//!   provided they are `impl
-//! Serialize` and can be safely converted to JSON.
-//! - **Strongly-typed sessions.** Strong typing guarantees are easy to layer on
-//!   top of this
-//! foundational key-value interface.
+//! - **Pluggable Storage Backends:** Arbitrary storage backends are implemented
+//!   with the  [`SessionStore`] trait, fully decoupling sessions from their
+//!   storage.
+//! - **An `axum` Extractor for [`Session`]:** Applications built with `axum`
+//!   can use `Session` as an extractor directly in their handlers. This makes
+//!   using sessions as easy as including `Session` in your handler.
+//! - **Common Backends Out-of-the-Box:** [`RedisStore`] and SQLx
+//!   ([`SqliteStore`], [`PostgresStore`], [`MySqlStore`]) stores are available
+//!   via their respective feature flags.
+//! - **Simple Key-Value Interface:** Sessions offer a key-value interface that
+//!   supports native Rust types. So long as these types are `Serialize` and can
+//!   be converted to JSON, it's straightforward to insert, get, and remove any
+//!   value.
+//! - **Strongly-Typed Sessions:** Strong typing guarantees are easy to layer on
+//!   top of this foundational key-value interface.
 //!
 //! # Usage with an `axum` application
 //!
