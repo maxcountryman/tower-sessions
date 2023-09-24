@@ -1,41 +1,29 @@
 //! # Overview
 //!
-//! This crate provides cookie-based sessions as a [`tower`] middleware.
+//! This crate provides sessions, key-value pairs associated with a site
+//! visitor, as a `tower` middleware.
 //!
-//! Session data is stored in a session store backend, which can be anything
-//! that implements [`SessionStore`]. A pointer to this record is kept in the
-//! cookie in the form of a UUID v4 identifier.
+//! It offers:
 //!
-//! A [`Session`] is provided as a request extension and applications may make
-//! use of its interface by inserting, getting, and removing data associated
-//! with a visitor. When using [`axum`] an extractor is provided, making
-//! session retrieval in the route straightforward.
+//! - **Pluggable storage backends.** Arbitrary storage backends are implemented
+//!   with the  [`SessionStore`] trait.
+//! - **`axum` extractor for [`Session`].** Applications built with `axum` can
+//!   use `Session` as an
+//! extractor directly in their handlers.
+//! - **Common backends out-of-the-box.** [`RedisStore`] and SQLx
+//!   ([`SqliteStore`], [`PostgresStore`], [`MySqlStore`]) are available via
+//!   their respective feature flags.
+//! - **A simple key-value interface.** Rust types are natively supported
+//!   provided they are `impl
+//! Serialize` and can be safely converted to JSON.
+//! - **Strongly-typed sessions.** Strong typing guarantees are easy to layer on
+//!   top of this
+//! foundational key-value interface.
 //!
-//! ## Session Life Cycle
+//! # Usage with an `axum` application
 //!
-//! Sessions are only saved when their internal state has been changed or their
-//! life cycle has progressed, such as upon deletion or ID cycling. This
-//! helps reduce unnecessary overhead.
-//!
-//! Further an expiration or no expiration may be provided. In the latter case,
-//! the session will be treated as a "session cookie", meaning that the cookie
-//! is meant to expire once the browser is closed.
-//!
-//! ## Backend Stores
-//!
-//! Stores persist the session's data. Many production use cases will require
-//! this be a database of some kind. Redis and SQL stores are provided by
-//! enabling the corresponding feature flags.
-//!
-//! However, custom stores may be implemented and indeed anything that
-//! implements `SessionStore` may be used to house the backing session data.
-//!
-//! For testing, an in-memory store is also provided. Please note, this should
-//! generally not be used in production applications.
-//!
-//! # Example
-//!
-//! This example demonstrates how you use the middleware with `axum`.
+//! A common use-case for sessions is when building HTTP servers. Using `axum`,
+//! it's straightforward to leverage sessions.
 //!
 //! ```rust,no_run
 //! use std::net::SocketAddr;
@@ -48,10 +36,11 @@
 //! use tower::ServiceBuilder;
 //! use tower_sessions::{time::Duration, MemoryStore, Session, SessionManagerLayer};
 //!
+//! const COUNTER_KEY: &str = "counter";
+//!
 //! #[derive(Default, Deserialize, Serialize)]
 //! struct Counter(usize);
 //!
-//! # #[cfg(feature = "axum-core")]
 //! #[tokio::main]
 //! async fn main() {
 //!     let session_store = MemoryStore::default();
@@ -75,26 +64,244 @@
 //!         .await
 //!         .unwrap();
 //! }
-//! # #[cfg(not(feature = "axum-core"))]
-//! # fn main() {}
 //!
 //! async fn handler(session: Session) -> impl IntoResponse {
-//!     let counter: Counter = session
-//!         .get("counter")
-//!         .expect("Could not deserialize")
-//!         .unwrap_or_default();
+//!     let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
 //!
-//!     session
-//!         .insert("counter", counter.0 + 1)
-//!         .expect("Could not serialize.");
+//!     session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
 //!
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
 //!
-//! [`tower`]: https://docs.rs/tower/latest/tower/
-//! [`axum`]: https://docs.rs/axum/latest/axum/
-
+//! # Implementation
+//!
+//! Sessions manifest to clients as cookies. These cookies have a configurable
+//! name and a value that is the session ID. In other words, cookies hold a
+//! pointer to the session in the form of an ID. This ID is a [UUID
+//! v4](https://docs.rs/uuid/latest/uuid/struct.Uuid.html#method.new_v4).
+//!
+//! Session IDs are considered secure if your platform's
+//! [`getrandom`](https://docs.rs/getrandom/latest/getrandom/) is
+//! secure[^getrandom], and therefore are not signed or encrypted. Note that
+//! this assumption is predicated on the secure nature of the UUID crate and its
+//! ability to generate securely-random values. It's also important to note that
+//! session cookies **must never** be sent over a public, insecure channel.
+//! Doing so is **not** secure.
+//!
+//! An expiration time determines when the session will be considered expired.
+//! This translates to the cookie's `max-age` attribute. By default,
+//! [`CookieConfig`] will set this to `None`. When `None`, this means the cookie
+//! will be treated as a ["session" cookie][session-cookie], not to be confused
+//! with the session itself, which generally means that the cookie will expire
+//! once the user closes their browser.
+//!
+//! ## Intermediary representation
+//!
+//! Sessions manage a `HashMap<String, serde_json::Value>` but importantly are
+//! transparently persisted to an arbitrary storage backend. Effectively,
+//! `HashMap` is an intermediay, in-memory representation. By using a map-like
+//! structure, we're able to present a familiar key-value interface for managing
+//! sessions. This also allows us to store and retrieve native Rust
+//! types, so long as your type is `impl Serialize` and can be represented as
+//! JSON. Using JSON allows us to translate arbitrary types to virtually any
+//! backend and gives us a nice interface with which to interact with the
+//! session.
+//!
+//! The intermediary `HashMap` representation is converted to a `SessionRecord`
+//! type which provides the structure needed to store sessions. Implementations
+//! of `SessionStore` consume this type in order to translate the session to its
+//! persisted form. Note that the exact details of how a session is stored
+//! within a backend is left up to the implementation but generally three things
+//! are needed:
+//!
+//! 1. The session ID.
+//! 2. The session expiration time.
+//! 3. The session data itself.
+//!
+//!  ## Session life cycle
+//!
+//! Cookies hold a pointer to the session, rather than the session's data and
+//! because of this the `tower` middleware is focused on managng the process of
+//! hydrating a session from the store. This works by first looking for a cookie
+//! that matches our configured session cookie name. If no such cookie is found
+//! or a cookie is found but the store has no such session or the session is no
+//! longer active, we create a new session. However, it's important to note that
+//! creating a session **does not** save the session to the store. In fact, the
+//! store is not used at all unless one of two conditions is true:
+//!
+//! 1. A session cookie was found and we attempt to load it from the store via
+//!    the `load` method or,
+//! 2. A session was marked as modified or deleted.
+//!
+//! In other words, creating a new session is a lightweight process that does
+//! not incur the overhead of talking to a store. It's also important to create
+//! a session proactively as the middleware will attach the session to the
+//! request as a request extension. This allows handlers to extract the cookie
+//! from the request and manipulate it.
+//!
+//! Modified sessions will invoke the session store's `save` method as well as
+//! send a `Set-Cookie` header. While deleted sessions will either be:
+//!
+//! 1. Deleted, invoking the `delete` method and setting a removal cookie or,
+//! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
+//!    the session will have been marked as modified and so this will also
+//!    append a `Set-Cookie` header to the request.
+//!
+//! # Extractor pattern
+//!
+//! When using `axum`, the [`Session`] will already function as an extractor.
+//! It's possible to build further on this to create extractors of custom types.
+//!
+//! ```rust,no_run
+//! # use async_trait::async_trait;
+//! # use axum::extract::FromRequestParts;
+//! # use http::{request::Parts, StatusCode};
+//! # use serde::{Deserialize, Serialize};
+//! # use tower_sessions::Session;
+//! const COUNTER_KEY: &str = "counter";
+//!
+//! #[derive(Default, Deserialize, Serialize)]
+//! struct Counter(usize);
+//!
+//! #[async_trait]
+//! impl<S> FromRequestParts<S> for Counter
+//! where
+//!     S: Send + Sync,
+//! {
+//!     type Rejection = (http::StatusCode, &'static str);
+//!
+//!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+//!         let session = Session::from_request_parts(req, state).await?;
+//!         let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
+//!         session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
+//!
+//!         Ok(counter)
+//!     }
+//! }
+//! ```
+//!
+//! Now in your handler, you can use `Counter` directly to read its fields.
+//!
+//! A complete example can be found in [`examples/counter-extractor.rs`](https://github.com/maxcountryman/tower-sessions/blob/main/examples/counter-extractor.rs).
+//!
+//! # Strongly-typed sessions
+//!
+//! The extractor pattern can be extended further to provide strong typing
+//! guarantees over the key-value subtrate. Whereas our previous extractor
+//! example was effectively read-only, this pattern enables mutability of the
+//! underlying structure while enabling the full power of the type system.
+//!
+//! ```rust,no_run
+//! # use async_trait::async_trait;
+//! # use axum::extract::FromRequestParts;
+//! # use http::{request::Parts, StatusCode};
+//! # use serde::{Deserialize, Serialize};
+//! # use time::OffsetDateTime;
+//! # use tower_sessions::Session;
+//! # use uuid::Uuid;
+//! #[derive(Clone, Deserialize, Serialize)]
+//! struct GuestData {
+//!     id: Uuid,
+//!     pageviews: usize,
+//!     first_seen: OffsetDateTime,
+//!     last_seen: OffsetDateTime,
+//! }
+//!
+//! impl Default for GuestData {
+//!     fn default() -> Self {
+//!         Self {
+//!             id: Uuid::new_v4(),
+//!             pageviews: 0,
+//!             first_seen: OffsetDateTime::now_utc(),
+//!             last_seen: OffsetDateTime::now_utc(),
+//!         }
+//!     }
+//! }
+//!
+//! struct Guest {
+//!     session: Session,
+//!     guest_data: GuestData,
+//! }
+//!
+//! impl Guest {
+//!     const GUEST_DATA_KEY: &'static str = "guest_data";
+//!
+//!     fn id(&self) -> Uuid {
+//!         self.guest_data.id
+//!     }
+//!
+//!     fn first_seen(&self) -> OffsetDateTime {
+//!         self.guest_data.first_seen
+//!     }
+//!
+//!     fn last_seen(&self) -> OffsetDateTime {
+//!         self.guest_data.last_seen
+//!     }
+//!
+//!     fn pageviews(&self) -> usize {
+//!         self.guest_data.pageviews
+//!     }
+//!
+//!     fn mark_pageview(&mut self) {
+//!         self.guest_data.pageviews += 1;
+//!         Self::update_session(&self.session, &self.guest_data)
+//!     }
+//!
+//!     fn update_session(session: &Session, guest_data: &GuestData) {
+//!         session
+//!             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
+//!             .unwrap()
+//!     }
+//! }
+//!
+//! #[async_trait]
+//! impl<S> FromRequestParts<S> for Guest
+//! where
+//!     S: Send + Sync,
+//! {
+//!     type Rejection = (StatusCode, &'static str);
+//!
+//!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+//!         let session = Session::from_request_parts(req, state).await?;
+//!
+//!         let mut guest_data: GuestData = session
+//!             .get(Self::GUEST_DATA_KEY)
+//!             .unwrap()
+//!             .unwrap_or_default();
+//!
+//!         guest_data.last_seen = OffsetDateTime::now_utc();
+//!
+//!         Self::update_session(&session, &guest_data);
+//!
+//!         Ok(Self {
+//!             session,
+//!             guest_data,
+//!         })
+//!     }
+//! }
+//! ```
+//!
+//! Here we can use `Guest` as an extractor in our handler. We'll be able to
+//! read values, like the ID as well as update the pageview count with our
+//! `mark_pageview` method.
+//!
+//! A complete example can be found in [`examples/strongly-typed.rs`](https://github.com/maxcountryman/tower-sessions/blob/main/examples/strongly-typed.rs)
+//!
+//! ## Name-spaced and strongly-typed buckets
+//!
+//! Our example demonstrates a single extractor, but in a real application we
+//! might imagine a set of common extractors, all living in the same session.
+//! These form a kind of bucketed name-space with a typed structure. For
+//! instance, we might also have a site preferences bucket, an analytics bucket,
+//! a feature flags bucket and so on.
+//!
+//! [^getrandom]: `uuid` uses `getrandom` which varies by platform; the crucial
+//!   assumption
+//! `tower-sessions` makes is that your platform is secure. However, you
+//! **must** verify this for yourself.
+//!
+//! [session-cookie]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
 #![warn(clippy::all, missing_docs, nonstandard_style, future_incompatible)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
