@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -7,14 +7,6 @@ use crate::{
     session::{SessionId, SessionRecord},
     Session, SessionStore,
 };
-
-/// An error type for `MemoryStore`.
-#[derive(thiserror::Error, Debug)]
-pub enum MemoryStoreError {
-    /// A variant to map `serde_json` errors.
-    #[error("JSON serialization/deserialization error: {0}")]
-    SerdeJsonError(#[from] serde_json::Error),
-}
 
 /// A session store that lives only in memory.
 ///
@@ -31,7 +23,7 @@ pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, SessionRecord>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
-    type Error = MemoryStoreError;
+    type Error = Infallible;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
         self.0
