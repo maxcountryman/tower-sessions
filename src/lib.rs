@@ -106,12 +106,19 @@
 //! types, so long as our type is `impl Serialize` and can be represented as
 //! JSON.[^json]
 //!
-//! The intermediary `HashMap` representation is converted to a `SessionRecord`
-//! type which provides the structure needed to store sessions. Implementations
-//! of `SessionStore` consume this type in order to translate the session to its
-//! persisted form. Note that the exact details of how a session is stored
-//! within a backend is left up to the implementation but generally three things
-//! are needed:
+//! Internally, this hash map state is protected by a lock in the form of
+//! `Mutex`. This allows us to safely share mutable state across thread
+//! boundaries. Note that this lock is only acquired when we read from or write
+//! to this inner session state and not used when the session is provided to the
+//! request. This means that lock contention is minimized for most use
+//! cases.[^lock-contention]
+//!
+//! The intermediary `HashMap` representation is converted to a
+//! [`SessionRecord`] type which provides the structure needed to store
+//! sessions. Implementations of `SessionStore` consume this type in order to
+//! translate the session to its persisted form. Note that the exact details of
+//! how a session is stored within a backend is left up to the implementation
+//! but generally three things are needed:
 //!
 //! 1. The session ID.
 //! 2. The session expiration time.
@@ -313,6 +320,11 @@
 //! any backend and gives us a nice interface with which to interact with the
 //! session.
 //!
+//! [^lock-contention]: We might consider replacing `Mutex` with `RwLock` if
+//! this proves to be a better fit in practice. Another alternative might be
+//! `dashmap` or a different approach entirely. Future iterations should be
+//! based on real-world use cases.
+//!
 //! [^data-domains]: This is paricularly useful when we may have data domains that only belong with
 //! users in certain states: we can pull these into our handlers where we need a
 //! particular domain. In this way, we minimize data pollution via
@@ -325,10 +337,12 @@
 
 #[cfg(feature = "redis-store")]
 pub use fred;
+pub use http;
 #[cfg(feature = "sqlx-store")]
 pub use sqlx;
 pub use time;
 pub use tower_cookies;
+pub use uuid;
 
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
@@ -352,7 +366,7 @@ pub use self::sqlx_store::SqlxStoreError;
 pub use self::{
     cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
-    session::Session,
+    session::{Session, SessionRecord},
     session_store::SessionStore,
 };
 
