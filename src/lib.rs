@@ -33,8 +33,9 @@
 //! };
 //! use http::StatusCode;
 //! use serde::{Deserialize, Serialize};
+//! use time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_sessions::{time::Duration, MemoryStore, Session, SessionManagerLayer};
+//! use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 //!
 //! const COUNTER_KEY: &str = "counter";
 //!
@@ -337,12 +338,10 @@
 
 #[cfg(feature = "redis-store")]
 pub use fred;
-pub use http;
 #[cfg(feature = "sqlx-store")]
 pub use sqlx;
-pub use time;
-pub use tower_cookies;
-pub use uuid;
+/// Ensure the underlying cookie interface is available.
+pub use tower_cookies::cookie;
 
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]

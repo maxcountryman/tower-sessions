@@ -7,8 +7,9 @@ use axum::{
 };
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
+use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{time::Duration, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 

@@ -7,9 +7,9 @@ use axum::{
 };
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use tower::ServiceBuilder;
-use tower_sessions::{time::Duration, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]

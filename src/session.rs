@@ -63,7 +63,8 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{time::Duration, Session};
+    /// use time::Duration;
+    /// use tower_sessions::Session;
     /// let session = Session::new().with_max_age(Duration::minutes(5));
     /// ```
     pub fn with_max_age(mut self, max_age: Duration) -> Self {
@@ -361,10 +362,8 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{
-    ///     time::{Duration, OffsetDateTime},
-    ///     Session,
-    /// };
+    /// use time::{Duration, OffsetDateTime};
+    /// use tower_sessions::Session;
     /// let session = Session::new().with_max_age(Duration::hours(1));
     /// assert!(session
     ///     .expiration_time()
@@ -379,7 +378,8 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{time::Duration, Session};
+    /// use time::Duration;
+    /// use tower_sessions::Session;
     /// let session = Session::new();
     /// assert!(session.active());
     ///

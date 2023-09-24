@@ -5,8 +5,9 @@ use axum::{
 };
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{sqlx::SqlitePool, time::Duration, Session, SessionManagerLayer, SqliteStore};
+use tower_sessions::{sqlx::SqlitePool, Session, SessionManagerLayer, SqliteStore};
 
 const COUNTER_KEY: &str = "counter";
 

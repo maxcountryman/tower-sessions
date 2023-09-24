@@ -5,8 +5,9 @@ use axum::{
 };
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
+use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{fred::prelude::*, time::Duration, RedisStore, Session, SessionManagerLayer};
+use tower_sessions::{fred::prelude::*, RedisStore, Session, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 

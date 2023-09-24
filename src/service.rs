@@ -6,10 +6,8 @@ use std::{
 };
 
 use http::{Request, Response};
-use tower_cookies::{
-    cookie::{time::Duration, SameSite},
-    CookieManager, Cookies,
-};
+use time::Duration;
+use tower_cookies::{cookie::SameSite, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -160,7 +158,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{tower_cookies::cookie::SameSite, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
@@ -175,7 +173,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{time::Duration, MemoryStore, SessionManagerLayer};
+    /// use time::Duration;
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_max_age(Duration::hours(1));
