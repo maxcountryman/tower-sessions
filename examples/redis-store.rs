@@ -17,7 +17,9 @@ struct Counter(usize);
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = RedisConfig::from_url("redis://127.0.0.1:6379/1")?;
-    let client = RedisClient::new(config, None, None);
+    let perf = PerformanceConfig::default();
+    let policy = ReconnectPolicy::default();
+    let client = RedisClient::new(config, Some(perf), Some(policy));
 
     let redis_conn = client.connect();
     client.wait_for_connect().await?;
