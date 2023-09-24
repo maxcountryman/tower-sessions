@@ -1,7 +1,7 @@
 //! # Overview
 //!
 //! This crate provides sessions, key-value pairs associated with a site
-//! visitor, as a `tower` middleware.
+//! visitor, as a [`tower`](https://docs.rs/tower/latest/tower/) middleware.
 //!
 //! It offers:
 //!
@@ -103,10 +103,8 @@
 //! `HashMap` is an intermediay, in-memory representation. By using a map-like
 //! structure, we're able to present a familiar key-value interface for managing
 //! sessions. This also allows us to store and retrieve native Rust
-//! types, so long as your type is `impl Serialize` and can be represented as
-//! JSON. Using JSON allows us to translate arbitrary types to virtually any
-//! backend and gives us a nice interface with which to interact with the
-//! session.
+//! types, so long as our type is `impl Serialize` and can be represented as
+//! JSON.[^json]
 //!
 //! The intermediary `HashMap` representation is converted to a `SessionRecord`
 //! type which provides the structure needed to store sessions. Implementations
@@ -118,6 +116,9 @@
 //! 1. The session ID.
 //! 2. The session expiration time.
 //! 3. The session data itself.
+//!
+//! Together, these compose the session record and are enough to both encode and
+//! decode a session from any backend.
 //!
 //!  ## Session life cycle
 //!
@@ -131,7 +132,7 @@
 //! store is not used at all unless one of two conditions is true:
 //!
 //! 1. A session cookie was found and we attempt to load it from the store via
-//!    the `load` method or,
+//!    the [`load`](SessionStore::load) method or,
 //! 2. A session was marked as modified or deleted.
 //!
 //! In other words, creating a new session is a lightweight process that does
@@ -140,10 +141,12 @@
 //! request as a request extension. This allows handlers to extract the cookie
 //! from the request and manipulate it.
 //!
-//! Modified sessions will invoke the session store's `save` method as well as
-//! send a `Set-Cookie` header. While deleted sessions will either be:
+//! Modified sessions will invoke the session store's
+//! [`save`](SessionStore::save) method as well as send a `Set-Cookie` header.
+//! While deleted sessions will either be:
 //!
-//! 1. Deleted, invoking the `delete` method and setting a removal cookie or,
+//! 1. Deleted, invoking the [`delete`](SessionStore::delete) method and setting
+//!    a removal cookie or,
 //! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
 //!    the session will have been marked as modified and so this will also
 //!    append a `Set-Cookie` header to the request.
@@ -181,7 +184,7 @@
 //! }
 //! ```
 //!
-//! Now in your handler, you can use `Counter` directly to read its fields.
+//! Now in our handler, we can use `Counter` directly to read its fields.
 //!
 //! A complete example can be found in [`examples/counter-extractor.rs`](https://github.com/maxcountryman/tower-sessions/blob/main/examples/counter-extractor.rs).
 //!
@@ -189,8 +192,9 @@
 //!
 //! The extractor pattern can be extended further to provide strong typing
 //! guarantees over the key-value subtrate. Whereas our previous extractor
-//! example was effectively read-only, this pattern enables mutability of the
-//! underlying structure while enabling the full power of the type system.
+//! example was effectively read-only. This pattern enables mutability of the
+//! underlying structure while also leveraging the full power of the type
+//! system.
 //!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
@@ -292,14 +296,27 @@
 //!
 //! Our example demonstrates a single extractor, but in a real application we
 //! might imagine a set of common extractors, all living in the same session.
-//! These form a kind of bucketed name-space with a typed structure. For
-//! instance, we might also have a site preferences bucket, an analytics bucket,
-//! a feature flags bucket and so on.
+//! Each extractor forms a kind of bucketed name-space with a typed structure.
+//! Importantly, each is self-contained by its own name-space.
+//!
+//! For instance, we might also have a site preferences bucket, an analytics
+//! bucket, a feature flag bucket and so on. All these together would live in
+//! the same session, but would be segmented by their own name-space, avoiding
+//! the mixing of domains unnecessarily.[^data-domains]
 //!
 //! [^getrandom]: `uuid` uses `getrandom` which varies by platform; the crucial
 //!   assumption
 //! `tower-sessions` makes is that your platform is secure. However, you
 //! **must** verify this for yourself.
+//!
+//! [^json]: Using JSON allows us to translate arbitrary types to virtually
+//! any backend and gives us a nice interface with which to interact with the
+//! session.
+//!
+//! [^data-domains]: This is paricularly useful when we may have data domains that only belong with
+//! users in certain states: we can pull these into our handlers where we need a
+//! particular domain. In this way, we minimize data pollution via
+//! self-contained domains in the form of buckets.
 //!
 //! [session-cookie]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
 #![warn(clippy::all, missing_docs, nonstandard_style, future_incompatible)]
