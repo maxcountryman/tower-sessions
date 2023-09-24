@@ -7,7 +7,7 @@ use crate::{
     Session, SessionStore, SqlxStoreError,
 };
 
-/// A PostgreSQL session store.
+/// A MySqlStore session store.
 #[derive(Clone, Debug)]
 pub struct MySqlStore {
     pool: MySqlPool,
@@ -16,7 +16,7 @@ pub struct MySqlStore {
 }
 
 impl MySqlStore {
-    /// Create a new PostgreSQL store with the provided connection pool.
+    /// Create a new MySqlStore store with the provided connection pool.
     ///
     /// # Examples
     ///
