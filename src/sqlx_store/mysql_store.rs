@@ -7,7 +7,7 @@ use crate::{
     Session, SessionStore, SqlxStoreError,
 };
 
-/// A MySqlStore session store.
+/// A MySQL session store.
 #[derive(Clone, Debug)]
 pub struct MySqlStore {
     pool: MySqlPool,
