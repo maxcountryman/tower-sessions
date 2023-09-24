@@ -72,12 +72,7 @@ impl Display for Guest {
         let now = OffsetDateTime::now_utc();
         write!(
             f,
-            r#"
-            Guest ID {}
-            Pageviews {}
-            First seen {} ago
-            Last seen {} ago
-            "#,
+            "Guest ID {}\n\nPageviews {}\n\nFirst seen {} ago\n\nLast seen {} ago\n\n",
             self.id().as_hyphenated(),
             self.pageviews(),
             now - self.first_seen(),
