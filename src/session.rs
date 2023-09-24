@@ -24,7 +24,8 @@ pub enum SessionError {
 
 type SessionResult<T> = Result<T, SessionError>;
 
-/// A session which allows HTTP applications to associate data with visitors.
+/// A session which allows HTTP applications to associate key-value pairs with
+/// visitors.
 #[derive(Debug, Clone, Default)]
 pub struct Session {
     pub(crate) id: SessionId,
