@@ -55,14 +55,26 @@ impl PostgresStore {
         let mut tx = self.pool.begin().await?;
 
         let create_schema_query = format!(
-            "create schema if not exists {schema_name}",
+            r#"create schema if not exists "{schema_name}""#,
             schema_name = self.schema_name,
         );
-        sqlx::query(&create_schema_query).execute(&mut *tx).await?;
+        // Concurrent create schema may fail due to duplicate key violations.
+        //
+        // This works around that by assuming the schema must exist on such an error.
+        if let Err(err) = sqlx::query(&create_schema_query).execute(&mut *tx).await {
+            if !err
+                .to_string()
+                .contains("duplicate key value violates unique constraint")
+            {
+                return Err(err);
+            }
+
+            return Ok(());
+        }
 
         let create_table_query = format!(
             r#"
-            create table if not exists {schema_name}.{table_name}
+            create table if not exists "{schema_name}"."{table_name}"
             (
                 id text primary key not null,
                 expiration_time timestamptz null,
@@ -126,7 +138,7 @@ impl PostgresStore {
     async fn delete_expired(&self) -> sqlx::Result<()> {
         let query = format!(
             r#"
-            delete from {schema_name}.{table_name}
+            delete from "{schema_name}"."{table_name}"
             where expiration_time < (now() at time zone 'utc')
             "#,
             schema_name = self.schema_name,
@@ -144,9 +156,10 @@ impl SessionStore for PostgresStore {
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
         let query = format!(
             r#"
-            insert into {schema_name}.{table_name}
-              (id, expiration_time, data) values ($1, $2, $3)
-            on conflict(id) do update set
+            insert into "{schema_name}"."{table_name}" (id, expiration_time, data)
+            values ($1, $2, $3)
+            on conflict (id) do update
+            set
               expiration_time = excluded.expiration_time,
               data = excluded.data
             "#,
@@ -166,7 +179,7 @@ impl SessionStore for PostgresStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
-            select * from {schema_name}.{table_name}
+            select * from "{schema_name}"."{table_name}"
             where id = $1
             and (expiration_time is null or expiration_time > $2)
             "#,
@@ -192,7 +205,7 @@ impl SessionStore for PostgresStore {
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
         let query = format!(
-            r#"delete from {schema_name}.{table_name} where id = $1"#,
+            r#"delete from "{schema_name}"."{table_name}" where id = $1"#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
