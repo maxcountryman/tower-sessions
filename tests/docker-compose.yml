@@ -1,23 +1,20 @@
 version: "3"
 
 services:
-  redis:
+  redis-store:
     image: redis
-    container_name: redis-store
     ports:
       - "6379:6379"
 
-  postgres:
+  postgres-store:
     image: postgres
-    container_name: postgres-store
     environment:
       POSTGRES_PASSWORD: "postgres"
     ports:
       - "5432:5432"
 
-  mysql:
+  mysql-store:
     image: mysql
-    container_name: mysql-store
     environment:
       - MYSQL_ALLOW_EMPTY_PASSWORD=true
       - MYSQL_DATABASE=public
