@@ -4,6 +4,9 @@ on: [ push, pull_request ]
 
 env:
   CARGO_TERM_COLOR: always
+  REDIS_URL: redis://localhost:6379/1
+  POSTGRES_URL: postgres://postgres:postgres@localhost:5432
+  MYSQL_URL: mysql://root@localhost:3306/public
 
 jobs:
   check:
@@ -55,7 +58,6 @@ jobs:
           rustup toolchain install nightly --profile minimal
           cargo install cargo-tarpaulin
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
       - name: Run tests
         run: |
@@ -82,3 +84,29 @@ jobs:
       - name: Run doc tests
         run: |
           cargo test --all-features --doc
+
+  integration-tests:
+    needs: check
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        session_store:
+          - redis-store
+          - postgres-store
+          - mysql-store
+          - sqlite-store
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - name: Start session store
+        if: matrix.session_store != 'sqlite-store'
+        run: |
+          docker compose -f tests/docker-compose.yml up ${{ matrix.session_store }} -d
+      - name: Run integration tests
+        run: |
+          cargo nextest run --features ${{ matrix.session_store }}
