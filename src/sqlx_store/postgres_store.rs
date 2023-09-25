@@ -58,7 +58,19 @@ impl PostgresStore {
             r#"create schema if not exists "{schema_name}""#,
             schema_name = self.schema_name,
         );
-        sqlx::query(&create_schema_query).execute(&mut *tx).await?;
+        // Concurrent create schema may fail due to duplicate key violations.
+        //
+        // This works around that by assuming the schema must exist on such an error.
+        if let Err(err) = sqlx::query(&create_schema_query).execute(&mut *tx).await {
+            if !err
+                .to_string()
+                .contains("duplicate key value violates unique constraint")
+            {
+                return Err(err);
+            }
+
+            return Ok(());
+        }
 
         let create_table_query = format!(
             r#"
