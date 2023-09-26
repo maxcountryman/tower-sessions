@@ -348,6 +348,9 @@ pub use tower_cookies::cookie;
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
 pub use self::memory_store::MemoryStore;
+#[cfg(feature = "moka-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
+pub use self::moka_store::MokaStore;
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 pub use self::redis_store::RedisStore;
@@ -378,6 +381,10 @@ mod extract;
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
 mod memory_store;
+
+#[cfg(feature = "moka-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
+mod moka_store;
 
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
