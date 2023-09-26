@@ -49,14 +49,16 @@ impl MongoDBStore {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::MongoDBStore;
     /// use mongodb::Client;
+    /// use tower_sessions::MongoDBStore;
     ///
     /// # tokio_test::block_on(async {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
     /// let client = Client::with_uri_str(database_url).await.unwrap();
     ///
-    /// let session_store = MongoDBStore::new(client, "database".to_string()).await.unwrap();
+    /// let session_store = MongoDBStore::new(client, "database".to_string())
+    ///     .await
+    ///     .unwrap();
     /// # })
     /// ```
     pub fn new(client: Client, database: String) -> Self {
@@ -80,7 +82,7 @@ impl SessionStore for MongoDBStore {
                 },
                 doc! {
                     "$set": to_document(&MongoDBSessionRecord {
-                        id: session_record.id().clone(),
+                        id: session_record.id(),
                         expiration_time: session_record.expiration_time().map(DateTime::from),
                         data: session_record.data().clone(),
                     })?,
@@ -97,13 +99,16 @@ impl SessionStore for MongoDBStore {
             .col()
             .find_one(doc! { "_id": session_id.to_string() }, None)
             .await?
-            .map(|record| SessionRecord::new(
-                record.id,
-                record.expiration_time.map(|expiration_time| expiration_time.into()),
-                record.data,
-            ))
-            .map(Into::into)
-        )
+            .map(|record| {
+                SessionRecord::new(
+                    record.id,
+                    record
+                        .expiration_time
+                        .map(|expiration_time| expiration_time.into()),
+                    record.data,
+                )
+            })
+            .map(Into::into))
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
