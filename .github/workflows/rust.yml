@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   REDIS_URL: redis://localhost:6379/1
+  MONGODB_URL: mongodb://localhost:27017
   POSTGRES_URL: postgres://postgres:postgres@localhost:5432
   MYSQL_URL: mysql://root@localhost:3306/public
 
@@ -97,6 +98,7 @@ jobs:
       matrix:
         session_store:
           - redis-store
+          - mongodb-store
           - postgres-store
           - mysql-store
           - sqlite-store
