@@ -7,7 +7,9 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{sqlx::PgPool, MokaStore, PostgresStore, Session, SessionManagerLayer};
+use tower_sessions::{
+    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, Session, SessionManagerLayer,
+};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -18,17 +20,19 @@ struct Counter(usize);
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = std::option_env!("DATABASE_URL").expect("Missing DATABASE_URL.");
     let pool = PgPool::connect(database_url).await?;
+
     let postgres_store = PostgresStore::new(pool);
     postgres_store.migrate().await?;
 
-    let moka_store = MokaStore::new(postgres_store, Some(2000));
+    let moka_store = MokaStore::new(Some(2000));
+    let caching_store = CachingSessionStore::new(moka_store, postgres_store);
 
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
-            SessionManagerLayer::new(moka_store)
+            SessionManagerLayer::new(caching_store)
                 .with_secure(false)
                 .with_max_age(Duration::seconds(10)),
         );

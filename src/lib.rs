@@ -374,7 +374,7 @@ pub use self::{
     cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
     session::{Session, SessionRecord},
-    session_store::SessionStore,
+    session_store::{CachingSessionStore, SessionStore},
 };
 
 #[cfg(feature = "axum-core")]
