@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   REDIS_URL: redis://localhost:6379/1
+  MONGODB_URL: mongodb://localhost:27017
   POSTGRES_URL: postgres://postgres:postgres@localhost:5432
   MYSQL_URL: mysql://root@localhost:3306/public
 
@@ -99,6 +100,9 @@ jobs:
           - test: redis-store
             features: redis-store
             docker: true
+          - test: mongodb-store
+            features: mongodb-store
+            docker: true
           - test: postgres-store
             features: postgres-store
             docker: true
@@ -114,7 +118,7 @@ jobs:
           - test: moka-store-sqlite
             features: moka-store,sqlite-store
             docker: false
-          
+
     steps:
       - uses: actions/checkout@v4
       - run: |

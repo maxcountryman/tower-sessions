@@ -351,6 +351,9 @@ pub use self::memory_store::MemoryStore;
 #[cfg(feature = "moka-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
 pub use self::moka_store::MokaStore;
+#[cfg(feature = "mongodb-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
+pub use self::mongodb_store::MongoDBStore;
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 pub use self::redis_store::RedisStore;
@@ -389,6 +392,10 @@ mod moka_store;
 #[cfg(feature = "redis-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
 mod redis_store;
+
+#[cfg(feature = "mongodb-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
+mod mongodb_store;
 
 #[cfg(feature = "sqlx-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
