@@ -22,7 +22,7 @@ impl<T: SessionStore> MokaStore<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_session::{MemoryStore, MokaStore};
+    /// use tower_sessions::{MemoryStore, MokaStore};
     /// let backing_store = MemoryStore::default();
     /// MokaStore::new(backing_store, Some(2000));
     /// ```
@@ -48,7 +48,7 @@ impl MokaStore<DummyStore> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_session::MokaStore;
+    /// use tower_sessions::MokaStore;
     /// MokaStore::new_in_memory();
     /// ```
     pub fn new_in_memory() -> Self {
