@@ -21,6 +21,7 @@ sqlx-store = ["sqlx", "rmp-serde"]
 sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
 mysql-store = ["sqlx/mysql", "sqlx-store"]
+moka-store = ["moka"]
 tokio = ["dep:tokio"]
 
 [dependencies]
@@ -47,6 +48,7 @@ sqlx = { optional = true, version = "0.7.1", features = [
     "runtime-tokio",
 ] }
 tokio = { optional = true, version = "1", features = ["full"] }
+moka = { optional = true, version = "0.12.0", features = ["future"] }
 
 [dev-dependencies]
 axum = "0.6"
@@ -82,6 +84,10 @@ required-features = ["axum-core", "sqlite-store", "tokio"]
 [[example]]
 name = "postgres-store"
 required-features = ["axum-core", "postgres-store", "tokio"]
+
+[[example]]
+name = "moka-postgres-store"
+required-features = ["axum-core", "postgres-store", "moka-store", "tokio"]
 
 [[example]]
 name = "mysql-store"

@@ -96,12 +96,28 @@ jobs:
 
     strategy:
       matrix:
-        session_store:
-          - redis-store
-          - mongodb-store
-          - postgres-store
-          - mysql-store
-          - sqlite-store
+        include:
+          - test: redis-store
+            features: redis-store
+            docker: true
+          - test: mongodb-store
+            features: mongodb-store
+            docker: true
+          - test: postgres-store
+            features: postgres-store
+            docker: true
+          - test: mysql-store
+            features: mysql-store
+            docker: true
+          - test: sqlite-store
+            features: sqlite-store
+            docker: false
+          - test: moka-store-dummy
+            features: moka-store
+            docker: false
+          - test: moka-store-sqlite
+            features: moka-store,sqlite-store
+            docker: false
 
     steps:
       - uses: actions/checkout@v4
@@ -110,9 +126,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - name: Start session store
-        if: matrix.session_store != 'sqlite-store'
+        if: matrix.docker
         run: |
-          docker compose -f tests/docker-compose.yml up ${{ matrix.session_store }} -d
+          docker compose -f tests/docker-compose.yml up ${{ matrix.test }} -d
       - name: Run integration tests
         run: |
-          cargo nextest run --test ${{ matrix.session_store}}-integration-tests --features ${{ matrix.session_store }}
+          cargo nextest run --test ${{ matrix.test }}-integration-tests --features ${{ matrix.features }}
