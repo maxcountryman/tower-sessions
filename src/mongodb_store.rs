@@ -37,8 +37,6 @@ pub struct MongoDBStore {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MongoDBSessionRecord {
-    #[serde(rename = "_id")]
-    id: SessionId,
     expiration_time: Option<DateTime>,
     data: HashMap<String, Value>,
 }
@@ -56,9 +54,7 @@ impl MongoDBStore {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
     /// let client = Client::with_uri_str(database_url).await.unwrap();
     ///
-    /// let session_store = MongoDBStore::new(client, "database".to_string())
-    ///     .await
-    ///     .unwrap();
+    /// let session_store = MongoDBStore::new(client, "database".to_string());
     /// # })
     /// ```
     pub fn new(client: Client, database: String) -> Self {
@@ -78,11 +74,10 @@ impl SessionStore for MongoDBStore {
         self.col()
             .update_one(
                 doc! {
-                    "_id": session_record.id().to_string(),
+                    "_id": session_record.id().as_uuid()
                 },
                 doc! {
                     "$set": to_document(&MongoDBSessionRecord {
-                        id: session_record.id(),
                         expiration_time: session_record.expiration_time().map(DateTime::from),
                         data: session_record.data().clone(),
                     })?,
@@ -95,13 +90,15 @@ impl SessionStore for MongoDBStore {
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+        let uuid = session_id.as_uuid();
+
         Ok(self
             .col()
-            .find_one(doc! { "_id": session_id.to_string() }, None)
+            .find_one(doc! { "_id": uuid }, None)
             .await?
             .map(|record| {
                 SessionRecord::new(
-                    record.id,
+                    *session_id,
                     record
                         .expiration_time
                         .map(|expiration_time| expiration_time.into()),
