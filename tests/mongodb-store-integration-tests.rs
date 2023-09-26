@@ -3,7 +3,6 @@ mod common;
 
 use axum::Router;
 use common::build_app;
-
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
 use tower_sessions::{MongoDBStore, SessionManagerLayer};
 

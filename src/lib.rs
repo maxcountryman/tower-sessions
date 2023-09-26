@@ -351,12 +351,12 @@ pub use self::memory_store::MemoryStore;
 #[cfg(feature = "moka-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
 pub use self::moka_store::MokaStore;
-#[cfg(feature = "redis-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
-pub use self::redis_store::RedisStore;
 #[cfg(feature = "mongodb-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
 pub use self::mongodb_store::MongoDBStore;
+#[cfg(feature = "redis-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
+pub use self::redis_store::RedisStore;
 #[cfg(feature = "mysql-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
 pub use self::sqlx_store::MySqlStore;
