@@ -15,13 +15,13 @@ pub struct MokaStore {
 }
 
 impl MokaStore {
-    /// Create a new MokaStore.
+    /// Create a new Moka store with the provided maximum capacity.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{MemoryStore, MokaStore};
-    /// MokaStore::new(Some(2000));
+    /// let session_store = MokaStore::new(Some(2_000));
     /// ```
     pub fn new(max_capacity: Option<u64>) -> Self {
         // it would be useful to expose more of the CacheBuilder options to the user,

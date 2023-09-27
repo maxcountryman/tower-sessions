@@ -1,6 +1,7 @@
 //! An arbitrary store which houses the session data.
 
 use async_trait::async_trait;
+use futures::TryFutureExt;
 
 use crate::session::{Session, SessionId, SessionRecord};
 
@@ -32,7 +33,23 @@ pub enum CachingStoreError<Cache: SessionStore, Store: SessionStore> {
     Store(Store::Error),
 }
 
-/// TODO.
+/// A session store for layer caching.
+///
+/// Contains both a cache, which acts as a frontend, and a store which acts as a
+/// backend. Both cache and store implement `SessionStore`.
+///
+/// By using a cache, the cost of reads can be greatly reduced as once cached,
+/// reads need only interact with the frontend, forgoing the cost of retrieving
+/// the session record from the backend.
+///
+/// # Examples
+///
+/// ```rust
+/// use tower_sessions::{CachingSessionStore, MokaStore, SqliteStore};
+/// let sqlite_store = SqliteStore::new("sqlite::memory:");
+/// let moka_store = MokaStore::new(Some(2_000));
+/// CachingSessionStore::new(moka_store, sqlite_store);
+/// ```
 #[derive(Debug, Clone)]
 pub struct CachingSessionStore<Cache: SessionStore, Store: SessionStore> {
     cache: Cache,
@@ -55,52 +72,47 @@ where
     type Error = CachingStoreError<Cache, Store>;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        self.store
-            .save(session_record)
-            .await
-            .map_err(Self::Error::Store)?;
-        self.cache
-            .save(session_record)
-            .await
-            .map_err(Self::Error::Cache)?;
+        let store_save_fut = self.store.save(session_record).map_err(Self::Error::Store);
+        let cache_save_fut = self.cache.save(session_record).map_err(Self::Error::Cache);
+        futures::try_join!(store_save_fut, cache_save_fut)?;
         Ok(())
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
-        let session = match self.cache.load(session_id).await {
-            Ok(Some(session)) => Some(session),
+        match self.cache.load(session_id).await {
+            // We found a session in the cache, so let's use it.
+            Ok(Some(session)) => Ok(Some(session)),
 
+            // We didn't find a session in the cache, so we'll try loading from the backend.
+            //
+            // When we find a session in the backend, we'll hydrate our cache with it.
             Ok(None) => {
                 let session = self
                     .store
                     .load(session_id)
                     .await
                     .map_err(Self::Error::Store)?;
-                if let Some(session) = session.clone() {
-                    let session_record = (&session).into();
+
+                if let Some(ref session) = session {
+                    let session_record = session.into();
                     self.cache
                         .save(&session_record)
                         .await
                         .map_err(Self::Error::Cache)?;
                 }
-                session
+
+                Ok(session)
             }
 
-            Err(err) => return Err(Self::Error::Cache(err)),
-        };
-
-        Ok(session)
+            // Some error occurred with our cache so we'll bubble this up.
+            Err(err) => Err(Self::Error::Cache(err)),
+        }
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
-        self.store
-            .delete(session_id)
-            .await
-            .map_err(Self::Error::Store)?;
-        self.cache
-            .delete(session_id)
-            .await
-            .map_err(Self::Error::Cache)?;
+        let store_delete_fut = self.store.delete(session_id).map_err(Self::Error::Store);
+        let cache_delete_fut = self.cache.delete(session_id).map_err(Self::Error::Cache);
+        futures::try_join!(store_delete_fut, cache_delete_fut)?;
         Ok(())
     }
 }

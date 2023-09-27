@@ -36,6 +36,9 @@ tower-cookies = "0.9"
 tower-layer = "0.3"
 tower-service = "0.3"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
+futures = { version = "0.3.28", default-features = false, features = [
+    "async-await",
+] }
 
 axum-core = { optional = true, version = "0.3" }
 fred = { optional = true, version = "6" }
