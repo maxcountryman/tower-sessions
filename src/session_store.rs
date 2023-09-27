@@ -45,10 +45,16 @@ pub enum CachingStoreError<Cache: SessionStore, Store: SessionStore> {
 /// # Examples
 ///
 /// ```rust
-/// use tower_sessions::{CachingSessionStore, MokaStore, SqliteStore};
-/// let sqlite_store = SqliteStore::new("sqlite::memory:");
+/// # #[cfg(all(feature = "moka_store", feature = "sqlite_store"))]
+/// # {
+/// # tokio_test::block_on(async {
+/// use tower_sessions::{CachingSessionStore, MokaStore, SqlitePool, SqliteStore};
+/// let pool = SqlitePool::connect("sqlite::memory:").await?;
+/// let sqlite_store = SqliteStore::new(pool);
 /// let moka_store = MokaStore::new(Some(2_000));
-/// CachingSessionStore::new(moka_store, sqlite_store);
+/// let caching_store = CachingSessionStore::new(moka_store, sqlite_store);
+/// # })
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct CachingSessionStore<Cache: SessionStore, Store: SessionStore> {
