@@ -20,6 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = mongodb::Client::with_uri_str(database_url).await.unwrap();
 
     let session_store = MongoDBStore::new(client, "tower-sessions".to_string());
+    session_store.setup().await.unwrap();
+
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
