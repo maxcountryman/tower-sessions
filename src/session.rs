@@ -72,10 +72,14 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use time::OffsetDateTime;
+    /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
     /// let session = Session::default();
     /// session.set_expiration_time(OffsetDateTime::now_utc());
+    /// assert!(!session.active());
+    ///
+    /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
+    /// assert!(session.active());
     /// ```
     pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
         let mut inner = self.inner.lock();
@@ -95,6 +99,10 @@ impl Session {
     /// use tower_sessions::Session;
     /// let session = Session::default();
     /// session.set_expiration_time_from_max_age(Duration::minutes(5));
+    /// assert!(session.active());
+    ///
+    /// session.set_expiration_time_from_max_age(Duration::ZERO);
+    /// assert!(!session.active());
     /// ```
     pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
         let expiration_time = max_age_to_expiration_time(max_age);
