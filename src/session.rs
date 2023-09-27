@@ -270,7 +270,6 @@ impl Session {
     /// This flag is consumed by a session management system to ensure session
     /// life cycle progression.
     ///
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -363,7 +362,7 @@ impl Session {
 
     /// Set `expiration_time` give the given value.
     ///
-    /// This may be used within applications directly to extend the session's
+    /// This may be used within applications directly to alter the session's
     /// time to live.
     ///
     /// # Examples
@@ -389,7 +388,7 @@ impl Session {
     /// Set `expiration_time` to current time in UTC plus the given `max_age`
     /// duration.
     ///
-    /// This may be used within applications directly to extend the session's
+    /// This may be used within applications directly to alter the session's
     /// time to live.
     ///
     /// # Examples
