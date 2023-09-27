@@ -58,55 +58,6 @@ impl Session {
         }
     }
 
-    /// Set `expiration_time` give the given value.
-    ///
-    /// This may be used within applications directly to extend the session's
-    /// time to live.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::Session;
-    /// let session = Session::default();
-    /// session.set_expiration_time(OffsetDateTime::now_utc());
-    /// assert!(!session.active());
-    /// assert!(session.modified());
-    ///
-    /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
-    /// assert!(session.active());
-    /// assert!(session.modified());
-    /// ```
-    pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
-        let mut inner = self.inner.lock();
-        inner.expiration_time = Some(expiration_time);
-        inner.modified = true;
-    }
-
-    /// Set `expiration_time` to current time in UTC plus the given `max_age`
-    /// duration.
-    ///
-    /// This may be used within applications directly to extend the session's
-    /// time to live.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::Session;
-    /// let session = Session::default();
-    /// session.set_expiration_time_from_max_age(Duration::minutes(5));
-    /// assert!(session.active());
-    /// assert!(session.modified());
-    ///
-    /// session.set_expiration_time_from_max_age(Duration::ZERO);
-    /// assert!(!session.active());
-    /// assert!(session.modified());
-    /// ```
-    pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
-        self.set_expiration_time(OffsetDateTime::now_utc().saturating_add(max_age));
-    }
-
     /// Inserts a `impl Serialize` value into the session.
     ///
     /// # Examples
@@ -407,6 +358,55 @@ impl Session {
     pub fn expiration_time(&self) -> Option<OffsetDateTime> {
         let inner = self.inner.lock();
         inner.expiration_time
+    }
+
+    /// Set `expiration_time` give the given value.
+    ///
+    /// This may be used within applications directly to extend the session's
+    /// time to live.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::{Duration, OffsetDateTime};
+    /// use tower_sessions::Session;
+    /// let session = Session::default();
+    /// session.set_expiration_time(OffsetDateTime::now_utc());
+    /// assert!(!session.active());
+    /// assert!(session.modified());
+    ///
+    /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
+    /// assert!(session.active());
+    /// assert!(session.modified());
+    /// ```
+    pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
+        let mut inner = self.inner.lock();
+        inner.expiration_time = Some(expiration_time);
+        inner.modified = true;
+    }
+
+    /// Set `expiration_time` to current time in UTC plus the given `max_age`
+    /// duration.
+    ///
+    /// This may be used within applications directly to extend the session's
+    /// time to live.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::Duration;
+    /// use tower_sessions::Session;
+    /// let session = Session::default();
+    /// session.set_expiration_time_from_max_age(Duration::minutes(5));
+    /// assert!(session.active());
+    /// assert!(session.modified());
+    ///
+    /// session.set_expiration_time_from_max_age(Duration::ZERO);
+    /// assert!(!session.active());
+    /// assert!(session.modified());
+    /// ```
+    pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
+        self.set_expiration_time(OffsetDateTime::now_utc().saturating_add(max_age));
     }
 
     /// Returns `true` if the session is active and `false` otherwise.
