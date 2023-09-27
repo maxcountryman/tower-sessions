@@ -10,10 +10,6 @@ use uuid::Uuid;
 
 use crate::CookieConfig;
 
-fn max_age_to_expiration_time(max_age: Duration) -> OffsetDateTime {
-    OffsetDateTime::now_utc().saturating_add(max_age)
-}
-
 /// Session errors.
 #[derive(thiserror::Error, Debug)]
 pub enum SessionError {
@@ -48,9 +44,7 @@ impl Session {
     /// use tower_sessions::Session;
     /// let session = Session::default();
     /// ```
-    pub fn new(max_age: Option<Duration>) -> Self {
-        let expiration_time = max_age.map(max_age_to_expiration_time);
-
+    pub fn new(expiration_time: Option<OffsetDateTime>) -> Self {
         let inner = Inner {
             data: HashMap::new(),
             expiration_time,
@@ -77,13 +71,16 @@ impl Session {
     /// let session = Session::default();
     /// session.set_expiration_time(OffsetDateTime::now_utc());
     /// assert!(!session.active());
+    /// assert!(session.modified());
     ///
     /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
     /// assert!(session.active());
+    /// assert!(session.modified());
     /// ```
     pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
         let mut inner = self.inner.lock();
         inner.expiration_time = Some(expiration_time);
+        inner.modified = true;
     }
 
     /// Set `expiration_time` to current time in UTC plus the given `max_age`
@@ -100,13 +97,14 @@ impl Session {
     /// let session = Session::default();
     /// session.set_expiration_time_from_max_age(Duration::minutes(5));
     /// assert!(session.active());
+    /// assert!(session.modified());
     ///
     /// session.set_expiration_time_from_max_age(Duration::ZERO);
     /// assert!(!session.active());
+    /// assert!(session.modified());
     /// ```
     pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
-        let expiration_time = max_age_to_expiration_time(max_age);
-        self.set_expiration_time(expiration_time);
+        self.set_expiration_time(OffsetDateTime::now_utc().saturating_add(max_age));
     }
 
     /// Inserts a `impl Serialize` value into the session.
@@ -400,7 +398,8 @@ impl Session {
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
-    /// let session = Session::new(Some(Duration::hours(1)));
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(session
     ///     .expiration_time()
     ///     .is_some_and(|et| et > OffsetDateTime::now_utc()));
@@ -415,15 +414,17 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use time::Duration;
+    /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
     /// let session = Session::default();
     /// assert!(session.active());
     ///
-    /// let session = Session::new(Some(Duration::hours(1)));
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(session.active());
     ///
-    /// let session = Session::new(Some(Duration::ZERO));
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::ZERO);
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(!session.active());
     /// ```
     pub fn active(&self) -> bool {
@@ -498,7 +499,10 @@ impl From<&CookieConfig> for Session {
     fn from(cookie_config: &CookieConfig) -> Self {
         let session = Session::default();
         if let Some(max_age) = cookie_config.max_age {
-            session.set_expiration_time_from_max_age(max_age);
+            let mut inner = session.inner.lock();
+            // N.B. We manually set the expiration time here because creating a session from
+            // a config does *not* indicate the session has been modified.
+            inner.expiration_time = Some(OffsetDateTime::now_utc().saturating_add(max_age));
         }
         session
     }
