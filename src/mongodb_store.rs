@@ -1,8 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use bson::{doc, to_document, DateTime};
-use mongodb::{options::UpdateOptions, Client, Collection};
+use mongodb::{
+    options::{IndexOptions, UpdateOptions},
+    Client, Collection, IndexModel,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -37,8 +40,9 @@ pub struct MongoDBStore {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MongoDBSessionRecord {
-    expiration_time: Option<DateTime>,
     data: HashMap<String, Value>,
+    #[serde(rename = "expireAt")]
+    expiration_time: Option<DateTime>,
 }
 
 impl MongoDBStore {
@@ -55,6 +59,7 @@ impl MongoDBStore {
     /// let client = Client::with_uri_str(database_url).await.unwrap();
     ///
     /// let session_store = MongoDBStore::new(client, "database".to_string());
+    /// session_store.setup().await.unwrap();
     /// # })
     /// ```
     pub fn new(client: Client, database: String) -> Self {
@@ -63,6 +68,27 @@ impl MongoDBStore {
 
     fn col(&self) -> Collection<MongoDBSessionRecord> {
         self.client.database(&self.database).collection("sessions")
+    }
+
+    /// Seperated function to setup the index for the session store.
+    /// This function needs to be called in order to let MongoDB delete
+    /// expired sessions internally.
+    pub async fn setup(&self) -> Result<(), MongoDBStoreError> {
+        self.col()
+            .create_index(
+                IndexModel::builder()
+                    .keys(doc! { "expireAt": 1 })
+                    .options(Some(
+                        IndexOptions::builder()
+                            .expire_after(Some(Duration::from_secs(0)))
+                            .build(),
+                    ))
+                    .build(),
+                None,
+            )
+            .await
+            .map_err(MongoDBStoreError::from)
+            .map(|_| ())
     }
 }
 
@@ -78,8 +104,8 @@ impl SessionStore for MongoDBStore {
                 },
                 doc! {
                     "$set": to_document(&MongoDBSessionRecord {
-                        expiration_time: session_record.expiration_time().map(DateTime::from),
                         data: session_record.data().clone(),
+                        expiration_time: session_record.expiration_time().map(DateTime::from),
                     })?,
                 },
                 UpdateOptions::builder().upsert(true).build(),
