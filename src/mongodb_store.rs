@@ -11,7 +11,7 @@ use crate::{
     Session, SessionStore,
 };
 
-/// An error type for `RedisStore`.
+/// An error type for `MongoDBStore`.
 #[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
 pub enum MongoDBStoreError {
