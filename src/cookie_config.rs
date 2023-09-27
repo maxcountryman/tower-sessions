@@ -63,7 +63,7 @@ impl CookieConfig {
     ///
     /// ```rust
     /// use tower_sessions::{CookieConfig, Session};
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// let cookie_config = CookieConfig::default();
     /// let cookie = cookie_config.build_cookie(&session);
     /// assert_eq!(cookie.value(), session.id().to_string());
