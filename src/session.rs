@@ -29,49 +29,34 @@ type SessionResult<T> = Result<T, SessionError>;
 #[derive(Debug, Clone, Default)]
 pub struct Session {
     pub(crate) id: SessionId,
-    expiration_time: Option<OffsetDateTime>,
     inner: Arc<Mutex<Inner>>,
 }
 
 impl Session {
     /// Create a new session with defaults.
     ///
-    /// Note that an `expiration_time` of `None` results in a cookie with
-    /// expiration `"Session"`.
+    /// If an `expiration_time` is not specified, the session will use an
+    /// expiration strategy of "Session," which means it will persist only
+    /// until the user's session ends.
     ///
     /// # Examples
     ///
     ///```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// ```
-    pub fn new() -> Self {
+    pub fn new(expiration_time: Option<OffsetDateTime>) -> Self {
         let inner = Inner {
             data: HashMap::new(),
+            expiration_time,
             modified: false,
             deleted: None,
         };
 
         Self {
             id: SessionId::default(),
-            expiration_time: None,
             inner: Arc::new(Mutex::new(inner)),
         }
-    }
-
-    /// A method for setting `expiration_time` in accordance with `max_age`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::Session;
-    /// let session = Session::new().with_max_age(Duration::minutes(5));
-    /// ```
-    pub fn with_max_age(mut self, max_age: Duration) -> Self {
-        let expiration_time = OffsetDateTime::now_utc().saturating_add(max_age);
-        self.expiration_time = Some(expiration_time);
-        self
     }
 
     /// Inserts a `impl Serialize` value into the session.
@@ -80,7 +65,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).expect("Serialization error.");
     /// ```
     ///
@@ -104,7 +89,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// let value = session.insert_value("foo", serde_json::json!(42));
     /// assert!(value.is_none());
     ///
@@ -130,7 +115,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value = session.get::<usize>("foo").unwrap();
     /// assert_eq!(value, Some(42));
@@ -152,7 +137,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value = session.get_value("foo").unwrap();
     /// assert_eq!(value, serde_json::json!(42));
@@ -169,7 +154,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value: Option<usize> = session.remove("foo").unwrap();
     /// assert_eq!(value, Some(42));
@@ -193,7 +178,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value = session.remove_value("foo").unwrap();
     /// assert_eq!(value, serde_json::json!(42));
@@ -228,7 +213,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     ///
     /// let success = session.replace_if_equal("foo", 42, 43).unwrap();
@@ -267,7 +252,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// session.clear();
     /// assert!(session.get_value("foo").is_none());
@@ -285,12 +270,11 @@ impl Session {
     /// This flag is consumed by a session management system to ensure session
     /// life cycle progression.
     ///
-    ///
     /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.delete();
     /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
     /// ```
@@ -311,7 +295,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.cycle_id();
     /// assert!(matches!(
     ///     session.deleted(),
@@ -334,7 +318,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// session.flush();
     /// assert!(session.get_value("foo").is_none());
@@ -351,7 +335,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// session.id();
     /// ```
     pub fn id(&self) -> SessionId {
@@ -365,13 +349,64 @@ impl Session {
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
-    /// let session = Session::new().with_max_age(Duration::hours(1));
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(session
     ///     .expiration_time()
     ///     .is_some_and(|et| et > OffsetDateTime::now_utc()));
     /// ```
     pub fn expiration_time(&self) -> Option<OffsetDateTime> {
-        self.expiration_time
+        let inner = self.inner.lock();
+        inner.expiration_time
+    }
+
+    /// Set `expiration_time` give the given value.
+    ///
+    /// This may be used within applications directly to alter the session's
+    /// time to live.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::{Duration, OffsetDateTime};
+    /// use tower_sessions::Session;
+    /// let session = Session::default();
+    /// session.set_expiration_time(OffsetDateTime::now_utc());
+    /// assert!(!session.active());
+    /// assert!(session.modified());
+    ///
+    /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
+    /// assert!(session.active());
+    /// assert!(session.modified());
+    /// ```
+    pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
+        let mut inner = self.inner.lock();
+        inner.expiration_time = Some(expiration_time);
+        inner.modified = true;
+    }
+
+    /// Set `expiration_time` to current time in UTC plus the given `max_age`
+    /// duration.
+    ///
+    /// This may be used within applications directly to alter the session's
+    /// time to live.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::Duration;
+    /// use tower_sessions::Session;
+    /// let session = Session::default();
+    /// session.set_expiration_time_from_max_age(Duration::minutes(5));
+    /// assert!(session.active());
+    /// assert!(session.modified());
+    ///
+    /// session.set_expiration_time_from_max_age(Duration::ZERO);
+    /// assert!(!session.active());
+    /// assert!(session.modified());
+    /// ```
+    pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
+        self.set_expiration_time(OffsetDateTime::now_utc().saturating_add(max_age));
     }
 
     /// Returns `true` if the session is active and `false` otherwise.
@@ -379,19 +414,22 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use time::Duration;
+    /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// assert!(session.active());
     ///
-    /// let session = Session::new().with_max_age(Duration::hours(1));
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(session.active());
     ///
-    /// let session = Session::new().with_max_age(Duration::ZERO);
+    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::ZERO);
+    /// let session = Session::new(Some(expiration_time));
     /// assert!(!session.active());
     /// ```
     pub fn active(&self) -> bool {
-        if let Some(expiration_time) = self.expiration_time {
+        let inner = self.inner.lock();
+        if let Some(expiration_time) = inner.expiration_time {
             expiration_time > OffsetDateTime::now_utc()
         } else {
             true
@@ -404,7 +442,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// assert!(!session.modified());
     /// session.insert("foo", 42);
     /// assert!(session.modified());
@@ -420,7 +458,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
-    /// let session = Session::new();
+    /// let session = Session::default();
     /// assert!(session.deleted().is_none());
     /// session.delete();
     /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
@@ -445,13 +483,13 @@ impl From<SessionRecord> for Session {
     ) -> Self {
         let inner = Inner {
             data,
+            expiration_time,
             modified: false,
             deleted: None,
         };
 
         Self {
             id,
-            expiration_time,
             inner: Arc::new(Mutex::new(inner)),
         }
     }
@@ -459,9 +497,12 @@ impl From<SessionRecord> for Session {
 
 impl From<&CookieConfig> for Session {
     fn from(cookie_config: &CookieConfig) -> Self {
-        let mut session = Session::default();
+        let session = Session::default();
         if let Some(max_age) = cookie_config.max_age {
-            session = session.with_max_age(max_age);
+            let mut inner = session.inner.lock();
+            // N.B. We manually set the expiration time here because creating a session from
+            // a config does *not* indicate the session has been modified.
+            inner.expiration_time = Some(OffsetDateTime::now_utc().saturating_add(max_age));
         }
         session
     }
@@ -470,6 +511,7 @@ impl From<&CookieConfig> for Session {
 #[derive(Debug, Default)]
 struct Inner {
     data: HashMap<String, Value>,
+    expiration_time: Option<OffsetDateTime>,
     modified: bool,
     deleted: Option<SessionDeletion>,
 }
@@ -569,7 +611,7 @@ impl From<&Session> for SessionRecord {
         let session_guard = session.inner.lock();
         Self {
             id: session.id,
-            expiration_time: session.expiration_time,
+            expiration_time: session_guard.expiration_time,
             data: session_guard.data.clone(),
         }
     }
