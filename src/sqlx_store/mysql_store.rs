@@ -65,7 +65,7 @@ impl MySqlStore {
             create table if not exists `{schema_name}`.`{table_name}`
             (
                 id char(36) primary key not null,
-                expiration_time timestamp null,
+                expiration_time timestamp(6) null,
                 data blob not null
             )
             "#,
