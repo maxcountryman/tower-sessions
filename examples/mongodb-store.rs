@@ -7,7 +7,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{MongoDBStore, Session, SessionManagerLayer};
+use tower_sessions::{CookieConfig, MongoDBStore, Session, SessionManager, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -22,12 +22,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_store = MongoDBStore::new(client, "tower-sessions".to_string());
     session_store.setup().await.unwrap();
 
+    let session_manager = SessionManager::new(session_store, CookieConfig::default());
+
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
-            SessionManagerLayer::new(session_store)
+            SessionManagerLayer::new(session_manager)
                 .with_secure(false)
                 .with_max_age(Duration::seconds(10)),
         );

@@ -10,6 +10,7 @@ use common::build_app;
     feature = "moka-store"
 ))]
 use tower_sessions::{sqlx::SqlitePool, MokaStore, SessionManagerLayer, SqliteStore};
+use tower_sessions::{CookieConfig, SessionManager};
 
 #[cfg(all(
     test,
@@ -23,9 +24,10 @@ async fn app(max_age: Option<Duration>) -> Router {
     sqlite_store.migrate().await.unwrap();
     let moka_store = MokaStore::new(sqlite_store, None);
 
-    let session_manager = SessionManagerLayer::new(moka_store).with_secure(true);
+    let session_manager = SessionManager::new(moka_store, CookieConfig::default());
+    let session_service = SessionManagerLayer::new(session_manager).with_secure(true);
 
-    build_app(session_manager, max_age)
+    build_app(session_service, max_age)
 }
 
 #[cfg(all(

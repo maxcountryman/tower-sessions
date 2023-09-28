@@ -9,7 +9,7 @@ use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use tower::ServiceBuilder;
-use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{CookieConfig, MemoryStore, Session, SessionManager, SessionManagerLayer};
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -110,12 +110,13 @@ where
 #[tokio::main]
 async fn main() {
     let session_store = MemoryStore::default();
+    let session_manager = SessionManager::new(session_store, CookieConfig::default());
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
-            SessionManagerLayer::new(session_store)
+            SessionManagerLayer::new(session_manager)
                 .with_secure(false)
                 .with_max_age(Duration::seconds(10)),
         );

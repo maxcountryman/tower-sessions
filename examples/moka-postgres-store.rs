@@ -7,7 +7,10 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{sqlx::PgPool, MokaStore, PostgresStore, Session, SessionManagerLayer};
+use tower_sessions::{
+    sqlx::PgPool, CookieConfig, MokaStore, PostgresStore, Session, SessionManager,
+    SessionManagerLayer,
+};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -22,13 +25,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     postgres_store.migrate().await?;
 
     let moka_store = MokaStore::new(postgres_store, Some(2000));
+    let session_manager = SessionManager::new(moka_store, CookieConfig::default());
 
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
-            SessionManagerLayer::new(moka_store)
+            SessionManagerLayer::new(session_manager)
                 .with_secure(false)
                 .with_max_age(Duration::seconds(10)),
         );

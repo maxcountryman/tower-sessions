@@ -3,6 +3,7 @@ mod common;
 
 use axum::Router;
 use common::build_app;
+use tower_sessions::{CookieConfig, SessionManager};
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
 use tower_sessions::{MongoDBStore, SessionManagerLayer};
 
@@ -12,9 +13,10 @@ async fn app(max_age: Option<Duration>) -> Router {
     let client = mongodb::Client::with_uri_str(database_url).await.unwrap();
 
     let session_store = MongoDBStore::new(client, "tower-sessions".to_string());
-    let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+    let session_manager = SessionManager::new(session_store, CookieConfig::default());
+    let session_service = SessionManagerLayer::new(session_manager).with_secure(true);
 
-    build_app(session_manager, max_age)
+    build_app(session_service, max_age)
 }
 
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
