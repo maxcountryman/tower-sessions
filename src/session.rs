@@ -448,7 +448,8 @@ impl Session {
     /// assert!(session.modified());
     /// ```
     pub fn modified(&self) -> bool {
-        self.inner.lock().modified
+        let inner = self.inner.lock();
+        inner.modified && !inner.data.is_empty()
     }
 
     /// Returns `Some(SessionDeletion)` if one has been set and `None`
@@ -470,6 +471,12 @@ impl Session {
     /// ```
     pub fn deleted(&self) -> Option<SessionDeletion> {
         self.inner.lock().deleted
+    }
+
+    /// Returns `true` if the session is a tombstone, i.e. has been deleted.
+    pub fn is_tombstone(&self) -> bool {
+        let inner = self.inner.lock();
+        inner.expiration_time.is_none() && inner.data.is_empty()
     }
 }
 
@@ -587,6 +594,16 @@ impl SessionRecord {
             id,
             expiration_time,
             data,
+        }
+    }
+
+    /// Create a session record that acts like a tombstone marker for a removed
+    /// session.
+    pub fn new_tombstone(id: SessionId) -> Self {
+        Self {
+            id,
+            expiration_time: None,
+            data: HashMap::default(),
         }
     }
 

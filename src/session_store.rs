@@ -1,7 +1,6 @@
 //! An arbitrary store which houses the session data.
 
 use async_trait::async_trait;
-use futures::TryFutureExt;
 
 use crate::session::{Session, SessionId, SessionRecord};
 
@@ -78,16 +77,22 @@ where
     type Error = CachingStoreError<Cache, Store>;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        let store_save_fut = self.store.save(session_record).map_err(Self::Error::Store);
-        let cache_save_fut = self.cache.save(session_record).map_err(Self::Error::Cache);
-        futures::try_join!(store_save_fut, cache_save_fut)?;
+        self.store
+            .save(session_record)
+            .await
+            .map_err(Self::Error::Store)?;
+        self.cache
+            .save(session_record)
+            .await
+            .map_err(Self::Error::Cache)?;
+
         Ok(())
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         match self.cache.load(session_id).await {
             // We found a session in the cache, so let's use it.
-            Ok(Some(session)) => Ok(Some(session)),
+            Ok(Some(session)) => Ok(Some(session).filter(|s| !s.is_tombstone())),
 
             // We didn't find a session in the cache, so we'll try loading from the backend.
             //
@@ -105,6 +110,14 @@ where
                         .save(&session_record)
                         .await
                         .map_err(Self::Error::Cache)?;
+                } else {
+                    // If we know the session doesn't exist in the store, we cache the negative
+                    // lookup to avoid future roundtrips to the store.
+                    let tombstone = SessionRecord::new_tombstone(*session_id);
+                    self.cache
+                        .save(&tombstone)
+                        .await
+                        .map_err(Self::Error::Cache)?;
                 }
 
                 Ok(session)
@@ -116,9 +129,14 @@ where
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
-        let store_delete_fut = self.store.delete(session_id).map_err(Self::Error::Store);
-        let cache_delete_fut = self.cache.delete(session_id).map_err(Self::Error::Cache);
-        futures::try_join!(store_delete_fut, cache_delete_fut)?;
+        self.store
+            .delete(session_id)
+            .await
+            .map_err(Self::Error::Store)?;
+        self.cache
+            .delete(session_id)
+            .await
+            .map_err(Self::Error::Cache)?;
         Ok(())
     }
 }
