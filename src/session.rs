@@ -475,8 +475,25 @@ impl Session {
         self.inner.lock().deleted
     }
 
-    /// Returns `true` if the session is a tombstone, i.e. has been deleted.
-    pub fn is_tombstone(&self) -> bool {
+    /// Returns `true` if the session is empty.
+    ///
+    /// Sessions are empty when they've just been created or when they are
+    /// persisted as tombstone markers.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use tower_sessions::{Session, SessionRecord};
+    /// let session = Session::default();
+    /// assert!(session.empty());
+    /// session.insert("foo", 42);
+    /// assert!(!session.empty());
+    ///
+    /// let tombstone = SessionRecord::tombstone_from_id(session.id());
+    /// let session: Session = tombstone.into();
+    /// assert!(session.empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
         let inner = self.inner.lock();
         inner.expiration_time.is_none() && inner.data.is_empty()
     }
@@ -496,7 +513,6 @@ impl From<SessionRecord> for Session {
             modified: false,
             deleted: None,
         };
-
         Self {
             id,
             inner: Arc::new(Mutex::new(inner)),
@@ -517,9 +533,11 @@ impl From<&CookieConfig> for Session {
     }
 }
 
+type SessionData = HashMap<String, Value>;
+
 #[derive(Debug, Default)]
 struct Inner {
-    data: HashMap<String, Value>,
+    data: SessionData,
     expiration_time: Option<OffsetDateTime>,
     modified: bool,
     deleted: Option<SessionDeletion>,
@@ -582,16 +600,12 @@ pub enum SessionDeletion {
 pub struct SessionRecord {
     id: SessionId,
     expiration_time: Option<OffsetDateTime>,
-    data: HashMap<String, Value>,
+    data: SessionData,
 }
 
 impl SessionRecord {
     /// Create a session record.
-    pub fn new(
-        id: SessionId,
-        expiration_time: Option<OffsetDateTime>,
-        data: HashMap<String, Value>,
-    ) -> Self {
+    pub fn new(id: SessionId, expiration_time: Option<OffsetDateTime>, data: SessionData) -> Self {
         Self {
             id,
             expiration_time,
@@ -601,11 +615,11 @@ impl SessionRecord {
 
     /// Create a session record that acts like a tombstone marker for a removed
     /// session.
-    pub fn new_tombstone(id: SessionId) -> Self {
+    pub fn tombstone_from_id(id: SessionId) -> Self {
         Self {
             id,
             expiration_time: None,
-            data: HashMap::default(),
+            data: SessionData::default(),
         }
     }
 
@@ -620,7 +634,7 @@ impl SessionRecord {
     }
 
     /// Gets the data belonging to the record.
-    pub fn data(&self) -> HashMap<String, Value> {
+    pub fn data(&self) -> SessionData {
         self.data.clone()
     }
 }
