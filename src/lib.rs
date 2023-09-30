@@ -160,11 +160,61 @@
 //!    the session will have been marked as modified and so this will also set a
 //!    `Set-Cookie` header on the response.
 //!
+//! # Layered caching
+//!
+//! In some cases the cannonical store for a session may benefit from a cache.
+//! For example, rather than loading a session from a store on every request,
+//! this roundtrip can be mitigated by placing a cache in front of the storage
+//! backend. A specialized session store, [`CachingSessionStore`], is provided
+//! for exactly this purpose.
+//!
+//! This store manages a cache and a store. Where the cache acts as a frontend
+//! and the store a backend. When a session is loaded, the store first attempts
+//! to load the session from the cache, if that fails only then does it try to
+//! load from the store. By doing so, read-heavy workloads will incur far fewer
+//! roundtrips to the store itself.
+//!
+//! The cache frontend also supports negative caching, meaning that when a
+//! session is not found in the store, the cache will not try to fetch the
+//! missing session from the store in the future. Again, helping to reduce
+//! roundtrips to the store.
+//!
+//! To illustrate, this is how we might use the [`MokaStore`] as a frontend
+//! cache to a [`PostgresStore`] backend.
+//!
+//! ```rust,no_run
+//! # #[cfg(all(feature = "moka_store", feature = "postgres_store"))] {
+//! # use tower::ServiceBuilder;
+//! # use tower_sessions::{
+//! #    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, SessionManagerLayer,
+//! # };
+//! # use time::Duration;
+//! # tokio_test::block_on(async {
+//! let database_url = std::option_env!("DATABASE_URL").unwrap();
+//! let pool = PgPool::connect(database_url).await.unwrap();
+//!
+//! let postgres_store = PostgresStore::new(pool);
+//! postgres_store.migrate().await.unwrap();
+//!
+//! let moka_store = MokaStore::new(Some(10_000));
+//! let caching_store = CachingSessionStore::new(moka_store, postgres_store);
+//!
+//! let session_service = ServiceBuilder::new()
+//!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
+//! # })}
+//! ```
+//!
+//! While this example uses Moka, any implementor of [`SessionStore`] may be
+//! used. For instance, we could use the [`RedisStore`] instead of Moka.
+//!
+//! A cache is most helpful with read-heavy workloads, where the cache hit rate
+//! will be high. This is because write-heavy workloads will require a roundtrip
+//! to the store and therefore benefit less from caching.
+//!
 //! # Extractor pattern
 //!
 //! When using `axum`, the [`Session`] will already function as an extractor.
 //! It's possible to build further on this to create extractors of custom types.
-//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;
@@ -204,7 +254,6 @@
 //! example was effectively read-only. This pattern enables mutability of the
 //! underlying structure while also leveraging the full power of the type
 //! system.
-//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;

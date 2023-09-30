@@ -485,13 +485,13 @@ impl Session {
     /// ```rust
     /// use tower_sessions::{Session, SessionRecord};
     /// let session = Session::default();
-    /// assert!(session.empty());
+    /// assert!(session.is_empty());
     /// session.insert("foo", 42);
-    /// assert!(!session.empty());
+    /// assert!(!session.is_empty());
     ///
     /// let tombstone = SessionRecord::tombstone_from_id(session.id());
     /// let session: Session = tombstone.into();
-    /// assert!(session.empty());
+    /// assert!(session.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         let inner = self.inner.lock();
