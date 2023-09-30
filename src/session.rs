@@ -372,6 +372,7 @@ impl Session {
     /// use tower_sessions::Session;
     /// let session = Session::default();
     /// session.set_expiration_time(OffsetDateTime::now_utc());
+    /// session.insert("foo", 42);
     /// assert!(!session.active());
     /// assert!(session.modified());
     ///
@@ -397,6 +398,7 @@ impl Session {
     /// use time::Duration;
     /// use tower_sessions::Session;
     /// let session = Session::default();
+    /// session.insert("foo", 42);
     /// session.set_expiration_time_from_max_age(Duration::minutes(5));
     /// assert!(session.active());
     /// assert!(session.modified());
