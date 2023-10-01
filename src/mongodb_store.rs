@@ -100,7 +100,7 @@ impl SessionStore for MongoDBStore {
         self.col()
             .update_one(
                 doc! {
-                    "_id": session_record.id().as_uuid()
+                    "_id": session_record.id().to_string()
                 },
                 doc! {
                     "$set": to_document(&MongoDBSessionRecord {
@@ -116,11 +116,9 @@ impl SessionStore for MongoDBStore {
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
-        let uuid = session_id.as_uuid();
-
         Ok(self
             .col()
-            .find_one(doc! { "_id": uuid }, None)
+            .find_one(doc! { "_id": session_id.to_string() }, None)
             .await?
             .map(|record| {
                 SessionRecord::new(

@@ -547,13 +547,6 @@ struct Inner {
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
 pub struct SessionId(Uuid);
 
-impl SessionId {
-    /// Return inner `Uuid`.
-    pub fn as_uuid(&self) -> Uuid {
-        self.0
-    }
-}
-
 impl Default for SessionId {
     fn default() -> Self {
         Self(Uuid::new_v4())
