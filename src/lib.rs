@@ -298,8 +298,8 @@
 //! let caching_store = CachingSessionStore::new(moka_store, postgres_store);
 //!
 //! let session_service = ServiceBuilder::new()
-//!     .layer(SessionManagerLayer::new(caching_store).
-//! with_max_age(Duration::days(1))); # })}
+//!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
+//! # })}
 //! ```
 //!
 //! While this example uses Moka, any implementor of [`SessionStore`] may be
