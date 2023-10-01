@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, Session, SessionManagerLayer,
+    sqlx::PgPool, CachingSessionStore, CookieConfig, MokaStore, PostgresStore, Session,
+    SessionManager, SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
@@ -26,13 +27,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let moka_store = MokaStore::new(Some(2000));
     let caching_store = CachingSessionStore::new(moka_store, postgres_store);
+    let session_manager = SessionManager::new(caching_store, CookieConfig::default());
 
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
             StatusCode::BAD_REQUEST
         }))
         .layer(
-            SessionManagerLayer::new(caching_store)
+            SessionManagerLayer::new(session_manager)
                 .with_secure(false)
                 .with_max_age(Duration::seconds(10)),
         );
