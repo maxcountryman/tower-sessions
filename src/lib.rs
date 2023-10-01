@@ -394,6 +394,8 @@
 
 #[cfg(feature = "redis-store")]
 pub use fred;
+#[cfg(feature = "mongodb-store")]
+pub use mongodb;
 #[cfg(feature = "sqlx-store")]
 pub use sqlx;
 /// Ensure the underlying cookie interface is available.

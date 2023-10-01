@@ -49,8 +49,7 @@ impl MongoDBStore {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use mongodb::Client;
-    /// use tower_sessions::MongoDBStore;
+    /// use tower_sessions::{mongodb::Client, MongoDBStore};
     ///
     /// # tokio_test::block_on(async {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
@@ -82,7 +81,7 @@ impl MongoDBStore {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::{sqlx::PgPool, PostgresStore};
+    /// use tower_sessions::{mongodb::Client, MongoDBStore, PostgresStore};
     ///
     /// # tokio_test::block_on(async {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
