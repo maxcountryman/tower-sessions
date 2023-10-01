@@ -13,7 +13,6 @@ use crate::{
 };
 
 /// An error type for `MongoDBStore`.
-#[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
 pub enum MongoDBStoreError {
     /// A variant to map to `mongodb::error::Error` errors.
