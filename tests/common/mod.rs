@@ -82,7 +82,6 @@ macro_rules! route_tests {
         use tower::ServiceExt;
         use tower_cookies::{cookie::SameSite, Cookie};
         use $crate::common::{body_string, get_session_cookie};
-      
 
         #[tokio::test]
         async fn no_session_set() {
