@@ -79,141 +79,6 @@
 //! }
 //! ```
 //!
-//! # Implementation
-//!
-//! Sessions manifest to clients as cookies. These cookies have a configurable
-//! name and a value that is the session ID. In other words, cookies hold a
-//! pointer to the session in the form of an ID. This ID is a [UUID
-//! v4](https://docs.rs/uuid/latest/uuid/struct.Uuid.html#method.new_v4).
-//!
-//! Session IDs are considered secure if your platform's
-//! [`getrandom`](https://docs.rs/getrandom/latest/getrandom/) is
-//! secure[^getrandom], and therefore are not signed or encrypted. Note that
-//! this assumption is predicated on the secure nature of the UUID crate and its
-//! ability to generate securely-random values. It's also important to note that
-//! session cookies **must never** be sent over a public, insecure channel.
-//! Doing so is **not** secure.
-//!
-//! An expiration time determines when the session will be considered expired.
-//! This translates to the cookie's `max-age` attribute. By default,
-//! [`CookieConfig`] will set this to `None`. When `None`, this means the cookie
-//! will be treated as a ["session" cookie][session-cookie], not to be confused
-//! with the session itself, which generally means that the cookie will expire
-//! once the user closes their browser.
-//!
-//! ## Intermediary representation
-//!
-//! Sessions manage a `HashMap<String, serde_json::Value>` but importantly are
-//! transparently persisted to an arbitrary storage backend. Effectively,
-//! `HashMap` is an intermediay, in-memory representation. By using a map-like
-//! structure, we're able to present a familiar key-value interface for managing
-//! sessions. This also allows us to store and retrieve native Rust
-//! types, so long as our type is `impl Serialize` and can be represented as
-//! JSON.[^json]
-//!
-//! Internally, this hash map state is protected by a lock in the form of
-//! `Mutex`. This allows us to safely share mutable state across thread
-//! boundaries. Note that this lock is only acquired when we read from or write
-//! to this inner session state and not used when the session is provided to the
-//! request. This means that lock contention is minimized for most use
-//! cases.[^lock-contention]
-//!
-//! The intermediary `HashMap` representation is converted to a
-//! [`SessionRecord`] type which provides the structure needed to store
-//! sessions. Implementations of `SessionStore` consume this type in order to
-//! translate the session to its persisted form. Note that the exact details of
-//! how a session is stored within a backend is left up to the implementation
-//! but generally three things are needed:
-//!
-//! 1. The session ID.
-//! 2. The session expiration time.
-//! 3. The session data itself.
-//!
-//! Together, these compose the session record and are enough to both encode and
-//! decode a session from any backend.
-//!
-//!  ## Session life cycle
-//!
-//! Cookies hold a pointer to the session, rather than the session's data and
-//! because of this the `tower` middleware is focused on managng the process of
-//! hydrating a session from the store. This works by first looking for a cookie
-//! that matches our configured session cookie name. If no such cookie is found
-//! or a cookie is found but the store has no such session or the session is no
-//! longer active, we create a new session. However, it's important to note that
-//! creating a session **does not** save the session to the store. In fact, the
-//! store is not used at all unless one of two conditions is true:
-//!
-//! 1. A session cookie was found and we attempt to load it from the store via
-//!    the [`load`](SessionStore::load) method or,
-//! 2. A session was marked as modified or deleted.
-//!
-//! In other words, creating a new session is a lightweight process that does
-//! not incur the overhead of talking to a store. It's also important to create
-//! a session proactively as the middleware will attach the session to the
-//! request as a request extension. This allows handlers to extract the cookie
-//! from the request and manipulate it.
-//!
-//! Modified sessions will invoke the session store's
-//! [`save`](SessionStore::save) method as well as send a `Set-Cookie` header.
-//! While deleted sessions will either be:
-//!
-//! 1. Deleted, invoking the [`delete`](SessionStore::delete) method and setting
-//!    a removal cookie or,
-//! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
-//!    the session will have been marked as modified and so this will also set a
-//!    `Set-Cookie` header on the response.
-//!
-//! # Layered caching
-//!
-//! In some cases the cannonical store for a session may benefit from a cache.
-//! For example, rather than loading a session from a store on every request,
-//! this roundtrip can be mitigated by placing a cache in front of the storage
-//! backend. A specialized session store, [`CachingSessionStore`], is provided
-//! for exactly this purpose.
-//!
-//! This store manages a cache and a store. Where the cache acts as a frontend
-//! and the store a backend. When a session is loaded, the store first attempts
-//! to load the session from the cache, if that fails only then does it try to
-//! load from the store. By doing so, read-heavy workloads will incur far fewer
-//! roundtrips to the store itself.
-//!
-//! The cache frontend also supports negative caching, meaning that when a
-//! session is not found in the store, the cache will not try to fetch the
-//! missing session from the store in the future. Again, helping to reduce
-//! roundtrips to the store.
-//!
-//! To illustrate, this is how we might use the [`MokaStore`] as a frontend
-//! cache to a [`PostgresStore`] backend.
-//!
-//! ```rust,no_run
-//! # #[cfg(all(feature = "moka_store", feature = "postgres_store"))] {
-//! # use tower::ServiceBuilder;
-//! # use tower_sessions::{
-//! #    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, SessionManagerLayer,
-//! # };
-//! # use time::Duration;
-//! # tokio_test::block_on(async {
-//! let database_url = std::option_env!("DATABASE_URL").unwrap();
-//! let pool = PgPool::connect(database_url).await.unwrap();
-//!
-//! let postgres_store = PostgresStore::new(pool);
-//! postgres_store.migrate().await.unwrap();
-//!
-//! let moka_store = MokaStore::new(Some(10_000));
-//! let caching_store = CachingSessionStore::new(moka_store, postgres_store);
-//!
-//! let session_service = ServiceBuilder::new()
-//!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
-//! # })}
-//! ```
-//!
-//! While this example uses Moka, any implementor of [`SessionStore`] may be
-//! used. For instance, we could use the [`RedisStore`] instead of Moka.
-//!
-//! A cache is most helpful with read-heavy workloads, where the cache hit rate
-//! will be high. This is because write-heavy workloads will require a roundtrip
-//! to the store and therefore benefit less from caching.
-//!
 //! # Extractor pattern
 //!
 //! When using `axum`, the [`Session`] will already function as an extractor.
@@ -366,6 +231,157 @@
 //! bucket, a feature flag bucket and so on. All these together would live in
 //! the same session, but would be segmented by their own name-space, avoiding
 //! the mixing of domains unnecessarily.[^data-domains]
+//!
+//! # Layered caching
+//!
+//! In some cases the cannonical store for a session may benefit from a cache.
+//! For example, rather than loading a session from a store on every request,
+//! this roundtrip can be mitigated by placing a cache in front of the storage
+//! backend. A specialized session store, [`CachingSessionStore`], is provided
+//! for exactly this purpose.
+//!
+//! This store manages a cache and a store. Where the cache acts as a frontend
+//! and the store a backend. When a session is loaded, the store first attempts
+//! to load the session from the cache, if that fails only then does it try to
+//! load from the store. By doing so, read-heavy workloads will incur far fewer
+//! roundtrips to the store itself.
+//!
+//! The cache frontend also supports negative caching, meaning that when a
+//! session is not found in the store, the cache will not try to fetch the
+//! missing session from the store in the future. Again, helping to reduce
+//! roundtrips to the store.
+//!
+//! To illustrate, this is how we might use the [`MokaStore`] as a frontend
+//! cache to a [`PostgresStore`] backend.
+//!
+//! ```rust,no_run
+//! # #[cfg(all(feature = "moka_store", feature = "postgres_store"))] {
+//! # use tower::ServiceBuilder;
+//! # use tower_sessions::{
+//! #    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, SessionManagerLayer,
+//! # };
+//! # use time::Duration;
+//! # tokio_test::block_on(async {
+//! let database_url = std::option_env!("DATABASE_URL").unwrap();
+//! let pool = PgPool::connect(database_url).await.unwrap();
+//!
+//! let postgres_store = PostgresStore::new(pool);
+//! postgres_store.migrate().await.unwrap();
+//!
+//! let moka_store = MokaStore::new(Some(10_000));
+//! let caching_store = CachingSessionStore::new(moka_store, postgres_store);
+//!
+//! let session_service = ServiceBuilder::new()
+//!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
+//! # })}
+//! ```
+//!
+//! While this example uses Moka, any implementor of [`SessionStore`] may be
+//! used. For instance, we could use the [`RedisStore`] instead of Moka.
+//!
+//! A cache is most helpful with read-heavy workloads, where the cache hit rate
+//! will be high. This is because write-heavy workloads will require a roundtrip
+//! to the store and therefore benefit less from caching.
+//!
+//! # Implementation
+//!
+//! Sessions are composed of three pieces:
+//!
+//! 1. A cookie which holds the session ID as its value,
+//! 2. An in-memory hash-map, which underpins the key-value API,
+//! 3. A pluggable persistence layer, the session store, where session data is
+//!    housed.
+//!
+//! Together, these piece form the basis of this crate and allow `tower` and
+//! `axum` applications to use a familiar session interface.
+//!
+//! ## Cookie
+//!
+//! Sessions manifest to clients as cookies. These cookies have a configurable
+//! name and a value that is the session ID. In other words, cookies hold a
+//! pointer to the session in the form of an ID. This ID is a [UUID
+//! v4](https://docs.rs/uuid/latest/uuid/struct.Uuid.html#method.new_v4).
+//!
+//! ### Secure nature of cookies
+//!
+//! Session IDs are considered secure if your platform's
+//! [`getrandom`](https://docs.rs/getrandom/latest/getrandom/) is
+//! secure[^getrandom], and therefore are not signed or encrypted. Note that
+//! this assumption is predicated on the secure nature of the UUID crate and its
+//! ability to generate securely-random values. It's also important to note that
+//! session cookies **must never** be sent over a public, insecure channel.
+//! Doing so is **not** secure.
+//!
+//! An expiration time determines when the session will be considered expired.
+//! This translates to the cookie's `max-age` attribute. By default,
+//! [`CookieConfig`] will set this to `None`. When `None`, this means the cookie
+//! will be treated as a ["session" cookie][session-cookie], not to be confused
+//! with the session itself, which generally means that the cookie will expire
+//! once the user closes their browser.
+//!
+//! ## Key-value API
+//!
+//! Sessions manage a `HashMap<String, serde_json::Value>` but importantly are
+//! transparently persisted to an arbitrary storage backend. Effectively,
+//! `HashMap` is an intermediay, in-memory representation. By using a map-like
+//! structure, we're able to present a familiar key-value interface for managing
+//! sessions. This also allows us to store and retrieve native Rust
+//! types, so long as our type is `impl Serialize` and can be represented as
+//! JSON.[^json]
+//!
+//! Internally, this hash map state is protected by a lock in the form of
+//! `Mutex`. This allows us to safely share mutable state across thread
+//! boundaries. Note that this lock is only acquired when we read from or write
+//! to this inner session state and not used when the session is provided to the
+//! request. This means that lock contention is minimized for most use
+//! cases.[^lock-contention]
+//!
+//! ## Session store
+//!
+//! The intermediary `HashMap` representation is converted to a
+//! [`SessionRecord`] type which provides the structure needed to store
+//! sessions. Implementations of `SessionStore` consume this type in order to
+//! translate the session to its persisted form. Note that the exact details of
+//! how a session is stored within a backend is left up to the implementation
+//! but generally three things are needed:
+//!
+//! 1. The session ID.
+//! 2. The session expiration time.
+//! 3. The session data itself.
+//!
+//! Together, these compose the session record and are enough to both encode and
+//! decode a session from any backend.
+//!
+//! ## Session life cycle
+//!
+//! Cookies hold a pointer to the session, rather than the session's data and
+//! because of this the `tower` middleware is focused on managng the process of
+//! hydrating a session from the store. This works by first looking for a cookie
+//! that matches our configured session cookie name. If no such cookie is found
+//! or a cookie is found but the store has no such session or the session is no
+//! longer active, we create a new session. However, it's important to note that
+//! creating a session **does not** save the session to the store. In fact, the
+//! store is not used at all unless one of two conditions is true:
+//!
+//! 1. A session cookie was found and we attempt to load it from the store via
+//!    the [`load`](SessionStore::load) method or,
+//! 2. A session was marked as modified or deleted.
+//!
+//! In other words, creating a new session is a lightweight process that does
+//! not incur the overhead of talking to a store. It's also important to create
+//! a session proactively as the middleware will attach the session to the
+//! request as a request extension. This allows handlers to extract the cookie
+//! from the request and manipulate it.
+//!
+//! Modified sessions will invoke the session store's
+//! [`save`](SessionStore::save) method as well as send a `Set-Cookie` header.
+//! While deleted sessions will either be:
+//!
+//! 1. Deleted, invoking the [`delete`](SessionStore::delete) method and setting
+//!    a removal cookie or,
+//! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
+//!    the session will have been marked as modified and so this will also set a
+//!    `Set-Cookie` header on the response.
 //!
 //! [^getrandom]: `uuid` uses `getrandom` which varies by platform; the crucial
 //!   assumption
