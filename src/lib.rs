@@ -215,6 +215,7 @@
 //!
 //! When using `axum`, the [`Session`] will already function as an extractor.
 //! It's possible to build further on this to create extractors of custom types.
+//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;
@@ -254,6 +255,7 @@
 //! example was effectively read-only. This pattern enables mutability of the
 //! underlying structure while also leveraging the full power of the type
 //! system.
+//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;
