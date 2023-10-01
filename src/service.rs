@@ -7,7 +7,7 @@ use std::{
 
 use http::{Request, Response};
 use time::Duration;
-use tower_cookies::{CookieManager, Cookies};
+use tower_cookies::{Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -76,28 +76,37 @@ where
                 .cloned()
                 .expect("Something has gone wrong with tower-cookies.");
 
-            let mut session =
-                if let Some(session_cookie) = cookies.get(&manager.cookie_config.name) {
-                    // We do have a session cookie, so let's see if our store has the associated
-                    // session.
-                    //
-                    // N.B.: Our store will *not* have the session if the session is empty.
-                    let session_id = session_cookie.value().try_into()?;
-                    manager.session_store.load(&session_id).await?
-                } else {
-                    // We don't have a session cookie, so let's create a new session.
-                    manager.create_session()
+            let session_cookie = cookies
+                .get(&manager.cookie_config.name)
+                .map(Cookie::into_owned);
+            let mut session = if let Some(session_cookie) = session_cookie {
+                // We do have a session cookie, so let's see if our store has the associated
+                // session.
+                //
+                // N.B.: Our store will *not* have the session if the session is empty.
+                let session_id = session_cookie.value().try_into()?;
+                let session = manager.session_store.load(&session_id).await?;
+
+                // If the store does not know about this session, we should remove the cookie.
+                if session.is_none() {
+                    cookies.remove(session_cookie);
                 }
-                .filter(Session::active)
-                .unwrap_or_else(|| {
-                    // We either:
-                    //
-                    // 1. Didn't find the session in the store (but had a cookie) or,
-                    // 2. We found a session but it was filtered out by `Session::active`.
-                    //
-                    // In both cases we want to create a new session.
-                    manager.create_session().unwrap()
-                });
+
+                session
+            } else {
+                // We don't have a session cookie, so let's create a new session.
+                manager.create_session()
+            }
+            .filter(Session::active)
+            .unwrap_or_else(|| {
+                // We either:
+                //
+                // 1. Didn't find the session in the store (but had a cookie) or,
+                // 2. We found a session but it was filtered out by `Session::active`.
+                //
+                // In both cases we want to create a new session.
+                manager.create_session().unwrap()
+            });
 
             req.extensions_mut().insert(session.clone());
 

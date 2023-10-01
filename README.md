@@ -34,9 +34,12 @@ It offers:
 - **An `axum` Extractor for `Session`:** Applications built with `axum`
   can use `Session` as an extractor directly in their handlers. This makes
   using sessions as easy as including `Session` in your handler.
-- **Common Backends Out-of-the-Box:** `RedisStore` and SQLx
-  (`SqliteStore`, `PostgresStore`, `MySqlStore`) stores are available
-  via their respective feature flags.
+- **Common Backends Out-of-the-Box:** `RedisStore`, SQLx
+  (`SqliteStore`, `PostgresStore`, `MySqlStore`), and `MongoDBStore` stores
+  are available via their respective feature flags.
+- **Layered Caching:** With `CachingSessionStore`, applications can leverage a
+  cache such as `MokaStore` to reduce roundtrips to the store when loading
+  sessions.
 - **Simple Key-Value Interface:** Sessions offer a key-value interface that
   supports native Rust types. So long as these types are `Serialize` and can
   be converted to JSON, it's straightforward to insert, get, and remove any

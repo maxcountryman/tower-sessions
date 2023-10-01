@@ -43,9 +43,9 @@ rmp-serde = { optional = true, version = "1.1.2" }
 mongodb = { optional = true, version = "2.7.0-beta" }
 bson = { optional = true, version = "2.7.0", features = ["time-0_3", "uuid-1"] }
 sqlx = { optional = true, version = "0.7.1", features = [
-    "time",
-    "uuid",
-    "runtime-tokio",
+  "time",
+  "uuid",
+  "runtime-tokio",
 ] }
 tokio = { optional = true, version = "1", features = ["full"] }
 moka = { optional = true, version = "0.12.0", features = ["future"] }
