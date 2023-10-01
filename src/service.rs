@@ -7,7 +7,7 @@ use std::{
 
 use http::{Request, Response};
 use time::Duration;
-use tower_cookies::{cookie::SameSite, CookieManager, Cookies};
+use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -66,13 +66,21 @@ where
                 .cloned()
                 .expect("Something has gone wrong with tower-cookies.");
 
-            let mut session = if let Some(session_cookie) = cookies.get(&cookie_config.name) {
+            let session_cookie = cookies.get(&cookie_config.name).map(Cookie::into_owned);
+            let mut session = if let Some(session_cookie) = session_cookie {
                 // We do have a session cookie, so let's see if our store has the associated
                 // session.
                 //
                 // N.B.: Our store will *not* have the session if the session is empty.
                 let session_id = session_cookie.value().try_into()?;
-                session_store.load(&session_id).await?
+                let session = session_store.load(&session_id).await?;
+
+                // If the store does not know about this session, we should remove the cookie.
+                if session.is_none() {
+                    cookies.remove(session_cookie);
+                }
+
+                session
             } else {
                 // We don't have a session cookie, so let's create a new session.
                 Some((&cookie_config).into())

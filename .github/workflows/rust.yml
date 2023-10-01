@@ -112,7 +112,7 @@ jobs:
           - test: sqlite-store
             features: sqlite-store
             docker: false
-          - test: moka-store-dummy
+          - test: moka-store
             features: moka-store
             docker: false
           - test: moka-store-sqlite
