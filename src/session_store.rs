@@ -32,7 +32,7 @@ pub enum CachingStoreError<Cache: SessionStore, Store: SessionStore> {
     Store(Store::Error),
 }
 
-/// A session store for layer caching.
+/// A session store for layered caching.
 ///
 /// Contains both a cache, which acts as a frontend, and a store which acts as a
 /// backend. Both cache and store implement `SessionStore`.
