@@ -119,7 +119,7 @@
 //! # Strongly-typed sessions
 //!
 //! The extractor pattern can be extended further to provide strong typing
-//! guarantees over the key-value subtrate. Whereas our previous extractor
+//! guarantees over the key-value substrate. Whereas our previous extractor
 //! example was effectively read-only. This pattern enables mutability of the
 //! underlying structure while also leveraging the full power of the type
 //! system.
@@ -234,7 +234,7 @@
 //!
 //! # Layered caching
 //!
-//! In some cases the cannonical store for a session may benefit from a cache.
+//! In some cases, the canonical store for a session may benefit from a cache.
 //! For example, rather than loading a session from a store on every request,
 //! this roundtrip can be mitigated by placing a cache in front of the storage
 //! backend. A specialized session store, [`CachingSessionStore`], is provided
@@ -287,12 +287,12 @@
 //!
 //! Sessions are composed of three pieces:
 //!
-//! 1. A cookie which holds the session ID as its value,
+//! 1. A cookie that holds the session ID as its value,
 //! 2. An in-memory hash-map, which underpins the key-value API,
 //! 3. A pluggable persistence layer, the session store, where session data is
 //!    housed.
 //!
-//! Together, these piece form the basis of this crate and allow `tower` and
+//! Together, these pieces form the basis of this crate and allow `tower` and
 //! `axum` applications to use a familiar session interface.
 //!
 //! ## Cookie
@@ -323,11 +323,11 @@
 //!
 //! Sessions manage a `HashMap<String, serde_json::Value>` but importantly are
 //! transparently persisted to an arbitrary storage backend. Effectively,
-//! `HashMap` is an intermediay, in-memory representation. By using a map-like
+//! `HashMap` is an intermediary, in-memory representation. By using a map-like
 //! structure, we're able to present a familiar key-value interface for managing
 //! sessions. This also allows us to store and retrieve native Rust
-//! types, so long as our type is `impl Serialize` and can be represented as
-//! JSON.[^json]
+//! types, so long as our type is `impl Serialize` and can
+//! be represented as JSON.[^json]
 //!
 //! Internally, this hash map state is protected by a lock in the form of
 //! `Mutex`. This allows us to safely share mutable state across thread
@@ -342,7 +342,7 @@
 //! [`SessionRecord`] type which provides the structure needed to store
 //! sessions. Implementations of `SessionStore` consume this type in order to
 //! translate the session to its persisted form. Note that the exact details of
-//! how a session is stored within a backend is left up to the implementation
+//! how a session is stored within a backend are left up to the implementation
 //! but generally three things are needed:
 //!
 //! 1. The session ID.
@@ -354,14 +354,14 @@
 //!
 //! ## Session life cycle
 //!
-//! Cookies hold a pointer to the session, rather than the session's data and
-//! because of this the `tower` middleware is focused on managng the process of
-//! hydrating a session from the store. This works by first looking for a cookie
-//! that matches our configured session cookie name. If no such cookie is found
-//! or a cookie is found but the store has no such session or the session is no
-//! longer active, we create a new session. However, it's important to note that
-//! creating a session **does not** save the session to the store. In fact, the
-//! store is not used at all unless one of two conditions is true:
+//! Cookies hold a pointer to the session, rather than the session's data, and
+//! because of this, the `tower` middleware is focused on managing the process
+//! of hydrating a session from the store. This works by first looking for a
+//! cookie that matches our configured session cookie name. If no such cookie is
+//! found or a cookie is found but the store has no such session or the session
+//! is no longer active, we create a new session. However, it's important to
+//! note that creating a session **does not** save the session to the store. In
+//! fact, the store is not used at all unless one of two conditions is true:
 //!
 //! 1. A session cookie was found and we attempt to load it from the store via
 //!    the [`load`](SessionStore::load) method or,
@@ -384,9 +384,8 @@
 //!    `Set-Cookie` header on the response.
 //!
 //! [^getrandom]: `uuid` uses `getrandom` which varies by platform; the crucial
-//!   assumption
-//! `tower-sessions` makes is that your platform is secure. However, you
-//! **must** verify this for yourself.
+//!   assumption `tower-sessions` makes is that your platform is secure.
+//! However, you **must** verify this for yourself.
 //!
 //! [^json]: Using JSON allows us to translate arbitrary types to virtually
 //! any backend and gives us a nice interface with which to interact with the
@@ -397,10 +396,10 @@
 //! `dashmap` or a different approach entirely. Future iterations should be
 //! based on real-world use cases.
 //!
-//! [^data-domains]: This is paricularly useful when we may have data domains that only belong with
-//! users in certain states: we can pull these into our handlers where we need a
-//! particular domain. In this way, we minimize data pollution via
-//! self-contained domains in the form of buckets.
+//! [^data-domains]: This is particularly useful when we may have data
+//! domains that only belong with ! users in certain states: we can pull these
+//! into our handlers where we need a particular domain. In this way, we
+//! minimize data pollution via self-contained domains in the form of buckets.
 //!
 //! [session-cookie]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
 #![warn(clippy::all, nonstandard_style, future_incompatible)]
