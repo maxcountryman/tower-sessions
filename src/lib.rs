@@ -78,6 +78,34 @@
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
+//! ## Session expiry management
+//!
+//! In cases where you are utilizing stores that lack automatic session expiry
+//! functionality, such as SQLx or MongoDB stores, it becomes essential to
+//! periodically clean up stale sessions. For instance, both SQLx and MongoDB
+//! stores offer
+//! [`continuously_delete_expired`](SqliteStore::continuously_delete_expired)
+//! which is designed to be executed as a recurring task. This process ensures
+//! the removal of expired sessions, maintaining your application's data
+//! integrity and performance.
+//!
+//! ```rust,no_run
+//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore};
+//! # tokio_test::block_on(async {
+//! let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+//! let session_store = SqliteStore::new(pool);
+//! let deletion_task = tokio::task::spawn(
+//!     session_store
+//!         .clone()
+//!         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+//! );
+//! deletion_task.await.unwrap().unwrap();
+//! # });
+//! ```
+//!
+//! Note that sessions with no expiration time will **not** be deleted by this
+//! task and must be handled by some other process. This is left up to
+//! applications to manage on their own.
 //!
 //! # Extractor pattern
 //!
@@ -123,7 +151,6 @@
 //! example was effectively read-only. This pattern enables mutability of the
 //! underlying structure while also leveraging the full power of the type
 //! system.
-//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;
@@ -253,7 +280,6 @@
 //!
 //! To illustrate, this is how we might use the [`MokaStore`] as a frontend
 //! cache to a [`PostgresStore`] backend.
-//!
 //! ```rust,no_run
 //! # #[cfg(all(feature = "moka_store", feature = "postgres_store"))] {
 //! # use tower::ServiceBuilder;
@@ -272,8 +298,8 @@
 //! let caching_store = CachingSessionStore::new(moka_store, postgres_store);
 //!
 //! let session_service = ServiceBuilder::new()
-//!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
-//! # })}
+//!     .layer(SessionManagerLayer::new(caching_store).
+//! with_max_age(Duration::days(1))); # })}
 //! ```
 //!
 //! While this example uses Moka, any implementor of [`SessionStore`] may be

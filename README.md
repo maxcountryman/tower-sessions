@@ -117,16 +117,12 @@ async fn handler(session: Session) -> impl IntoResponse {
 
 You can find this [example][counter-example] as well as other example projects in the [example directory][examples].
 
-See the [crate documentation][docs] for more usage information.
+> [!NOTE]
+> See the [crate documentation][docs] for more usage information.
 
 ## 🦺 Safety
 
 This crate uses `#![forbid(unsafe_code)]` to ensure everything is implemented in 100% safe Rust.
-
-## Production notes
-
-It is wise to run a background task in order to continuously remove stale sessions from databases used.
-For example, each of the SQLx and MongoDB stores have [a method](https://docs.rs/tower-sessions/latest/tower_sessions/struct.SqliteStore.html#method.continuously_delete_expired) that's intended to be run as a task.
 
 ## 👯 Contributing
 
