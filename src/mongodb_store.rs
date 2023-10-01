@@ -55,9 +55,7 @@ impl MongoDBStore {
     /// # tokio_test::block_on(async {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
     /// let client = Client::with_uri_str(database_url).await.unwrap();
-    ///
     /// let session_store = MongoDBStore::new(client, "database".to_string());
-    /// session_store.setup().await.unwrap();
     /// # })
     /// ```
     pub fn new(client: Client, database: String) -> Self {
@@ -89,9 +87,7 @@ impl MongoDBStore {
     /// # tokio_test::block_on(async {
     /// let database_url = std::option_env!("DATABASE_URL").unwrap();
     /// let client = Client::with_uri_str(database_url).await.unwrap();
-    ///
     /// let session_store = MongoDBStore::new(client, "database".to_string());
-    /// session_store.setup().await.unwrap();
     ///
     /// tokio::task::spawn(
     ///     session_store
