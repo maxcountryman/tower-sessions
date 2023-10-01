@@ -8,20 +8,19 @@ use crate::{
 };
 
 /// An error type for `RedisStore`.
-#[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
 pub enum RedisStoreError {
     /// A variant to map to `fred::error::RedisError` errors.
     #[error("Redis error: {0}")]
-    RedisError(#[from] fred::error::RedisError),
+    Redis(#[from] fred::error::RedisError),
 
     /// A variant to map `rmp_serde` encode errors.
     #[error("Rust MsgPack encode error: {0}")]
-    RmpSerdeEncodeError(#[from] rmp_serde::encode::Error),
+    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
 
     /// A variant to map `rmp_serde` decode errors.
     #[error("Rust MsgPack decode error: {0}")]
-    RmpSerdeDecodeError(#[from] rmp_serde::decode::Error),
+    RmpSerdeDecode(#[from] rmp_serde::decode::Error),
 }
 
 /// A Redis session store.
