@@ -77,11 +77,11 @@ pub fn get_session_cookie(headers: &HeaderMap) -> Result<Cookie<'_>, cookie::Par
 macro_rules! route_tests {
     ($create_app:expr) => {
         use axum::body::Body;
-        use common::{body_string, get_session_cookie};
         use http::{header, Request, StatusCode};
         use time::Duration;
         use tower::ServiceExt;
         use tower_cookies::{cookie::SameSite, Cookie};
+        use $crate::common::{body_string, get_session_cookie};
 
         #[tokio::test]
         async fn no_session_set() {
