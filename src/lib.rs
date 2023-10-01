@@ -402,7 +402,12 @@
 //! minimize data pollution via self-contained domains in the form of buckets.
 //!
 //! [session-cookie]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
-#![warn(clippy::all, nonstandard_style, future_incompatible)]
+#![warn(
+    clippy::all,
+    nonstandard_style,
+    future_incompatible,
+    missing_debug_implementations
+)]
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]

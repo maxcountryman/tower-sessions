@@ -18,7 +18,7 @@ use crate::{
 /// use tower_sessions::MemoryStore;
 /// MemoryStore::default();
 /// ```
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, SessionRecord>>>);
 
 #[async_trait]
