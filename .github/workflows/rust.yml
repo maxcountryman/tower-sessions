@@ -53,31 +53,6 @@ jobs:
         run: |
           cargo doc --all-features --no-deps
 
-  test:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          rustup toolchain install stable --profile minimal
-          rustup toolchain install nightly --profile minimal
-          cargo install cargo-tarpaulin
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
-      - name: Run tests
-        run: |
-          cargo nextest run --test integration-tests
-      - name: Generate code coverage
-        run: |
-          cargo tarpaulin -olcov --output-dir ./coverage
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        with:
-          files: ./coverage/lcov.info
-          fail_ci_if_error: true
-
   test-docs:
     needs: check
     runs-on: ubuntu-latest
@@ -90,7 +65,7 @@ jobs:
         run: |
           cargo test --all-features --doc
 
-  integration-tests:
+  test-integration:
     needs: check
     runs-on: ubuntu-latest
 
