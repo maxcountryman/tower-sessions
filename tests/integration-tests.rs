@@ -98,7 +98,7 @@ mod postgres_store_tests {
 }
 
 #[cfg(all(test, feature = "axum-core", feature = "mysql-store"))]
-mod mysql_tests {
+mod mysql_store_tests {
     use axum::Router;
     use tower_sessions::{sqlx::MySqlPool, MySqlStore, SessionManagerLayer};
 
@@ -119,7 +119,7 @@ mod mysql_tests {
 }
 
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
-mod mongo_store_tests {
+mod mongodb_store_tests {
     use axum::Router;
     use tower_sessions::{MongoDBStore, SessionManagerLayer};
 
