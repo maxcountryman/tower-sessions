@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.2.1
+
+- Fix clearing session's data is not persisted. #22
+
 # 0.2.0
 
 **Breaking Changes**
