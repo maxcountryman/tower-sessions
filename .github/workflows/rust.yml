@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  MSRV: 1.67.1
   REDIS_URL: redis://localhost:6379/1
   MONGODB_URL: mongodb://localhost:27017
   POSTGRES_URL: postgres://postgres:postgres@localhost:5432
@@ -104,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install ${{ env.MSRV }} --profile minimal
           cargo install cargo-tarpaulin
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
