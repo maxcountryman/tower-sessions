@@ -118,6 +118,14 @@ where
                 }
             };
 
+            // In order to ensure removing the last value of a session updates the store, we
+            // check for an empty session. Empty sessions should be removed from the store.
+            if session.is_empty() {
+                session_store.delete(&session.id()).await?;
+                cookies.remove(cookie_config.build_cookie(&session));
+                return res;
+            }
+
             // For further consideration:
             //
             // We only persist the session in the store when the `modified` flag is set.

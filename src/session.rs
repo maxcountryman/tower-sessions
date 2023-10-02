@@ -495,7 +495,7 @@ impl Session {
     /// ```
     pub fn is_empty(&self) -> bool {
         let inner = self.inner.lock();
-        inner.expiration_time.is_none() && inner.data.is_empty()
+        inner.data.is_empty()
     }
 }
 
