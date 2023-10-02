@@ -273,11 +273,6 @@
 //! load from the store. By doing so, read-heavy workloads will incur far fewer
 //! roundtrips to the store itself.
 //!
-//! The cache frontend also supports negative caching, meaning that when a
-//! session is not found in the store, the cache will not try to fetch the
-//! missing session from the store in the future. Again, helping to reduce
-//! roundtrips to the store.
-//!
 //! To illustrate, this is how we might use the [`MokaStore`] as a frontend
 //! cache to a [`PostgresStore`] backend.
 //! ```rust,no_run
