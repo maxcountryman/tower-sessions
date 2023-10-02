@@ -11,7 +11,7 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 repository = "https://github.com/maxcountryman/tower-sessions"
 documentation = "https://docs.rs/tower-sessions"
 readme = "README.md"
-rust-version = "1.72"
+rust-version = "1.67.1"
 
 [features]
 default = ["axum-core", "memory-store"]
