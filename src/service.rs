@@ -66,8 +66,10 @@ where
                 .cloned()
                 .expect("Something has gone wrong with tower-cookies.");
 
-            let session_cookie = cookies.get(&cookie_config.name).map(Cookie::into_owned);
-            let mut session = if let Some(session_cookie) = session_cookie {
+            let mut session_loaded_from_store = false;
+            let mut session = if let Some(session_cookie) =
+                cookies.get(&cookie_config.name).map(Cookie::into_owned)
+            {
                 // We do have a session cookie, so let's see if our store has the associated
                 // session.
                 //
@@ -78,6 +80,8 @@ where
                 // If the store does not know about this session, we should remove the cookie.
                 if session.is_none() {
                     cookies.remove(session_cookie);
+                } else {
+                    session_loaded_from_store = true;
                 }
 
                 session
@@ -120,7 +124,7 @@ where
 
             // In order to ensure removing the last value of a session updates the store, we
             // check for an empty session. Empty sessions should be removed from the store.
-            if session.is_empty() {
+            if session_loaded_from_store && session.is_empty() {
                 session_store.delete(&session.id()).await?;
                 cookies.remove(cookie_config.build_cookie(&session));
                 return res;
