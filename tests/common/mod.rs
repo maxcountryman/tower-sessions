@@ -22,9 +22,19 @@ fn routes() -> Router {
             }),
         )
         .route(
+            "/get_value",
+            get(|session: Session| async move { format!("{:?}", session.get_value("foo")) }),
+        )
+        .route(
             "/remove",
             get(|session: Session| async move {
                 session.remove::<usize>("foo").unwrap();
+            }),
+        )
+        .route(
+            "/remove_value",
+            get(|session: Session| async move {
+                session.remove_value("foo");
             }),
         )
         .route(
@@ -198,6 +208,47 @@ macro_rules! route_tests {
             let res = app.oneshot(req).await.unwrap();
 
             assert_eq!(body_string(res.into_body()).await, "42");
+        }
+
+        #[tokio::test]
+        async fn get_no_value() {
+            let app = $create_app(Some(Duration::hours(1))).await;
+
+            let req = Request::builder()
+                .uri("/get_value")
+                .body(Body::empty())
+                .unwrap();
+            let res = app.oneshot(req).await.unwrap();
+
+            assert_eq!(body_string(res.into_body()).await, "None");
+        }
+
+        #[tokio::test]
+        async fn remove_last_value() {
+            let app = $create_app(Some(Duration::hours(1))).await;
+
+            let req = Request::builder()
+                .uri("/insert")
+                .body(Body::empty())
+                .unwrap();
+            let res = app.clone().oneshot(req).await.unwrap();
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let req = Request::builder()
+                .uri("/remove_value")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+
+            let req = Request::builder()
+                .uri("/get_value")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            let res = app.oneshot(req).await.unwrap();
+
+            assert_eq!(body_string(res.into_body()).await, "None");
         }
 
         #[tokio::test]
