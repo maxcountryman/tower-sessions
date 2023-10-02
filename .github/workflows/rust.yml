@@ -73,32 +73,31 @@ jobs:
     strategy:
       matrix:
         include:
-          - test: redis-store
-            mod: redis_store_tests
+          - store: redis_store
             features: redis-store
             docker: true
-          - test: mongodb-store
-            mod: mongodb_store_tests
+
+          - store: mongodb_store
             features: mongodb-store
             docker: true
-          - test: postgres-store
-            mod: postgres_store_tests
+
+          - store: postgres_store
             features: postgres-store
             docker: true
-          - test: mysql-store
-            mod: mysql_store_tests
+
+          - store: mysql_store
             features: mysql-store
             docker: true
-          - test: sqlite-store
-            mod: sqlite_store_tests
+
+          - store: sqlite_store
             features: sqlite-store
             docker: false
-          - test: moka-store
-            mod: moka_store_tests
+
+          - store: moka_store
             features: moka-store
             docker: false
-          - test: caching-store
-            mod: caching_store_tests
+
+          - store: caching_store
             features: moka-store,sqlite-store
             docker: false
 
@@ -112,10 +111,10 @@ jobs:
       - name: Start session store
         if: matrix.docker
         run: |
-          docker compose -f tests/docker-compose.yml up ${{ matrix.test }} -d
+          docker compose -f tests/docker-compose.yml up ${{ matrix.store }} -d
       - name: Run integration tests
         run: |
-          cargo nextest run ${{ matrix.mod }} --test integration-tests --features ${{ matrix.features }}
+          cargo nextest run ${{ matrix.store }}_test --test integration-tests --features ${{ matrix.features }}
       - name: Generate code coverage
         run: |
           cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir ./coverage
