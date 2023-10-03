@@ -1,6 +1,7 @@
 //! An arbitrary store which houses the session data.
 
 use async_trait::async_trait;
+use futures::TryFutureExt;
 
 use crate::session::{Session, SessionId, SessionRecord};
 
@@ -77,14 +78,10 @@ where
     type Error = CachingStoreError<Cache, Store>;
 
     async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        self.store
-            .save(session_record)
-            .await
-            .map_err(Self::Error::Store)?;
-        self.cache
-            .save(session_record)
-            .await
-            .map_err(Self::Error::Cache)?;
+        let cache_save_fut = self.store.save(session_record).map_err(Self::Error::Store);
+        let store_save_fut = self.cache.save(session_record).map_err(Self::Error::Cache);
+
+        futures::try_join!(cache_save_fut, store_save_fut)?;
 
         Ok(())
     }
@@ -129,14 +126,11 @@ where
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
-        self.store
-            .delete(session_id)
-            .await
-            .map_err(Self::Error::Store)?;
-        self.cache
-            .delete(session_id)
-            .await
-            .map_err(Self::Error::Cache)?;
+        let store_delete_fut = self.store.delete(session_id).map_err(Self::Error::Store);
+        let cache_delete_fut = self.cache.delete(session_id).map_err(Self::Error::Cache);
+
+        futures::try_join!(store_delete_fut, cache_delete_fut)?;
+
         Ok(())
     }
 }
