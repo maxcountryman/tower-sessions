@@ -296,6 +296,7 @@ impl Session {
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
     /// let session = Session::default();
+    /// session.insert("foo", 42);
     /// session.cycle_id();
     /// assert!(matches!(
     ///     session.deleted(),
@@ -462,6 +463,7 @@ impl Session {
     /// ```rust
     /// use tower_sessions::{session::SessionDeletion, Session};
     /// let session = Session::default();
+    /// session.insert("foo", 42);
     /// assert!(session.deleted().is_none());
     /// session.delete();
     /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
@@ -472,6 +474,11 @@ impl Session {
     /// ))
     /// ```
     pub fn deleted(&self) -> Option<SessionDeletion> {
+        // Empty sessions are deleted to ensure removal of the last key.
+        if self.is_empty() {
+            return Some(SessionDeletion::Deleted);
+        };
+
         self.inner.lock().deleted
     }
 

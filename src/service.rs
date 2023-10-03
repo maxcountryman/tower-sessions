@@ -104,10 +104,15 @@ where
 
             let res = Ok(inner.call(req).await.map_err(Into::into)?);
 
+            // N.B. When a session is empty, it will be deleted. Here the deleted method
+            // accounts for this check.
             if let Some(session_deletion) = session.deleted() {
                 match session_deletion {
                     SessionDeletion::Deleted => {
-                        session_store.delete(&session.id()).await?;
+                        if session_loaded_from_store {
+                            session_store.delete(&session.id()).await?;
+                        }
+
                         cookies.remove(cookie_config.build_cookie(&session));
 
                         // Since the session has been deleted, there's no need for further
@@ -116,19 +121,14 @@ where
                     }
 
                     SessionDeletion::Cycled(deleted_id) => {
-                        session_store.delete(&deleted_id).await?;
+                        if session_loaded_from_store {
+                            session_store.delete(&deleted_id).await?;
+                        }
+
                         session.id = SessionId::default();
                     }
                 }
             };
-
-            // In order to ensure removing the last value of a session updates the store, we
-            // check for an empty session. Empty sessions should be removed from the store.
-            if session_loaded_from_store && session.is_empty() {
-                session_store.delete(&session.id()).await?;
-                cookies.remove(cookie_config.build_cookie(&session));
-                return res;
-            }
 
             // For further consideration:
             //
