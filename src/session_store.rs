@@ -89,7 +89,7 @@ where
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         match self.cache.load(session_id).await {
             // We found a session in the cache, so let's use it.
-            Ok(Some(session)) => Ok(Some(session).filter(|s| !s.is_empty())),
+            Ok(Some(session)) => Ok(Some(session)),
 
             // We didn't find a session in the cache, so we'll try loading from the backend.
             //
@@ -105,14 +105,6 @@ where
                     let session_record = session.into();
                     self.cache
                         .save(&session_record)
-                        .await
-                        .map_err(Self::Error::Cache)?;
-                } else {
-                    // If we know the session doesn't exist in the store, we cache the negative
-                    // lookup to avoid future roundtrips to the store.
-                    let tombstone = SessionRecord::tombstone_from_id(*session_id);
-                    self.cache
-                        .save(&tombstone)
                         .await
                         .map_err(Self::Error::Cache)?;
                 }

@@ -484,25 +484,18 @@ impl Session {
 
     /// Returns `true` if the session is empty.
     ///
-    /// Sessions are empty when they've just been created or when they are
-    /// persisted as tombstone markers.
-    ///
     /// # Examples
     ///
     /// ```rust
     /// use tower_sessions::{Session, SessionRecord};
     /// let session = Session::default();
     /// assert!(session.is_empty());
+    ///
     /// session.insert("foo", 42);
     /// assert!(!session.is_empty());
-    ///
-    /// let tombstone = SessionRecord::tombstone_from_id(session.id());
-    /// let session: Session = tombstone.into();
-    /// assert!(session.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        let inner = self.inner.lock();
-        inner.data.is_empty()
+        self.inner.lock().data.is_empty()
     }
 }
 
@@ -610,16 +603,6 @@ impl SessionRecord {
             id,
             expiration_time,
             data,
-        }
-    }
-
-    /// Create a session record that acts like a tombstone marker for a removed
-    /// session.
-    pub fn tombstone_from_id(id: SessionId) -> Self {
-        Self {
-            id,
-            expiration_time: None,
-            data: SessionData::default(),
         }
     }
 
