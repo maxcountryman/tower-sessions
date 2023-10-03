@@ -72,9 +72,7 @@
 //!
 //! async fn handler(session: Session) -> impl IntoResponse {
 //!     let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
-//!
 //!     session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
-//!
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
