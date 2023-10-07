@@ -29,6 +29,18 @@ pub struct RedisStore {
     client: RedisClient,
 }
 
+impl std::fmt::Display for RedisStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RedisStore")
+    }
+}
+
+impl std::fmt::Debug for RedisStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedisStore").finish()
+    }
+}
+
 impl RedisStore {
     /// Create a new Redis store with the provided client.
     ///
