@@ -1,5 +1,7 @@
 //! An arbitrary store which houses the session data.
 
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 use futures::TryFutureExt;
 
@@ -22,7 +24,7 @@ pub trait SessionStore: Clone + Send + Sync + 'static {
 }
 
 /// An enumeration of both `SessionStore` error types.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error)]
 pub enum CachingStoreError<Cache: SessionStore, Store: SessionStore> {
     /// A cache-related error.
     #[error(transparent)]
@@ -31,6 +33,17 @@ pub enum CachingStoreError<Cache: SessionStore, Store: SessionStore> {
     /// A store-related error.
     #[error(transparent)]
     Store(Store::Error),
+}
+
+impl<Cache: SessionStore, Store: SessionStore> Debug for CachingStoreError<Cache, Store> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CachingStoreError::Cache(err) => write!(f, "{:?}", err)?,
+            CachingStoreError::Store(err) => write!(f, "{:?}", err)?,
+        };
+
+        Ok(())
+    }
 }
 
 /// A session store for layered caching.
@@ -72,8 +85,8 @@ impl<Cache: SessionStore, Store: SessionStore> CachingSessionStore<Cache, Store>
 #[async_trait]
 impl<Cache, Store> SessionStore for CachingSessionStore<Cache, Store>
 where
-    Cache: SessionStore + std::fmt::Debug, // TODO: Why is this required to be Debug?
-    Store: SessionStore + std::fmt::Debug,
+    Cache: SessionStore,
+    Store: SessionStore,
 {
     type Error = CachingStoreError<Cache, Store>;
 
