@@ -236,10 +236,10 @@ impl Session {
         match inner.data.get(key) {
             Some(current_value) if serde_json::to_value(&old_value)? == *current_value => {
                 let new_value = serde_json::to_value(&new_value)?;
-                if *current_value == new_value {
+                if *current_value != new_value {
                     inner.modified = true;
+                    inner.data.insert(key.to_string(), new_value);
                 }
-                inner.data.insert(key.to_string(), new_value);
                 Ok(true) // Success, old value matched.
             }
             _ => Ok(false), // Failure, key doesn't exist or old value doesn't match.
