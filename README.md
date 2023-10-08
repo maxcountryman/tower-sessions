@@ -53,7 +53,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.2.1"
+tower-sessions = "0.2.2"
 ```
 
 ## 🤸 Usage

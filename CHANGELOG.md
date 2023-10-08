@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.2.2
+
+- Lift `Debug` constraint on `CachingSessionStore`.
+- Run caching store save and load ops concurrently. #25
+
 # 0.2.1
 
 - Fix clearing session's data is not persisted. #22
