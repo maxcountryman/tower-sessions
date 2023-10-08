@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.2.3
+
+- Fix setting of modified in `replace_if_equal`.
+
 # 0.2.2
 
 - Lift `Debug` constraint on `CachingSessionStore`.
