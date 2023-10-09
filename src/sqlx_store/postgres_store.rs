@@ -91,7 +91,7 @@ impl PostgresStore {
         Ok(())
     }
 
-    #[cfg(feature = "tokio")]
+    //#[cfg(feature = "tokio")]
     /// This function will keep running indefinitely, deleting expired rows and
     /// then waiting for the specified period before deleting again.
     ///
