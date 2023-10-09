@@ -62,6 +62,7 @@ impl MongoDBStore {
         }
     }
 
+    //#[cfg(feature = "tokio")]
     /// This function will keep running indefinitely, deleting expired documents
     /// and then waiting for the specified period before deleting again.
     ///
@@ -94,7 +95,6 @@ impl MongoDBStore {
     /// );
     /// # })
     /// ```
-    #[cfg(feature = "tokio")]
     pub async fn continuously_delete_expired(
         self,
         period: tokio::time::Duration,

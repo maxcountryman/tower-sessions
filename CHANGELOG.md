@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.2.4
+
+- Fix session saving and loading potential data race. #36
+
 # 0.2.3
 
 - Fix setting of modified in `replace_if_equal`.
