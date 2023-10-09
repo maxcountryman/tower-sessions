@@ -2,9 +2,11 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
+use dashmap::{mapref::entry::Entry, DashMap};
 use http::{Request, Response};
 use time::Duration;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
@@ -20,6 +22,10 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
+    // TODO: This is currently unbounded, meaning sessions grow in memory indefinitely.
+    // Alternatively we could set some configurable capacity. Moka is possibly a better candidate
+    // for this use case.
+    sessions: Arc<DashMap<SessionId, Session>>,
     session_store: Store,
     cookie_config: CookieConfig,
 }
@@ -27,8 +33,10 @@ pub struct SessionManager<S, Store: SessionStore> {
 impl<S, Store: SessionStore> SessionManager<S, Store> {
     /// Create a new [`SessionManager`].
     pub fn new(inner: S, session_store: Store, cookie_config: CookieConfig) -> Self {
+        let sessions = Arc::new(DashMap::new());
         Self {
             inner,
+            sessions,
             session_store,
             cookie_config,
         }
@@ -54,6 +62,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        let sessions = self.sessions.clone();
         let session_store = self.session_store.clone();
         let cookie_config = self.cookie_config.clone();
 
@@ -70,18 +79,28 @@ where
             let mut session = if let Some(session_cookie) =
                 cookies.get(&cookie_config.name).map(Cookie::into_owned)
             {
-                // We do have a session cookie, so let's see if our store has the associated
-                // session.
+                // We do have a session cookie, so we load it either directly from our
+                // in-memory cache or the backing session store.
                 //
                 // N.B.: Our store will *not* have the session if the session is empty.
                 let session_id = session_cookie.value().try_into()?;
-                let session = session_store.load(&session_id).await?;
+                let session = match sessions.entry(session_id) {
+                    Entry::Vacant(entry) => {
+                        if let Some(session) = session_store.load(&session_id).await? {
+                            session_loaded_from_store = true;
+                            entry.insert(session.clone());
+                            Some(session)
+                        } else {
+                            None
+                        }
+                    }
+
+                    Entry::Occupied(entry) => Some(entry.get()).cloned(),
+                };
 
                 // If the store does not know about this session, we should remove the cookie.
                 if session.is_none() {
                     cookies.remove(session_cookie);
-                } else {
-                    session_loaded_from_store = true;
                 }
 
                 session
@@ -113,6 +132,7 @@ where
                             session_store.delete(&session.id()).await?;
                         }
 
+                        sessions.remove(&session.id());
                         cookies.remove(cookie_config.build_cookie(&session));
 
                         // Since the session has been deleted, there's no need for further
@@ -124,8 +144,9 @@ where
                         if session_loaded_from_store {
                             session_store.delete(&deleted_id).await?;
                         }
-
+                        sessions.remove(&session.id());
                         session.id = SessionId::default();
+                        sessions.insert(session.id(), session.clone());
                     }
                 }
             };
@@ -139,6 +160,7 @@ where
             // the `Set-Cookie` header whenever modified or if some "always save" marker is
             // set.
             if session.modified() {
+                sessions.insert(session.id(), session.clone());
                 let session_record = (&session).into();
                 session_store.save(&session_record).await?;
                 cookies.add(cookie_config.build_cookie(&session))
@@ -280,6 +302,7 @@ impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
     fn layer(&self, inner: S) -> Self::Service {
         let session_manager = SessionManager {
             inner,
+            sessions: Arc::new(DashMap::new()),
             session_store: self.session_store.clone(),
             cookie_config: self.cookie_config.clone(),
         };
