@@ -23,7 +23,7 @@ sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
 mysql-store = ["sqlx/mysql", "sqlx-store"]
 moka-store = ["moka"]
-tokio = ["dep:tokio"]
+#tokio = ["dep:tokio"]
 
 [dependencies]
 async-trait = "0.1.73"
@@ -41,6 +41,9 @@ tower-layer = "0.3.2"
 tower-service = "0.3.2"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
 
+# This is temporarily required; move back to optional once session lock can be removed.
+tokio = { version = "1.32.0", features = ["full"] }
+
 axum-core = { optional = true, version = "0.3.4" }
 fred = { optional = true, version = "6.3.2" }
 rmp-serde = { optional = true, version = "1.1.2" }
@@ -51,7 +54,6 @@ sqlx = { optional = true, version = "0.7.2", features = [
     "uuid",
     "runtime-tokio",
 ] }
-tokio = { optional = true, version = "1.32.0", features = ["full"] }
 moka = { optional = true, version = "0.12.0", features = ["future"] }
 
 [dev-dependencies]

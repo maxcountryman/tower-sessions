@@ -2,11 +2,13 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use http::{Request, Response};
 use time::Duration;
+use tokio::sync::Mutex;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -22,6 +24,11 @@ pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
+
+    // TODO: This is a stopgap measure to ensure correctness. However, it should not be required
+    // and will be removed once the underlying session implementation is modified to ensure
+    // correct concurrent access.
+    session_lock: Arc<Mutex<()>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -31,6 +38,7 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
             inner,
             session_store,
             cookie_config,
+            session_lock: Default::default(),
         }
     }
 }
@@ -56,10 +64,13 @@ where
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let session_store = self.session_store.clone();
         let cookie_config = self.cookie_config.clone();
+        let session_lock = self.session_lock.clone();
 
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
         Box::pin(async move {
+            let _session_guard = session_lock.lock().await;
+
             let cookies = req
                 .extensions()
                 .get::<Cookies>()
@@ -282,6 +293,7 @@ impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
             inner,
             session_store: self.session_store.clone(),
             cookie_config: self.cookie_config.clone(),
+            session_lock: Default::default(),
         };
 
         CookieManager::new(session_manager)
