@@ -43,7 +43,7 @@ tower-service = "0.3.2"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
 
 axum-core = { optional = true, version = "0.3.4" }
-fred = { optional = true, version = "6.3.2" }
+fred = { optional = true, version = "7.0.0" }
 rmp-serde = { optional = true, version = "1.1.2" }
 mongodb = { optional = true, version = "2.7.0" }
 bson = { optional = true, version = "2.7.0", features = ["time-0_3", "uuid-1"] }
