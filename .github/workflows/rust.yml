@@ -117,11 +117,21 @@ jobs:
           cargo nextest run ${{ matrix.store }}_test --test integration-tests --features ${{ matrix.features }}
       - name: Generate code coverage
         run: |
-          cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir ./coverage
-      - name: Upload coverage to Codecov
+          output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
+          cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir $output_dir
+
+  upload-coverage:
+    needs: test-integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: coverage
+          path: ./coverage
+      - name: Upload all coverage data to Codecov
         uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
-          files: ./coverage/lcov.info
+          files: ./coverage/*/lcov.info
           fail_ci_if_error: true
