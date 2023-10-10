@@ -89,7 +89,7 @@
 //!
 //! ```rust,no_run
 //! # use axum::response::IntoResponse;
-//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore, Session};
+//! # use tower_sessions::Session;
 //! # use serde::{Serialize, Deserialize};
 //! # const COUNTER_KEY: &str = "counter";
 //! # #[derive(Clone, Default, Deserialize, Serialize)]
@@ -123,6 +123,7 @@
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
 //! ```rust,no_run
+//! # #[cfg(all(feature = "sqlite-store", feature = "tokio-rt"))] {
 //! # use tower_sessions::{sqlx::SqlitePool, SqliteStore};
 //! # tokio_test::block_on(async {
 //! let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -133,7 +134,7 @@
 //!         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
 //! );
 //! deletion_task.await.unwrap().unwrap();
-//! # });
+//! # })};
 //! ```
 //!
 //! Note that sessions with no expiration time will **not** be deleted by this
