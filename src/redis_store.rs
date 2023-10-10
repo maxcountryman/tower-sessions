@@ -24,7 +24,7 @@ pub enum RedisStoreError {
 }
 
 /// A Redis session store.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RedisStore {
     client: RedisClient,
 }
@@ -39,8 +39,7 @@ impl RedisStore {
     /// use tower_sessions::RedisStore;
     ///
     /// # tokio_test::block_on(async {
-    /// let config = RedisConfig::from_url("redis://127.0.0.1:6379/1").unwrap();
-    /// let client = RedisClient::new(config, None, None);
+    /// let client = RedisClient::default();
     ///
     /// let _ = client.connect();
     /// client.wait_for_connect().await.unwrap();
