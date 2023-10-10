@@ -23,6 +23,7 @@ sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
 mysql-store = ["sqlx/mysql", "sqlx-store"]
 moka-store = ["moka"]
+tokio-rt = ["tokio/rt"]
 
 [dependencies]
 async-trait = "0.1.73"
@@ -35,7 +36,7 @@ serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
 thiserror = "1.0.49"
 time = { version = "0.3.29", features = ["serde"] }
-tokio = { version = "1.32.0", features = ["sync", "rt"] }
+tokio = { version = "1.32.0", features = ["sync"] }
 tower-cookies = "0.9.0"
 tower-layer = "0.3.2"
 tower-service = "0.3.2"
@@ -78,23 +79,23 @@ required-features = ["axum-core", "redis-store"]
 
 [[example]]
 name = "mongodb-store"
-required-features = ["axum-core", "mongodb-store"]
+required-features = ["axum-core", "mongodb-store", "tokio-rt"]
 
 [[example]]
 name = "sqlite-store"
-required-features = ["axum-core", "sqlite-store"]
+required-features = ["axum-core", "sqlite-store", "tokio-rt"]
 
 [[example]]
 name = "postgres-store"
-required-features = ["axum-core", "postgres-store"]
+required-features = ["axum-core", "postgres-store", "tokio-rt"]
 
 [[example]]
 name = "moka-postgres-store"
-required-features = ["axum-core", "postgres-store", "moka-store"]
+required-features = ["axum-core", "postgres-store", "moka-store", "tokio-rt"]
 
 [[example]]
 name = "mysql-store"
-required-features = ["axum-core", "mysql-store"]
+required-features = ["axum-core", "mysql-store", "tokio-rt"]
 
 [[example]]
 name = "strongly-typed"
