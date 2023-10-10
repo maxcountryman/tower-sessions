@@ -1,5 +1,11 @@
 //! A session which allows HTTP applications to associate data with visitors.
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    fmt::Display,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -300,7 +306,7 @@ impl Session {
     /// session.cycle_id();
     /// assert!(matches!(
     ///     session.deleted(),
-    ///     Some(SessionDeletion::Cycled(cycled_id)) if cycled_id == session.id()
+    ///     Some(SessionDeletion::Cycled(ref cycled_id)) if cycled_id == session.id()
     /// ));
     /// ```
     pub fn cycle_id(&self) {
@@ -339,8 +345,8 @@ impl Session {
     /// let session = Session::default();
     /// session.id();
     /// ```
-    pub fn id(&self) -> SessionId {
-        self.id
+    pub fn id(&self) -> &SessionId {
+        &self.id
     }
 
     /// Get the session expiration time.
@@ -496,6 +502,26 @@ impl Session {
     /// ```
     pub fn is_empty(&self) -> bool {
         self.inner.lock().data.is_empty()
+    }
+}
+
+impl PartialEq for Session {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl Eq for Session {}
+
+impl Hash for Session {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+impl Borrow<SessionId> for Session {
+    fn borrow(&self) -> &SessionId {
+        self.id()
     }
 }
 
