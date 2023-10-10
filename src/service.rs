@@ -1,15 +1,14 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
-    collections::HashSet,
     future::Future,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
+use dashmap::DashSet;
 use http::{Request, Response};
 use time::Duration;
-use tokio::sync::Mutex;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -25,7 +24,7 @@ pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
-    loaded_sessions: Arc<Mutex<HashSet<Session>>>,
+    loaded_sessions: Arc<DashSet<Session>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -79,8 +78,7 @@ where
                 // We do have a session cookie, so we retrieve it either from memory or the
                 // backing session store.
                 let session_id: SessionId = session_cookie.value().try_into()?;
-                let mut loaded_guard = loaded_sessions.lock().await;
-                match loaded_guard.get(&session_id) {
+                match loaded_sessions.get(&session_id) {
                     Some(session) => Some(session.clone()),
                     None => {
                         let session = session_store.load(&session_id).await?;
@@ -88,7 +86,7 @@ where
                         // N.B.: Our store will *not* have the session if the session is empty.
                         if let Some(session) = &session {
                             session_loaded_from_store = true;
-                            loaded_guard.insert(session.clone());
+                            loaded_sessions.insert(session.clone());
                         } else {
                             cookies.remove(session_cookie);
                         }
@@ -118,11 +116,9 @@ where
             // N.B. When a session is empty, it will be deleted. Here the deleted method
             // accounts for this check.
             if let Some(session_deletion) = session.deleted() {
-                let mut loaded_guard = loaded_sessions.lock().await;
-
                 match session_deletion {
                     SessionDeletion::Deleted => {
-                        loaded_guard.remove(&session);
+                        loaded_sessions.remove(&session);
 
                         if session_loaded_from_store {
                             session_store.delete(session.id()).await?;
@@ -136,14 +132,14 @@ where
                     }
 
                     SessionDeletion::Cycled(deleted_id) => {
-                        loaded_guard.remove(&session);
+                        loaded_sessions.remove(&session);
 
                         if session_loaded_from_store {
                             session_store.delete(&deleted_id).await?;
                         }
 
                         session.id = SessionId::default();
-                        loaded_guard.insert(session.clone());
+                        loaded_sessions.insert(session.clone());
                     }
                 }
             };
