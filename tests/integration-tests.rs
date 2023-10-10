@@ -44,7 +44,7 @@ mod redis_store_tests {
         let database_url = std::option_env!("REDIS_URL").unwrap();
 
         let config = RedisConfig::from_url(database_url).unwrap();
-        let client = RedisClient::new(config, None, None);
+        let client = RedisClient::new(config, None, None, None);
 
         client.connect();
         client.wait_for_connect().await.unwrap();
