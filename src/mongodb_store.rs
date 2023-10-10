@@ -62,7 +62,6 @@ impl MongoDBStore {
         }
     }
 
-    //#[cfg(feature = "tokio")]
     /// This function will keep running indefinitely, deleting expired documents
     /// and then waiting for the specified period before deleting again.
     ///

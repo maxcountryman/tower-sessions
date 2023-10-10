@@ -1,5 +1,6 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
+    collections::HashSet,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -24,11 +25,7 @@ pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
-
-    // TODO: This is a stopgap measure to ensure correctness. However, it should not be required
-    // and will be removed once the underlying session implementation is modified to ensure
-    // correct concurrent access.
-    session_lock: Arc<Mutex<()>>,
+    loaded_sessions: Arc<Mutex<HashSet<Session>>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -38,7 +35,7 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
             inner,
             session_store,
             cookie_config,
-            session_lock: Default::default(),
+            loaded_sessions: Default::default(),
         }
     }
 }
@@ -64,13 +61,11 @@ where
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let session_store = self.session_store.clone();
         let cookie_config = self.cookie_config.clone();
-        let session_lock = self.session_lock.clone();
+        let loaded_sessions = self.loaded_sessions.clone();
 
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
         Box::pin(async move {
-            let _session_guard = session_lock.lock().await;
-
             let cookies = req
                 .extensions()
                 .get::<Cookies>()
@@ -81,21 +76,26 @@ where
             let mut session = if let Some(session_cookie) =
                 cookies.get(&cookie_config.name).map(Cookie::into_owned)
             {
-                // We do have a session cookie, so let's see if our store has the associated
-                // session.
-                //
-                // N.B.: Our store will *not* have the session if the session is empty.
-                let session_id = session_cookie.value().try_into()?;
-                let session = session_store.load(&session_id).await?;
+                // We do have a session cookie, so we retrieve it either from memory or the
+                // backing session store.
+                let session_id: SessionId = session_cookie.value().try_into()?;
+                let mut loaded_guard = loaded_sessions.lock().await;
+                match loaded_guard.get(&session_id) {
+                    Some(session) => Some(session.clone()),
+                    None => {
+                        let session = session_store.load(&session_id).await?;
 
-                // If the store does not know about this session, we should remove the cookie.
-                if session.is_none() {
-                    cookies.remove(session_cookie);
-                } else {
-                    session_loaded_from_store = true;
+                        // N.B.: Our store will *not* have the session if the session is empty.
+                        if let Some(session) = &session {
+                            session_loaded_from_store = true;
+                            loaded_guard.insert(session.clone());
+                        } else {
+                            cookies.remove(session_cookie);
+                        }
+
+                        session
+                    }
                 }
-
-                session
             } else {
                 // We don't have a session cookie, so let's create a new session.
                 Some((&cookie_config).into())
@@ -118,10 +118,14 @@ where
             // N.B. When a session is empty, it will be deleted. Here the deleted method
             // accounts for this check.
             if let Some(session_deletion) = session.deleted() {
+                let mut loaded_guard = loaded_sessions.lock().await;
+
                 match session_deletion {
                     SessionDeletion::Deleted => {
+                        loaded_guard.remove(&session);
+
                         if session_loaded_from_store {
-                            session_store.delete(&session.id()).await?;
+                            session_store.delete(session.id()).await?;
                         }
 
                         cookies.remove(cookie_config.build_cookie(&session));
@@ -132,11 +136,14 @@ where
                     }
 
                     SessionDeletion::Cycled(deleted_id) => {
+                        loaded_guard.remove(&session);
+
                         if session_loaded_from_store {
                             session_store.delete(&deleted_id).await?;
                         }
 
                         session.id = SessionId::default();
+                        loaded_guard.insert(session.clone());
                     }
                 }
             };
@@ -293,7 +300,7 @@ impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
             inner,
             session_store: self.session_store.clone(),
             cookie_config: self.cookie_config.clone(),
-            session_lock: Default::default(),
+            loaded_sessions: Default::default(),
         };
 
         CookieManager::new(session_manager)
