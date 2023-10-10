@@ -76,6 +76,42 @@
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
+//! ## Concurrent data access
+//!
+//! It's important to note that sessions can be accessed through concurrent
+//! processes. What this means is that it's **not safe** to read from a session,
+//! alter the read value, and write this modified value back to the session.
+//! Making an update to the session in this way will lead to **data loss**.
+//!
+//! To perform such writes safely, it's important to use
+//! [`replace_if_equal`](Session::replace_if_equal), which provides a [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap) interface for updating the session. For example, to safely
+//! update our counter, we should instead use `replace_if_equal`.
+//!
+//! ```rust,no_run
+//! # use axum::response::IntoResponse;
+//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore, Session};
+//! # use serde::{Serialize, Deserialize};
+//! # const COUNTER_KEY: &str = "counter";
+//! # #[derive(Clone, Default, Deserialize, Serialize)]
+//! # struct Counter(usize);
+//! # tokio_test::block_on(async {
+//! async fn handler(session: Session) -> impl IntoResponse {
+//!     let mut counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_else(|| {
+//!         let counter = Counter::default();
+//!         session.insert(COUNTER_KEY, counter.clone()).unwrap();
+//!         counter
+//!     });
+//!
+//!     let mut new_counter = Counter(counter.0 + 1);
+//!
+//!     while let Ok(false) = session.replace_if_equal(COUNTER_KEY, counter, new_counter) {
+//!         counter = session.get(COUNTER_KEY).unwrap().unwrap();
+//!         new_counter = Counter(counter.0 + 1);
+//!     }
+//! }
+//! # });
+//! ```
+//!
 //! ## Session expiry management
 //!
 //! In cases where you are utilizing stores that lack automatic session expiry
@@ -86,7 +122,6 @@
 //! which is designed to be executed as a recurring task. This process ensures
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
-//!
 //! ```rust,no_run
 //! # use tower_sessions::{sqlx::SqlitePool, SqliteStore};
 //! # tokio_test::block_on(async {
@@ -109,7 +144,6 @@
 //!
 //! When using `axum`, the [`Session`] will already function as an extractor.
 //! It's possible to build further on this to create extractors of custom types.
-//!
 //! ```rust,no_run
 //! # use async_trait::async_trait;
 //! # use axum::extract::FromRequestParts;
