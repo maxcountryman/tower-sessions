@@ -119,6 +119,12 @@ jobs:
         run: |
           output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
           cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir $output_dir
+          mkdir -p coverage-artifacts
+          mv $output_dir coverage-artifacts/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: coverage-artifacts
+          path: coverage-artifacts
 
   upload-coverage:
     needs: test-integration
@@ -126,8 +132,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v2
         with:
-          name: coverage
-          path: ./coverage
+          name: coverage-artifacts
+          path: coverage-artifacts
+      - run: |
+          mv coverage-artifacts/* ./coverage/
       - name: Upload all coverage data to Codecov
         uses: codecov/codecov-action@v3
         env:
