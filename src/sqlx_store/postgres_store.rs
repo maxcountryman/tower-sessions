@@ -123,6 +123,7 @@ impl PostgresStore {
     /// );
     /// # })
     /// ```
+    #[cfg(feature = "tokio-rt")]
     pub async fn continuously_delete_expired(
         self,
         period: tokio::time::Duration,
