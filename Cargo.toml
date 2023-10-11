@@ -14,7 +14,7 @@ readme = "README.md"
 rust-version = "1.67.1"
 
 [features]
-default = ["axum-core", "memory-store"]
+default = ["axum-core", "memory-store", "diesel-store"]
 memory-store = []
 redis-store = ["fred", "rmp-serde"]
 mongodb-store = ["mongodb", "bson"]
@@ -23,7 +23,8 @@ sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
 mysql-store = ["sqlx/mysql", "sqlx-store"]
 moka-store = ["moka"]
-tokio-rt = ["tokio/rt"]
+tokio-rt = ["tokio/rt", "tokio/time"]
+diesel-store = ["dep:diesel", "tokio/rt", "rmp-serde"]
 
 [dependencies]
 async-trait = "0.1.73"
@@ -54,6 +55,7 @@ sqlx = { optional = true, version = "0.7.2", features = [
 ] }
 tokio = { optional = true, version = "1.32.0", default-features = false }
 moka = { optional = true, version = "0.12.0", features = ["future"] }
+diesel = { optional = true, default-features = false, version = "2.1", features = ["r2d2", "time"] }
 
 [dev-dependencies]
 axum = "0.6.20"
@@ -102,3 +104,12 @@ required-features = ["axum-core", "mysql-store", "tokio-rt"]
 [[example]]
 name = "strongly-typed"
 required-features = ["axum-core", "memory-store"]
+
+[[example]]
+name = "diesel-store"
+required-features = ["axum-core", "diesel-store", "diesel/sqlite", "tokio-rt"]
+
+
+[[example]]
+name = "diesel-store-with-custom-table"
+required-features = ["axum-core", "diesel-store", "diesel/sqlite", "tokio-rt"]
