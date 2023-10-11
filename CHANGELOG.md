@@ -2,7 +2,7 @@
 
 # 0.3.1
 
-- Use `DashMap` entry API to address data race introduced by dashmap. #40
+- Use `DashMap` entry API to address data race introduced by dashmap. #41
 
 # 0.3.0
 
