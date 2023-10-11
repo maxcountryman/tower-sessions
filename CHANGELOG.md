@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.3.1
+
+- Use `DashMap` entry API to address data race introduced by dashmap. #40
+
 # 0.3.0
 
 **Breaking Changes**
