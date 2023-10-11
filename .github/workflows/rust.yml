@@ -121,7 +121,7 @@ jobs:
           cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir $output_dir
           mkdir -p coverage-artifacts
           mv $output_dir coverage-artifacts/
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: coverage-artifacts
           path: coverage-artifacts
