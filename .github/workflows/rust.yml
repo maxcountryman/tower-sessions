@@ -135,6 +135,7 @@ jobs:
           name: coverage-artifacts
           path: coverage-artifacts
       - run: |
+          mkdir ./coverage
           mv coverage-artifacts/* ./coverage/
       - name: Upload all coverage data to Codecov
         uses: codecov/codecov-action@v3
