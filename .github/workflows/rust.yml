@@ -130,7 +130,7 @@ jobs:
     needs: test-integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: coverage-artifacts
           path: coverage-artifacts
