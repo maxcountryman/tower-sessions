@@ -6,7 +6,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use dashmap::DashSet;
+use dashmap::{mapref::entry::Entry, DashMap};
 use http::{Request, Response};
 use time::Duration;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
@@ -24,7 +24,7 @@ pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
-    loaded_sessions: Arc<DashSet<Session>>,
+    loaded_sessions: Arc<DashMap<SessionId, Session>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -78,21 +78,21 @@ where
                 // We do have a session cookie, so we retrieve it either from memory or the
                 // backing session store.
                 let session_id: SessionId = session_cookie.value().try_into()?;
-                match loaded_sessions.get(&session_id) {
-                    Some(session) => Some(session.clone()),
-                    None => {
+                match loaded_sessions.entry(session_id) {
+                    Entry::Vacant(entry) => {
                         let session = session_store.load(&session_id).await?;
 
                         // N.B.: Our store will *not* have the session if the session is empty.
                         if let Some(session) = &session {
                             session_loaded_from_store = true;
-                            loaded_sessions.insert(session.clone());
+                            entry.insert(session.clone());
                         } else {
                             cookies.remove(session_cookie);
                         }
 
                         session
                     }
+                    Entry::Occupied(entry) => Some(entry.get().clone()),
                 }
             } else {
                 // We don't have a session cookie, so let's create a new session.
@@ -118,7 +118,7 @@ where
             if let Some(session_deletion) = session.deleted() {
                 match session_deletion {
                     SessionDeletion::Deleted => {
-                        loaded_sessions.remove(&session);
+                        loaded_sessions.remove(session.id());
 
                         if session_loaded_from_store {
                             session_store.delete(session.id()).await?;
@@ -132,14 +132,14 @@ where
                     }
 
                     SessionDeletion::Cycled(deleted_id) => {
-                        loaded_sessions.remove(&session);
+                        loaded_sessions.remove(session.id());
 
                         if session_loaded_from_store {
                             session_store.delete(&deleted_id).await?;
                         }
 
                         session.id = SessionId::default();
-                        loaded_sessions.insert(session.clone());
+                        loaded_sessions.insert(*session.id(), session.clone());
                     }
                 }
             };
