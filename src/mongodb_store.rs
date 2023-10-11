@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use bson::{doc, to_document, DateTime};
+use dashmap::DashMap;
 use mongodb::{options::UpdateOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,7 +29,7 @@ pub enum MongoDBStoreError {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MongoDBSessionRecord {
-    data: HashMap<String, Value>,
+    data: DashMap<String, Value>,
 
     #[serde(rename = "expireAt")]
     expiration_time: Option<DateTime>,
