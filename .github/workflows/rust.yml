@@ -137,10 +137,11 @@ jobs:
       - run: |
           mkdir ./coverage
           mv coverage-artifacts/* ./coverage/
+          ls -la ./coverage
       - name: Upload all coverage data to Codecov
         uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
-          files: ./coverage/*/lcov.info
+          directory: ./coverage
           fail_ci_if_error: true
