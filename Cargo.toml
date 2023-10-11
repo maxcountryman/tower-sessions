@@ -64,6 +64,8 @@ tower = "0.4.13"
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
 reqwest = "0.11.22"
+diesel = {default-features = false, version = "2.1", features = ["sqlite"] }
+libsqlite3-sys = { version = "0.26", features = ["bundled"] }
 
 [package.metadata.docs.rs]
 all-features = true
