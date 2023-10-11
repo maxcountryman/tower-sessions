@@ -1,12 +1,12 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
     borrow::Borrow,
-    collections::HashMap,
     fmt::Display,
     hash::{Hash, Hasher},
     sync::Arc,
 };
 
+use dashmap::{mapref::entry::Entry, DashMap};
 use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
@@ -30,11 +30,14 @@ pub enum SessionError {
 
 type SessionResult<T> = Result<T, SessionError>;
 
+type SessionData = DashMap<String, Value>;
+
 /// A session which allows HTTP applications to associate key-value pairs with
 /// visitors.
 #[derive(Debug, Clone, Default)]
 pub struct Session {
     pub(crate) id: SessionId,
+    data: Arc<SessionData>,
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -53,7 +56,6 @@ impl Session {
     /// ```
     pub fn new(expiration_time: Option<OffsetDateTime>) -> Self {
         let inner = Inner {
-            data: HashMap::new(),
             expiration_time,
             modified: false,
             deleted: None,
@@ -61,6 +63,7 @@ impl Session {
 
         Self {
             id: SessionId::default(),
+            data: Arc::new(DashMap::new()),
             inner: Arc::new(Mutex::new(inner)),
         }
     }
@@ -107,11 +110,18 @@ impl Session {
     /// ```
     pub fn insert_value(&self, key: &str, value: Value) -> Option<Value> {
         let mut inner = self.inner.lock();
-        if inner.data.get(key) != Some(&value) {
-            inner.modified = true;
-            inner.data.insert(key.to_string(), value)
-        } else {
-            None
+        match self.data.entry(key.to_string()) {
+            Entry::Occupied(mut entry) if *entry.get() != value => {
+                inner.modified = true;
+                Some(entry.insert(value))
+            }
+
+            Entry::Vacant(entry) => {
+                inner.modified = true;
+                Some((*entry.insert(value)).clone())
+            }
+
+            _ => None,
         }
     }
 
@@ -149,8 +159,7 @@ impl Session {
     /// assert_eq!(value, serde_json::json!(42));
     /// ```
     pub fn get_value(&self, key: &str) -> Option<Value> {
-        let inner = self.inner.lock();
-        inner.data.get(key).cloned()
+        self.data.get(key).map(|v| v.clone())
     }
 
     /// Removes a value from the store, retuning the value of the key if it was
@@ -193,7 +202,7 @@ impl Session {
     /// ```
     pub fn remove_value(&self, key: &str) -> Option<Value> {
         let mut inner = self.inner.lock();
-        if let Some(removed) = inner.data.remove(key) {
+        if let Some((_, removed)) = self.data.remove(key) {
             inner.modified = true;
             Some(removed)
         } else {
@@ -239,16 +248,18 @@ impl Session {
         new_value: impl Serialize,
     ) -> SessionResult<bool> {
         let mut inner = self.inner.lock();
-        match inner.data.get(key) {
-            Some(current_value) if serde_json::to_value(&old_value)? == *current_value => {
+        match self.data.entry(key.to_string()) {
+            Entry::Occupied(mut entry) if serde_json::to_value(&old_value)? == *entry.get() => {
                 let new_value = serde_json::to_value(&new_value)?;
-                if *current_value != new_value {
+                if *entry.get() != new_value {
                     inner.modified = true;
-                    inner.data.insert(key.to_string(), new_value);
+                    entry.insert(new_value);
+                    Ok(true)
+                } else {
+                    Ok(false)
                 }
-                Ok(true) // Success, old value matched.
             }
-            _ => Ok(false), // Failure, key doesn't exist or old value doesn't match.
+            _ => Ok(false),
         }
     }
 
@@ -264,8 +275,7 @@ impl Session {
     /// assert!(session.get_value("foo").is_none());
     /// ```
     pub fn clear(&self) {
-        let mut inner = self.inner.lock();
-        inner.data.clear();
+        self.data.clear();
     }
 
     /// Sets `deleted` on the session to `SessionDeletion::Deleted`.
@@ -458,7 +468,7 @@ impl Session {
     /// ```
     pub fn modified(&self) -> bool {
         let inner = self.inner.lock();
-        inner.modified && !inner.data.is_empty()
+        inner.modified && !self.is_empty()
     }
 
     /// Returns `Some(SessionDeletion)` if one has been set and `None`
@@ -501,7 +511,7 @@ impl Session {
     /// assert!(!session.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().data.is_empty()
+        self.data.is_empty()
     }
 }
 
@@ -534,13 +544,13 @@ impl From<SessionRecord> for Session {
         }: SessionRecord,
     ) -> Self {
         let inner = Inner {
-            data,
             expiration_time,
             modified: false,
             deleted: None,
         };
         Self {
             id,
+            data: Arc::new(data),
             inner: Arc::new(Mutex::new(inner)),
         }
     }
@@ -559,11 +569,8 @@ impl From<&CookieConfig> for Session {
     }
 }
 
-type SessionData = HashMap<String, Value>;
-
 #[derive(Debug, Default)]
 struct Inner {
-    data: SessionData,
     expiration_time: Option<OffsetDateTime>,
     modified: bool,
     deleted: Option<SessionDeletion>,
@@ -654,7 +661,7 @@ impl From<&Session> for SessionRecord {
         Self {
             id: session.id,
             expiration_time: session_guard.expiration_time,
-            data: session_guard.data.clone(),
+            data: (*session.data).clone(),
         }
     }
 }

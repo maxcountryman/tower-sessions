@@ -27,7 +27,7 @@ tokio-rt = ["tokio/rt"]
 
 [dependencies]
 async-trait = "0.1.73"
-dashmap = "5.5.3"
+dashmap = { version = "5.5.3", features = ["serde"] }
 http = "0.2.9"
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
