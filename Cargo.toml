@@ -26,6 +26,9 @@ moka-store = ["moka"]
 tokio-rt = ["tokio/rt", "tokio/time"]
 diesel-store = ["dep:diesel", "tokio/rt", "rmp-serde"]
 
+__diesel_postgres = ["diesel-store", "diesel/postgres"]
+__diesel_mysql = ["diesel-store", "diesel/mysql"]
+
 [dependencies]
 async-trait = "0.1.73"
 dashmap = "5.5.3"
