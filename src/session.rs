@@ -3,11 +3,14 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use dashmap::{mapref::entry::Entry, DashMap};
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use time::Duration;
@@ -38,7 +41,8 @@ type SessionData = DashMap<String, Value>;
 pub struct Session {
     pub(crate) id: SessionId,
     data: Arc<SessionData>,
-    inner: Arc<Mutex<Inner>>,
+    modified: Arc<AtomicBool>,
+    inner: Arc<RwLock<Inner>>,
 }
 
 impl Session {
@@ -57,14 +61,14 @@ impl Session {
     pub fn new(expiration_time: Option<OffsetDateTime>) -> Self {
         let inner = Inner {
             expiration_time,
-            modified: false,
             deleted: None,
         };
 
         Self {
             id: SessionId::default(),
             data: Arc::new(DashMap::new()),
-            inner: Arc::new(Mutex::new(inner)),
+            modified: Arc::new(AtomicBool::new(false)),
+            inner: Arc::new(RwLock::new(inner)),
         }
     }
 
@@ -109,16 +113,16 @@ impl Session {
     /// assert_eq!(value, Some(serde_json::json!(42)));
     /// ```
     pub fn insert_value(&self, key: &str, value: Value) -> Option<Value> {
-        let mut inner = self.inner.lock();
         match self.data.entry(key.to_string()) {
             Entry::Occupied(mut entry) if *entry.get() != value => {
-                inner.modified = true;
+                self.modified.store(true, Ordering::Release);
                 Some(entry.insert(value))
             }
 
             Entry::Vacant(entry) => {
-                inner.modified = true;
-                Some((*entry.insert(value)).clone())
+                self.modified.store(true, Ordering::Release);
+                entry.insert(value);
+                None
             }
 
             _ => None,
@@ -201,9 +205,8 @@ impl Session {
     /// assert!(value.is_none());
     /// ```
     pub fn remove_value(&self, key: &str) -> Option<Value> {
-        let mut inner = self.inner.lock();
         if let Some((_, removed)) = self.data.remove(key) {
-            inner.modified = true;
+            self.modified.store(true, Ordering::Release);
             Some(removed)
         } else {
             None
@@ -247,12 +250,11 @@ impl Session {
         old_value: impl Serialize,
         new_value: impl Serialize,
     ) -> SessionResult<bool> {
-        let mut inner = self.inner.lock();
         match self.data.entry(key.to_string()) {
             Entry::Occupied(mut entry) if serde_json::to_value(&old_value)? == *entry.get() => {
                 let new_value = serde_json::to_value(&new_value)?;
                 if *entry.get() != new_value {
-                    inner.modified = true;
+                    self.modified.store(true, Ordering::Release);
                     entry.insert(new_value);
                     Ok(true)
                 } else {
@@ -295,7 +297,7 @@ impl Session {
     /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
     /// ```
     pub fn delete(&self) {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.write();
         inner.deleted = Some(SessionDeletion::Deleted);
     }
 
@@ -320,9 +322,9 @@ impl Session {
     /// ));
     /// ```
     pub fn cycle_id(&self) {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.write();
         inner.deleted = Some(SessionDeletion::Cycled(self.id));
-        inner.modified = true;
+        self.modified.store(true, Ordering::SeqCst);
     }
 
     /// Sets `deleted` on the session to `SessionDeletion::Deleted` and clears
@@ -373,8 +375,7 @@ impl Session {
     ///     .is_some_and(|et| et > OffsetDateTime::now_utc()));
     /// ```
     pub fn expiration_time(&self) -> Option<OffsetDateTime> {
-        let inner = self.inner.lock();
-        inner.expiration_time
+        self.inner.read().expiration_time
     }
 
     /// Set `expiration_time` give the given value.
@@ -398,9 +399,9 @@ impl Session {
     /// assert!(session.modified());
     /// ```
     pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.write();
         inner.expiration_time = Some(expiration_time);
-        inner.modified = true;
+        self.modified.store(true, Ordering::SeqCst);
     }
 
     /// Set `expiration_time` to current time in UTC plus the given `max_age`
@@ -447,7 +448,7 @@ impl Session {
     /// assert!(!session.active());
     /// ```
     pub fn active(&self) -> bool {
-        let inner = self.inner.lock();
+        let inner = self.inner.read();
         if let Some(expiration_time) = inner.expiration_time {
             expiration_time > OffsetDateTime::now_utc()
         } else {
@@ -467,8 +468,7 @@ impl Session {
     /// assert!(session.modified());
     /// ```
     pub fn modified(&self) -> bool {
-        let inner = self.inner.lock();
-        inner.modified && !self.is_empty()
+        self.modified.load(Ordering::Acquire) && !self.is_empty()
     }
 
     /// Returns `Some(SessionDeletion)` if one has been set and `None`
@@ -495,7 +495,7 @@ impl Session {
             return Some(SessionDeletion::Deleted);
         };
 
-        self.inner.lock().deleted
+        self.inner.read().deleted
     }
 
     /// Returns `true` if the session is empty.
@@ -545,13 +545,13 @@ impl From<SessionRecord> for Session {
     ) -> Self {
         let inner = Inner {
             expiration_time,
-            modified: false,
             deleted: None,
         };
         Self {
             id,
             data: Arc::new(data),
-            inner: Arc::new(Mutex::new(inner)),
+            modified: Arc::new(AtomicBool::from(false)),
+            inner: Arc::new(RwLock::new(inner)),
         }
     }
 }
@@ -560,7 +560,7 @@ impl From<&CookieConfig> for Session {
     fn from(cookie_config: &CookieConfig) -> Self {
         let session = Session::default();
         if let Some(max_age) = cookie_config.max_age {
-            let mut inner = session.inner.lock();
+            let mut inner = session.inner.write();
             // N.B. We manually set the expiration time here because creating a session from
             // a config does *not* indicate the session has been modified.
             inner.expiration_time = Some(OffsetDateTime::now_utc().saturating_add(max_age));
@@ -572,7 +572,6 @@ impl From<&CookieConfig> for Session {
 #[derive(Debug, Default)]
 struct Inner {
     expiration_time: Option<OffsetDateTime>,
-    modified: bool,
     deleted: Option<SessionDeletion>,
 }
 
@@ -657,7 +656,7 @@ impl SessionRecord {
 
 impl From<&Session> for SessionRecord {
     fn from(session: &Session) -> Self {
-        let session_guard = session.inner.lock();
+        let session_guard = session.inner.read();
         Self {
             id: session.id,
             expiration_time: session_guard.expiration_time,
