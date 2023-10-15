@@ -70,12 +70,12 @@ jobs:
         run: |
           output_dir="./coverage/doc"
           cargo tarpaulin -olcov --doc  --output-dir $output_dir
-          mkdir -p coverage-artifacts
-          mv $output_dir coverage-artifacts/
+          mkdir -p coverage-artifacts/doc
+          mv $output_dir coverage-artifacts/doc/
       - uses: actions/upload-artifact@v3
         with:
-          name: coverage-artifacts
-          path: coverage-artifacts
+          name: coverage-artifacts-doc
+          path: coverage-artifacts/doc
 
   test-concurrency:
     needs: check
@@ -142,12 +142,12 @@ jobs:
         run: |
           output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
           cargo tarpaulin -olcov --test integration-tests --features ${{ matrix.features }} --output-dir $output_dir
-          mkdir -p coverage-artifacts
-          mv $output_dir coverage-artifacts/
+          mkdir -p coverage-artifacts/integration
+          mv $output_dir coverage-artifacts/integration/
       - uses: actions/upload-artifact@v3
         with:
-          name: coverage-artifacts
-          path: coverage-artifacts
+          name: coverage-artifacts-integration
+          path: coverage-artifacts/integration
 
   upload-coverage:
     needs:
@@ -155,13 +155,21 @@ jobs:
       - test-integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v3
+      - name: Download Docs Coverage
+        uses: actions/download-artifact@v2
         with:
-          name: coverage-artifacts
-          path: coverage-artifacts
-      - run: |
-          mkdir ./coverage
-          mv coverage-artifacts/* ./coverage/
+          name: coverage-artifacts-doc
+          path: coverage-artifacts-doc
+      - name: Download Integration Coverage
+        uses: actions/download-artifact@v2
+        with:
+          name: coverage-artifacts-integration
+          path: coverage-artifacts-integration
+      - name: Combine Coverage Data
+        run: |
+          mkdir -p ./coverage
+          mv coverage-artifacts-doc/* ./coverage/
+          mv coverage-artifacts-integration/* ./coverage/
           ls -la ./coverage
       - name: Upload all coverage data to Codecov
         uses: codecov/codecov-action@v3
