@@ -65,6 +65,16 @@ jobs:
       - name: Run doc tests
         run: |
           cargo test --all-features --doc
+      - name: Generate code coverage
+        run: |
+          output_dir="./coverage/doc"
+          cargo tarpaulin -olcov --doc  --output-dir $output_dir
+          mkdir -p coverage-artifacts
+          mv $output_dir coverage-artifacts/
+      - uses: actions/upload-artifact@v3
+        with:
+          name: coverage-artifacts
+          path: coverage-artifacts
 
   test-concurrency:
     needs: check
@@ -130,7 +140,7 @@ jobs:
       - name: Generate code coverage
         run: |
           output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
-          cargo tarpaulin -olcov --features ${{ matrix.features }} --output-dir $output_dir
+          cargo tarpaulin -olcov --test integration-tests --features ${{ matrix.features }} --output-dir $output_dir
           mkdir -p coverage-artifacts
           mv $output_dir coverage-artifacts/
       - uses: actions/upload-artifact@v3
