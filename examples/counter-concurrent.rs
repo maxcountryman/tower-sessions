@@ -59,5 +59,5 @@ async fn handler(session: Session) -> impl IntoResponse {
         new_counter = Counter(counter.0 + 1);
     }
 
-    format!("Current count: {}", counter.0)
+    format!("{}", counter.0)
 }
