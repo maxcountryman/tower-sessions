@@ -18,13 +18,19 @@ use crate::{
     CookieConfig, Session, SessionStore,
 };
 
+#[derive(Debug, Default)]
+struct LoadedSession {
+    session: Session,
+    refs: usize,
+}
+
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
 pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
-    loaded_sessions: Arc<DashMap<SessionId, Session>>,
+    loaded_sessions: Arc<DashMap<SessionId, LoadedSession>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -71,7 +77,6 @@ where
                 .cloned()
                 .expect("Something has gone wrong with tower-cookies.");
 
-            let mut session_loaded_from_store = false;
             let mut session = if let Some(session_cookie) =
                 cookies.get(&cookie_config.name).map(Cookie::into_owned)
             {
@@ -84,15 +89,22 @@ where
 
                         // N.B.: Our store will *not* have the session if the session is empty.
                         if let Some(session) = &session {
-                            session_loaded_from_store = true;
-                            entry.insert(session.clone());
+                            entry.insert(LoadedSession {
+                                session: session.clone(),
+                                refs: 1,
+                            });
                         } else {
                             cookies.remove(session_cookie);
                         }
 
                         session
                     }
-                    Entry::Occupied(entry) => Some(entry.get().clone()),
+
+                    Entry::Occupied(mut entry) => {
+                        let loaded_session = entry.get_mut();
+                        loaded_session.refs += 1;
+                        Some(loaded_session.session.clone())
+                    }
                 }
             } else {
                 // We don't have a session cookie, so let's create a new session.
@@ -113,17 +125,18 @@ where
 
             let res = Ok(inner.call(req).await.map_err(Into::into)?);
 
+            let loaded_session = loaded_sessions.entry(*session.id());
+
             // N.B. When a session is empty, it will be deleted. Here the deleted method
             // accounts for this check.
             if let Some(session_deletion) = session.deleted() {
                 match session_deletion {
                     SessionDeletion::Deleted => {
-                        loaded_sessions.remove(session.id());
+                        if let Entry::Occupied(entry) = loaded_session {
+                            entry.remove();
+                        };
 
-                        if session_loaded_from_store {
-                            session_store.delete(session.id()).await?;
-                        }
-
+                        session_store.delete(session.id()).await?;
                         cookies.remove(cookie_config.build_cookie(&session));
 
                         // Since the session has been deleted, there's no need for further
@@ -132,14 +145,21 @@ where
                     }
 
                     SessionDeletion::Cycled(deleted_id) => {
-                        loaded_sessions.remove(session.id());
-
-                        if session_loaded_from_store {
-                            session_store.delete(&deleted_id).await?;
+                        if let Entry::Occupied(entry) = loaded_session {
+                            entry.remove();
                         }
 
-                        session.id = SessionId::default();
-                        loaded_sessions.insert(*session.id(), session.clone());
+                        session_store.delete(&deleted_id).await?;
+                        cookies.remove(cookie_config.build_cookie(&session));
+
+                        if session.modified() {
+                            session.id = SessionId::default();
+                            let session_record = (&session).into();
+                            session_store.save(&session_record).await?;
+                            cookies.add(cookie_config.build_cookie(&session));
+                        }
+
+                        return res;
                     }
                 }
             };
@@ -153,9 +173,32 @@ where
             // the `Set-Cookie` header whenever modified or if some "always save" marker is
             // set.
             if session.modified() {
-                let session_record = (&session).into();
-                session_store.save(&session_record).await?;
-                cookies.add(cookie_config.build_cookie(&session))
+                match loaded_session {
+                    Entry::Occupied(mut entry) => {
+                        let loaded = entry.get_mut();
+                        if loaded.refs == 1 {
+                            let session_record = (&session).into();
+                            session_store.save(&session_record).await?;
+                            cookies.add(cookie_config.build_cookie(&session));
+                            entry.remove();
+
+                            return res;
+                        }
+
+                        loaded.refs -= 1;
+                    }
+
+                    Entry::Vacant(entry) => {
+                        let mut entry = entry.insert_entry(LoadedSession {
+                            session: session.clone(),
+                            refs: 1,
+                        });
+                        let session_record = (&session).into();
+                        session_store.save(&session_record).await?;
+                        cookies.add(cookie_config.build_cookie(&session));
+                        entry.get_mut().refs -= 1;
+                    }
+                };
             }
 
             res
