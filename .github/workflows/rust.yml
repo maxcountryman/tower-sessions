@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install nightly --profile minimal
           cargo install cargo-tarpaulin
       - uses: Swatinem/rust-cache@v2
       - name: Run doc tests
@@ -150,7 +150,9 @@ jobs:
           path: coverage-artifacts
 
   upload-coverage:
-    needs: test-integration
+    needs:
+      - test-docs
+      - test-integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v3
