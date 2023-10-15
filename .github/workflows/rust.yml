@@ -74,7 +74,7 @@ jobs:
       - run: |
           rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
-      - name: Run doc tests
+      - name: Run concurrency tests
         run: |
           cargo test --test concurrency-tests
 
