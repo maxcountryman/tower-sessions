@@ -32,7 +32,7 @@ fn start_example_binary() -> ChildGuard {
         .spawn()
         .expect("Failed to start example binary");
 
-    std::thread::sleep(Duration::from_secs(2)); // Wait for the example binary to initialize.
+    std::thread::sleep(Duration::from_secs(5)); // Wait for the example binary to initialize.
 
     ChildGuard { child }
 }
