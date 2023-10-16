@@ -143,7 +143,7 @@ where
 /// A trait providing a deletion method for expired methods and optionally a
 /// method that runs indefinitely, deleting expired sessions.
 #[async_trait]
-pub trait ExpiredDeletion: Sized {
+pub trait ExpiredDeletion: Sized + Send {
     /// The error associated with deleting expired sessions.
     type Error;
 
@@ -177,8 +177,8 @@ pub trait ExpiredDeletion: Sized {
     /// );
     /// # })
     /// ```
-    #[cfg(all(feature = "tokio-rt", feature = "tokio-time"))]
-    #[cfg_attr(docsrs, doc(cfg(all(feature = "tokio-rt", feature = "tokio-time"))))]
+    #[cfg(feature = "continuously-delete-expired")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "continuously-delete-expired")))]
     async fn continuously_delete_expired(
         self,
         period: tokio::time::Duration,

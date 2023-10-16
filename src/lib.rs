@@ -123,7 +123,7 @@
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
 //! ```rust,no_run
-//! # #[cfg(all(feature = "sqlite-store", feature = "tokio-rt", feature="tokio-time"))] {
+//! # #[cfg(all(feature = "sqlite-store", feature = "continuously-delete-expired"))] {
 //! # use tower_sessions::{sqlx::SqlitePool, SqliteStore, session_store::ExpiredDeletion};
 //! # tokio_test::block_on(async {
 //! let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();

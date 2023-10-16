@@ -29,6 +29,7 @@ diesel-store = ["dep:diesel", "tokio/rt", "rmp-serde"]
 __diesel_postgres = ["diesel-store", "diesel/postgres"]
 __diesel_mysql = ["diesel-store", "diesel/mysql"]
 tokio-time = ["tokio/time"]
+continuously-delete-expired = ["tokio-rt", "tokio-time"]
 
 [dependencies]
 async-trait = "0.1.73"
@@ -89,15 +90,23 @@ required-features = ["axum-core", "redis-store"]
 
 [[example]]
 name = "mongodb-store"
-required-features = ["axum-core", "mongodb-store", "tokio-rt", "tokio-time"]
+required-features = [
+    "axum-core",
+    "mongodb-store",
+    "continuously-delete-expired",
+]
 
 [[example]]
 name = "sqlite-store"
-required-features = ["axum-core", "sqlite-store", "tokio-rt", "tokio-time"]
+required-features = ["axum-core", "sqlite-store", "continuously-delete-expired"]
 
 [[example]]
 name = "postgres-store"
-required-features = ["axum-core", "postgres-store", "tokio-rt", "tokio-time"]
+required-features = [
+    "axum-core",
+    "postgres-store",
+    "continuously-delete-expired",
+]
 
 [[example]]
 name = "moka-postgres-store"
@@ -105,13 +114,12 @@ required-features = [
     "axum-core",
     "postgres-store",
     "moka-store",
-    "tokio-rt",
-    "tokio-time",
+    "continuously-delete-expired",
 ]
 
 [[example]]
 name = "mysql-store"
-required-features = ["axum-core", "mysql-store", "tokio-rt", "tokio-time"]
+required-features = ["axum-core", "mysql-store", "continuously-delete-expired"]
 
 [[example]]
 name = "strongly-typed"
