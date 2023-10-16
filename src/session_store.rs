@@ -161,8 +161,10 @@ pub trait ExpiredDeletion: SessionStore {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::{sqlx::SqlitePool, SqliteStore};
+    /// use tower_sessions::{session_store::ExpiredDeletion, sqlx::SqlitePool, SqliteStore};
     ///
+    /// # #[cfg(all(feature = "sqlite-store", feature = "continuously-delete-expired"))]
+    /// # {
     /// # tokio_test::block_on(async {
     /// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     /// let session_store = SqliteStore::new(pool);
@@ -173,6 +175,7 @@ pub trait ExpiredDeletion: SessionStore {
     ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
     /// );
     /// # })
+    /// # }
     /// ```
     #[cfg(feature = "continuously-delete-expired")]
     #[cfg_attr(docsrs, doc(cfg(feature = "continuously-delete-expired")))]
