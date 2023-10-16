@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.3.3
+
+- Ensure loaded sessions are removed whenever they can be; do not couple removal with session saving.
+
 # 0.3.2
 
 - Implement reference-counted garbage collection for loaded sessions. #52
