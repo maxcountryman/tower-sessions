@@ -570,8 +570,15 @@ struct Inner {
 }
 
 /// An ID type for sessions.
+///
+/// # Examples
+///
+/// ```rust
+/// use tower_sessions::session::SessionId;
+/// let session_id = SessionId::default();
+/// ```
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub struct SessionId(Uuid);
+pub struct SessionId(pub Uuid);
 
 impl Default for SessionId {
     fn default() -> Self {
