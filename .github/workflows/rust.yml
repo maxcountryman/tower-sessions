@@ -155,6 +155,7 @@ jobs:
       - test-integration
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download Docs Coverage
         uses: actions/download-artifact@v2
         with:
