@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.3.2
+
+- Implement reference-counted garbage collection for loaded sessions. #52
+- Make `SessionId`'s UUID public. #53
+
 # 0.3.1
 
 - Use `DashMap` entry API to address data race introduced by dashmap. #41
