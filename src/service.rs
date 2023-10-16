@@ -172,34 +172,37 @@ where
             // extended interface in the future. For instance, we might consider providing
             // the `Set-Cookie` header whenever modified or if some "always save" marker is
             // set.
-            if session.modified() {
-                match loaded_session {
-                    Entry::Occupied(mut entry) => {
-                        let loaded = entry.get_mut();
-                        if loaded.refs == 1 {
-                            let session_record = (&session).into();
-                            session_store.save(&session_record).await?;
-                            cookies.add(cookie_config.build_cookie(&session));
-                            entry.remove();
+            match loaded_session {
+                Entry::Occupied(mut entry) => {
+                    let loaded = entry.get_mut();
 
-                            return res;
-                        }
-
-                        loaded.refs -= 1;
-                    }
-
-                    Entry::Vacant(entry) => {
-                        let mut entry = entry.insert_entry(LoadedSession {
-                            session: session.clone(),
-                            refs: 1,
-                        });
+                    if session.modified() {
                         let session_record = (&session).into();
                         session_store.save(&session_record).await?;
                         cookies.add(cookie_config.build_cookie(&session));
-                        entry.get_mut().refs -= 1;
                     }
-                };
-            }
+
+                    if loaded.refs <= 1 {
+                        entry.remove();
+                        return res;
+                    }
+
+                    loaded.refs -= 1;
+                }
+
+                Entry::Vacant(entry) => {
+                    if session.modified() {
+                        entry.insert(LoadedSession {
+                            session: session.clone(),
+                            refs: 0,
+                        });
+
+                        let session_record = (&session).into();
+                        session_store.save(&session_record).await?;
+                        cookies.add(cookie_config.build_cookie(&session));
+                    }
+                }
+            };
 
             res
         })
