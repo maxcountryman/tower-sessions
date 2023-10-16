@@ -70,9 +70,7 @@ impl SqliteStore {
 
 #[async_trait]
 impl ExpiredDeletion for SqliteStore {
-    type Error = sqlx::Error;
-
-    async fn delete_expired(&self) -> sqlx::Result<()> {
+    async fn delete_expired(&self) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             delete from {table_name}

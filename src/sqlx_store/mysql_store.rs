@@ -82,9 +82,7 @@ impl MySqlStore {
 
 #[async_trait]
 impl ExpiredDeletion for MySqlStore {
-    type Error = sqlx::Error;
-
-    async fn delete_expired(&self) -> sqlx::Result<()> {
+    async fn delete_expired(&self) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             delete from `{schema_name}`.`{table_name}`

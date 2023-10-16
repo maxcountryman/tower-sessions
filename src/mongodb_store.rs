@@ -65,8 +65,6 @@ impl MongoDBStore {
 
 #[async_trait]
 impl ExpiredDeletion for MongoDBStore {
-    type Error = mongodb::error::Error;
-
     async fn delete_expired(&self) -> Result<(), Self::Error> {
         self.collection
             .delete_many(

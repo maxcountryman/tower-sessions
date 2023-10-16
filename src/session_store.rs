@@ -143,10 +143,7 @@ where
 /// A trait providing a deletion method for expired methods and optionally a
 /// method that runs indefinitely, deleting expired sessions.
 #[async_trait]
-pub trait ExpiredDeletion: Sized + Send {
-    /// The error associated with deleting expired sessions.
-    type Error;
-
+pub trait ExpiredDeletion: SessionStore {
     /// A method for deleting expired sessions from the store.
     async fn delete_expired(&self) -> Result<(), Self::Error>;
 
