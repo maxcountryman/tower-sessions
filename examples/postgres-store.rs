@@ -7,7 +7,9 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{sqlx::PgPool, PostgresStore, Session, SessionManagerLayer};
+use tower_sessions::{
+    session_store::ExpiredDeletion, sqlx::PgPool, PostgresStore, Session, SessionManagerLayer,
+};
 
 const COUNTER_KEY: &str = "counter";
 
