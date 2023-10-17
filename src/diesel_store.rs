@@ -149,7 +149,18 @@ where
         } else {
             qb.push_sql("BLOB NOT NULL);");
         }
-        conn.batch_execute(&qb.finish())?;
+        let r = conn.batch_execute(&qb.finish());
+        if !matches!(
+            r,
+            Err(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            ))
+        ) {
+            // ignore unique violations because of postgres issues:
+            // https://www.postgresql.org/message-id/CA+TgmoZAdYVtwBfp1FL2sMZbiHCWT4UPrzRLNnX1Nb30Ku3-gg@mail.gmail.com
+            r?;
+        }
         Ok(())
     }
 }
