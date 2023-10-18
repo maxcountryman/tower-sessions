@@ -242,7 +242,34 @@ where
 }
 
 #[async_trait]
-impl<C, T> ExpiredDeletion for DieselStore<C, T> {
+impl<C, T> ExpiredDeletion for DieselStore<C, T>
+where
+    T: SessionTable<C> + 'static,
+    String: AsExpression<SqlTypeOf<T::PrimaryKey>>,
+    T::PrimaryKey: Default,
+    <T::PrimaryKey as Expression>::SqlType: SqlType + SingleValue,
+    DeleteStatement<T, Eq<T::PrimaryKey, String>>: ExecuteDsl<C>,
+    T: FilterDsl<Eq<T::PrimaryKey, String>> + BoxedDsl<'static, C::Backend>,
+    IntoBoxed<'static, T, C::Backend>: LimitDsl<Output = IntoBoxed<'static, T, C::Backend>>,
+    IntoBoxed<'static, T, C::Backend>: FilterDsl<
+        And<
+            Eq<T::PrimaryKey, String>,
+            Or<IsNull<T::ExpirationTime>, Gt<T::ExpirationTime, diesel::dsl::now>, Nullable<Bool>>,
+            Nullable<Bool>,
+        >,
+        Output = IntoBoxed<'static, T, C::Backend>,
+    >,
+    Filter<T, Eq<T::PrimaryKey, String>>: IntoUpdateTarget,
+    DeleteStatement<
+        <Filter<T, Eq<T::PrimaryKey, String>> as HasTable>::Table,
+        <Filter<T, Eq<T::PrimaryKey, String>> as IntoUpdateTarget>::WhereClause,
+    >: ExecuteDsl<C>,
+    Eq<T::PrimaryKey, String>: BoolExpressionMethods<SqlType = Bool>,
+    for<'a> IntoBoxed<'static, T, C::Backend>: LoadQuery<'a, C, crate::Session>,
+    Pool<ConnectionManager<C>>: Clone,
+    ConnectionManager<C>: ManageConnection<Connection = C>,
+    C: R2D2Connection,
+{
     async fn delete_expired(&self) -> Result<(), DieselStoreError> {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
