@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 
 use crate::{
     session::{SessionId, SessionRecord},
-    Session, SessionStore, SqlxStoreError,
+    ExpiredDeletion, Session, SessionStore, SqlxStoreError,
 };
 
 /// A PostgreSQL session store.
@@ -90,53 +90,11 @@ impl PostgresStore {
 
         Ok(())
     }
+}
 
-    /// This function will keep running indefinitely, deleting expired rows and
-    /// then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Arguments
-    ///
-    /// * `period` - The interval at which expired rows should be deleted.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `sqlx::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use tower_sessions::{sqlx::PgPool, PostgresStore};
-    ///
-    /// # tokio_test::block_on(async {
-    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
-    /// let pool = PgPool::connect(database_url).await.unwrap();
-    /// let session_store = PostgresStore::new(pool);
-    ///
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// ```
-    #[cfg(feature = "tokio-rt")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-rt")))]
-    pub async fn continuously_delete_expired(
-        self,
-        period: tokio::time::Duration,
-    ) -> Result<(), sqlx::Error> {
-        let mut interval = tokio::time::interval(period);
-        loop {
-            self.delete_expired().await?;
-            interval.tick().await;
-        }
-    }
-
-    async fn delete_expired(&self) -> sqlx::Result<()> {
+#[async_trait]
+impl ExpiredDeletion for PostgresStore {
+    async fn delete_expired(&self) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             delete from "{schema_name}"."{table_name}"

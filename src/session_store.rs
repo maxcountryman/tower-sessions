@@ -139,3 +139,54 @@ where
         Ok(())
     }
 }
+
+/// A trait providing a deletion method for expired methods and optionally a
+/// method that runs indefinitely, deleting expired sessions.
+#[async_trait]
+pub trait ExpiredDeletion: SessionStore {
+    /// A method for deleting expired sessions from the store.
+    async fn delete_expired(&self) -> Result<(), Self::Error>;
+
+    /// This function will keep running indefinitely, deleting expired rows and
+    /// then waiting for the specified period before deleting again.
+    ///
+    /// Generally this will be used as a task, for example via
+    /// `tokio::task::spawn`.
+    ///
+    /// # Errors
+    ///
+    /// This function returns a `Result` that contains an error of type
+    /// `sqlx::Error` if the deletion operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tower_sessions::{session_store::ExpiredDeletion, sqlx::SqlitePool, SqliteStore};
+    ///
+    /// # #[cfg(all(feature = "sqlite-store", feature = "continuously-delete-expired"))]
+    /// # {
+    /// # tokio_test::block_on(async {
+    /// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    /// let session_store = SqliteStore::new(pool);
+    ///
+    /// tokio::task::spawn(
+    ///     session_store
+    ///         .clone()
+    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    /// );
+    /// # })
+    /// # }
+    /// ```
+    #[cfg(feature = "continuously-delete-expired")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "continuously-delete-expired")))]
+    async fn continuously_delete_expired(
+        self,
+        period: tokio::time::Duration,
+    ) -> Result<(), Self::Error> {
+        let mut interval = tokio::time::interval(period);
+        loop {
+            self.delete_expired().await?;
+            interval.tick().await;
+        }
+    }
+}

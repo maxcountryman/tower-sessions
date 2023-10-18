@@ -125,11 +125,11 @@ jobs:
             docker: false
 
           - store: mysql_store
-            features: __diesel_mysql
+            features: diesel-store,diesel/mysql
             docker: true
 
           - store: postgres_store
-            features: __diesel_postgres
+            features: diesel-store,diesel/postgres
             docker: true
 
           - store: diesel_store

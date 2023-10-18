@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 
 use crate::{
     session::{SessionId, SessionRecord},
-    Session, SessionStore,
+    ExpiredDeletion, Session, SessionStore,
 };
 
 /// An error type for `MongoDBStore`.
@@ -61,53 +61,11 @@ impl MongoDBStore {
             collection: client.database(&database).collection("sessions"),
         }
     }
+}
 
-    /// This function will keep running indefinitely, deleting expired documents
-    /// and then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Arguments
-    ///
-    /// * `period` - The interval at which expired rows should be deleted.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `mongodb::error::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use tower_sessions::{mongodb::Client, MongoDBStore, PostgresStore};
-    ///
-    /// # tokio_test::block_on(async {
-    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
-    /// let client = Client::with_uri_str(database_url).await.unwrap();
-    /// let session_store = MongoDBStore::new(client, "database".to_string());
-    ///
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// ```
-    #[cfg(feature = "tokio-rt")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-rt")))]
-    pub async fn continuously_delete_expired(
-        self,
-        period: tokio::time::Duration,
-    ) -> Result<(), mongodb::error::Error> {
-        let mut interval = tokio::time::interval(period);
-        loop {
-            self.delete_expired().await?;
-            interval.tick().await;
-        }
-    }
-
-    async fn delete_expired(&self) -> mongodb::error::Result<()> {
+#[async_trait]
+impl ExpiredDeletion for MongoDBStore {
+    async fn delete_expired(&self) -> Result<(), Self::Error> {
         self.collection
             .delete_many(
                 doc! { "expireAt": {"$lt": OffsetDateTime::now_utc()} },

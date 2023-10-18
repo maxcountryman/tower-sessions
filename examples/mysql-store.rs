@@ -7,7 +7,9 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{sqlx::MySqlPool, MySqlStore, Session, SessionManagerLayer};
+use tower_sessions::{
+    session_store::ExpiredDeletion, sqlx::MySqlPool, MySqlStore, Session, SessionManagerLayer,
+};
 
 const COUNTER_KEY: &str = "counter";
 

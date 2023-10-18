@@ -118,13 +118,13 @@
 //! functionality, such as SQLx or MongoDB stores, it becomes essential to
 //! periodically clean up stale sessions. For instance, both SQLx and MongoDB
 //! stores offer
-//! [`continuously_delete_expired`](SqliteStore::continuously_delete_expired)
+//! [`continuously_delete_expired`](ExpiredDeletion::continuously_delete_expired)
 //! which is designed to be executed as a recurring task. This process ensures
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
 //! ```rust,no_run
-//! # #[cfg(all(feature = "sqlite-store", feature = "tokio-rt"))] {
-//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore};
+//! # #[cfg(all(feature = "sqlite-store", feature = "continuously-delete-expired"))] {
+//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore, session_store::ExpiredDeletion};
 //! # tokio_test::block_on(async {
 //! let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 //! let session_store = SqliteStore::new(pool);
@@ -504,7 +504,7 @@ pub use self::{
     cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
     session::{Session, SessionRecord},
-    session_store::{CachingSessionStore, SessionStore},
+    session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
 
 #[cfg(feature = "axum-core")]
