@@ -14,6 +14,7 @@ use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
     diesel_store::{DieselStore, DieselStoreError, SessionTable},
+    session_store::ExpiredDeletion,
     Session, SessionManagerLayer,
 };
 

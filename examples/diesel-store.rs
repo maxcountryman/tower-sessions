@@ -11,7 +11,9 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{diesel_store::DieselStore, Session, SessionManagerLayer};
+use tower_sessions::{
+    diesel_store::DieselStore, session_store::ExpiredDeletion, Session, SessionManagerLayer,
+};
 
 const COUNTER_KEY: &str = "counter";
 

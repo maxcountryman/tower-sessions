@@ -1,6 +1,7 @@
 //! A session store backed by a diesel connection pool
 use std::marker::PhantomData;
 
+use async_trait::async_trait;
 use diesel::{
     associations::HasTable,
     backend::Backend,
@@ -20,7 +21,7 @@ use diesel::{
     SelectableExpression, Table,
 };
 
-use crate::SessionStore;
+use crate::{session_store::ExpiredDeletion, SessionStore};
 
 /// An error type for diesel stores
 #[derive(thiserror::Error, Debug)]
@@ -238,66 +239,21 @@ where
         .await??;
         Ok(())
     }
+}
 
-    #[cfg(feature = "tokio-rt")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-rt")))]
+#[async_trait]
+impl<C, T> ExpiredDeletion for DieselStore<C, T> {
     async fn delete_expired(&self) -> Result<(), DieselStoreError> {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> = Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
-            diesel::delete(T::table().filter(filter))
-                .execute(&mut conn)?;
+            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> =
+                Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
+            diesel::delete(T::table().filter(filter)).execute(&mut conn)?;
             Ok::<_, DieselStoreError>(())
         })
         .await??;
         Ok(())
-    }
-
-    /// This function will keep running indefinitely, deleting expired rows and
-    /// then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Arguments
-    ///
-    /// * `period` - The interval at which expired rows should be deleted.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `sqlx::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use tower_sessions::diesel_store::DieselStore;
-    /// use diesel::r2d2::{ConnectionManager, Pool};
-    /// use diesel::prelude::*;
-    ///
-    /// let pool = Pool::builder().build(ConnectionManager::<SqliteConnection>::new(":memory:")).unwrap();
-    /// let session_store = DieselStore::new(pool);
-    ///
-    /// # tokio_test::block_on(async {
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// ```
-    #[cfg(feature = "tokio-rt")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-rt")))]
-    pub async fn continuously_delete_expired(
-        self,
-        period: tokio::time::Duration,
-    ) -> Result<(), DieselStoreError> {
-        let mut interval = tokio::time::interval(period);
-        loop {
-            self.delete_expired().await?;
-            interval.tick().await;
-        }
     }
 }
 
