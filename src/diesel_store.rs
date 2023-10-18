@@ -239,48 +239,63 @@ where
         .await??;
         Ok(())
     }
-}
 
-#[async_trait]
-impl<C, T> ExpiredDeletion for DieselStore<C, T>
-where
-    T: SessionTable<C> + 'static,
-    String: AsExpression<SqlTypeOf<T::PrimaryKey>>,
-    T::PrimaryKey: Default,
-    <T::PrimaryKey as Expression>::SqlType: SqlType + SingleValue,
-    DeleteStatement<T, Eq<T::PrimaryKey, String>>: ExecuteDsl<C>,
-    T: FilterDsl<Eq<T::PrimaryKey, String>> + BoxedDsl<'static, C::Backend>,
-    IntoBoxed<'static, T, C::Backend>: LimitDsl<Output = IntoBoxed<'static, T, C::Backend>>,
-    IntoBoxed<'static, T, C::Backend>: FilterDsl<
-        And<
-            Eq<T::PrimaryKey, String>,
-            Or<IsNull<T::ExpirationTime>, Gt<T::ExpirationTime, diesel::dsl::now>, Nullable<Bool>>,
-            Nullable<Bool>,
-        >,
-        Output = IntoBoxed<'static, T, C::Backend>,
-    >,
-    Filter<T, Eq<T::PrimaryKey, String>>: IntoUpdateTarget,
-    DeleteStatement<
-        <Filter<T, Eq<T::PrimaryKey, String>> as HasTable>::Table,
-        <Filter<T, Eq<T::PrimaryKey, String>> as IntoUpdateTarget>::WhereClause,
-    >: ExecuteDsl<C>,
-    Eq<T::PrimaryKey, String>: BoolExpressionMethods<SqlType = Bool>,
-    for<'a> IntoBoxed<'static, T, C::Backend>: LoadQuery<'a, C, crate::Session>,
-    Pool<ConnectionManager<C>>: Clone,
-    ConnectionManager<C>: ManageConnection<Connection = C>,
-    C: R2D2Connection,
-{
     async fn delete_expired(&self) -> Result<(), DieselStoreError> {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> =
-                Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
-            diesel::delete(T::table().filter(filter)).execute(&mut conn)?;
+            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> = Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
+            diesel::delete(T::table().filter(filter))
+                .execute(&mut conn)?;
             Ok::<_, DieselStoreError>(())
         })
         .await??;
         Ok(())
+    }
+
+    /// This function will keep running indefinitely, deleting expired rows and
+    /// then waiting for the specified period before deleting again.
+    ///
+    /// Generally this will be used as a task, for example via
+    /// `tokio::task::spawn`.
+    ///
+    /// # Errors
+    ///
+    /// This function returns a `Result` that contains an error of type
+    /// `sqlx::Error` if the deletion operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use tower_sessions::diesel_store::DieselStore;
+    /// use diesel::r2d2::{ConnectionManager, Pool};
+    /// use diesel::prelude::*;
+    ///
+    /// # #[cfg(all(feature = "diesel/sqlite", feature = "continuously-delete-expired"))]
+    /// # {
+    /// let pool = Pool::builder().build(ConnectionManager::<SqliteConnection>::new(":memory:")).unwrap();
+    /// let session_store = DieselStore::new(pool);
+    ///
+    /// # tokio_test::block_on(async {
+    /// tokio::task::spawn(
+    ///     session_store
+    ///         .clone()
+    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    /// );
+    /// # })
+    /// # }
+    /// ```
+    #[cfg(feature = "continuously-delete-expired")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "continuously-delete-expired")))]
+    pub async fn continuously_delete_expired(
+        self,
+        period: tokio::time::Duration,
+    ) -> Result<(), DieselStoreError> {
+        let mut interval = tokio::time::interval(period);
+        loop {
+            self.delete_expired().await?;
+            interval.tick().await;
+        }
     }
 }
 
