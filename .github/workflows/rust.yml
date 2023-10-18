@@ -12,7 +12,7 @@ env:
   REDIS_URL: redis://localhost:6379/1
   MONGODB_URL: mongodb://localhost:27017
   POSTGRES_URL: postgres://postgres:postgres@localhost:5432
-  MYSQL_URL: mysql://root@localhost:3306/public
+  MYSQL_URL: mysql://root@127.0.0.1:3306/public
 
 jobs:
   check:
