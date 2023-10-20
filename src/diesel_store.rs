@@ -198,13 +198,6 @@ impl<C, T> DieselStore<C, T>
 where
     C: R2D2Connection,
     T: SessionTable<C>,
-    T: FilterDsl<Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>,
-    Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>: IntoUpdateTarget,
-    DeleteStatement<
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as HasTable>::Table,
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as IntoUpdateTarget>::WhereClause,
-    >: ExecuteDsl<C>,
-   Lt<T::ExpirationTime, diesel::dsl::now>: QueryFragment<C::Backend> + SelectableExpression<T> + Expression<SqlType = Nullable<Bool>>,
 {
     /// Create a new diesel store with a provided connection pool.
     ///
@@ -238,64 +231,6 @@ where
         })
         .await??;
         Ok(())
-    }
-
-    async fn delete_expired(&self) -> Result<(), DieselStoreError> {
-        let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get()?;
-            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> = Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
-            diesel::delete(T::table().filter(filter))
-                .execute(&mut conn)?;
-            Ok::<_, DieselStoreError>(())
-        })
-        .await??;
-        Ok(())
-    }
-
-    /// This function will keep running indefinitely, deleting expired rows and
-    /// then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `sqlx::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use tower_sessions::diesel_store::DieselStore;
-    /// use diesel::r2d2::{ConnectionManager, Pool};
-    /// use diesel::prelude::*;
-    ///
-    /// # #[cfg(all(feature = "diesel/sqlite", feature = "continuously-delete-expired"))]
-    /// # {
-    /// let pool = Pool::builder().build(ConnectionManager::<SqliteConnection>::new(":memory:")).unwrap();
-    /// let session_store = DieselStore::new(pool);
-    ///
-    /// # tokio_test::block_on(async {
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// # }
-    /// ```
-    #[cfg(feature = "continuously-delete-expired")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "continuously-delete-expired")))]
-    pub async fn continuously_delete_expired(
-        self,
-        period: tokio::time::Duration,
-    ) -> Result<(), DieselStoreError> {
-        let mut interval = tokio::time::interval(period);
-        loop {
-            self.delete_expired().await?;
-            interval.tick().await;
-        }
     }
 }
 
@@ -399,6 +334,34 @@ where
                 &mut pool.get()?;
             diesel::delete(T::table().filter(T::PrimaryKey::default().eq(session_id.to_string())))
                 .execute(conn)?;
+            Ok::<_, DieselStoreError>(())
+        })
+        .await??;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<C, T> ExpiredDeletion for DieselStore<C, T>
+where
+    Self: SessionStore<Error = DieselStoreError>,
+    C: R2D2Connection,
+    T: SessionTable<C>,
+    T: FilterDsl<Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>,
+    Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>: IntoUpdateTarget,
+    DeleteStatement<
+        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as HasTable>::Table,
+        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as IntoUpdateTarget>::WhereClause,
+    >: ExecuteDsl<C>,
+   Lt<T::ExpirationTime, diesel::dsl::now>: QueryFragment<C::Backend> + SelectableExpression<T> + Expression<SqlType = Nullable<Bool>>,
+{
+    async fn delete_expired(&self) -> Result<(), Self::Error> {
+        let pool = self.pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> = Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
+            diesel::delete(T::table().filter(filter))
+                .execute(&mut conn)?;
             Ok::<_, DieselStoreError>(())
         })
         .await??;
