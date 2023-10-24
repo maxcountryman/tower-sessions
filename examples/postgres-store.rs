@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    session_store::ExpiredDeletion, sqlx::PgPool, PostgresStore, Session, SessionManagerLayer,
+    session_store::ExpiredDeletion, sqlx::PgPool, PostgresStore, Session, SessionExpiry,
+    SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
@@ -30,13 +31,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|_: BoxError| async {
+        .layer(HandleErrorLayer::new(|err: BoxError| async {
+            dbg!(err);
             StatusCode::BAD_REQUEST
         }))
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_max_age(Duration::seconds(10)),
+                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

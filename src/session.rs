@@ -16,6 +16,8 @@ use uuid::Uuid;
 
 use crate::CookieConfig;
 
+const DEFAULT_DURATION: Duration = Duration::weeks(2);
+
 /// Session errors.
 #[derive(thiserror::Error, Debug)]
 pub enum SessionError {
@@ -30,41 +32,17 @@ pub enum SessionError {
 
 type SessionResult<T> = Result<T, SessionError>;
 
+type SessionData = HashMap<String, Value>;
+
 /// A session which allows HTTP applications to associate key-value pairs with
 /// visitors.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Session {
     pub(crate) id: SessionId,
     inner: Arc<Mutex<Inner>>,
 }
 
 impl Session {
-    /// Create a new session with defaults.
-    ///
-    /// If an `expiration_time` is not specified, the session will use an
-    /// expiration strategy of "Session," which means it will persist only
-    /// until the user's session ends.
-    ///
-    /// # Examples
-    ///
-    ///```rust
-    /// use tower_sessions::Session;
-    /// let session = Session::default();
-    /// ```
-    pub fn new(expiration_time: Option<OffsetDateTime>) -> Self {
-        let inner = Inner {
-            data: HashMap::new(),
-            expiration_time,
-            modified: false,
-            deleted: None,
-        };
-
-        Self {
-            id: SessionId::default(),
-            inner: Arc::new(Mutex::new(inner)),
-        }
-    }
-
     /// Inserts a `impl Serialize` value into the session.
     ///
     /// # Examples
@@ -108,7 +86,7 @@ impl Session {
     pub fn insert_value(&self, key: &str, value: Value) -> Option<Value> {
         let mut inner = self.inner.lock();
         if inner.data.get(key) != Some(&value) {
-            inner.modified = true;
+            inner.modified_at = Some(OffsetDateTime::now_utc());
             inner.data.insert(key.to_string(), value)
         } else {
             None
@@ -194,7 +172,7 @@ impl Session {
     pub fn remove_value(&self, key: &str) -> Option<Value> {
         let mut inner = self.inner.lock();
         if let Some(removed) = inner.data.remove(key) {
-            inner.modified = true;
+            inner.modified_at = Some(OffsetDateTime::now_utc());
             Some(removed)
         } else {
             None
@@ -243,7 +221,7 @@ impl Session {
             Some(current_value) if serde_json::to_value(&old_value)? == *current_value => {
                 let new_value = serde_json::to_value(&new_value)?;
                 if *current_value != new_value {
-                    inner.modified = true;
+                    inner.modified_at = Some(OffsetDateTime::now_utc());
                     inner.data.insert(key.to_string(), new_value);
                 }
                 Ok(true) // Success, old value matched.
@@ -312,7 +290,7 @@ impl Session {
     pub fn cycle_id(&self) {
         let mut inner = self.inner.lock();
         inner.deleted = Some(SessionDeletion::Cycled(self.id));
-        inner.modified = true;
+        inner.modified_at = Some(OffsetDateTime::now_utc());
     }
 
     /// Sets `deleted` on the session to `SessionDeletion::Deleted` and clears
@@ -349,22 +327,25 @@ impl Session {
         &self.id
     }
 
-    /// Get the session expiration time.
+    /// Get the session expiry.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::Session;
-    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
-    /// let session = Session::new(Some(expiration_time));
-    /// assert!(session
-    ///     .expiration_time()
-    ///     .is_some_and(|et| et > OffsetDateTime::now_utc()));
+    /// use tower_sessions::{Session, SessionExpiry};
+    ///
+    /// let expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// let session = Session::default();
+    /// session.set_expiry(Some(expiry));
+    /// assert_eq!(
+    ///     session.expiry(),
+    ///     Some(SessionExpiry::InactivityDuration(Duration::hours(1)))
+    /// );
     /// ```
-    pub fn expiration_time(&self) -> Option<OffsetDateTime> {
+    pub fn expiry(&self) -> Option<SessionExpiry> {
         let inner = self.inner.lock();
-        inner.expiration_time
+        inner.expiry.clone()
     }
 
     /// Set `expiration_time` give the given value.
@@ -376,46 +357,45 @@ impl Session {
     ///
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::Session;
+    /// use tower_sessions::{Session, SessionExpiry};
+    ///
     /// let session = Session::default();
-    /// session.set_expiration_time(OffsetDateTime::now_utc());
+    /// let expiry = SessionExpiry::AbsoluteExpiration(OffsetDateTime::from_unix_timestamp(0).unwrap());
+    /// session.set_expiry(Some(expiry));
     /// session.insert("foo", 42);
     /// assert!(!session.active());
-    /// assert!(session.modified());
+    /// assert!(session.is_modified());
     ///
-    /// session.set_expiration_time(OffsetDateTime::now_utc().saturating_add(Duration::hours(1)));
+    /// let expiry = SessionExpiry::InactivityDuration(Duration::weeks(2));
+    /// session.set_expiry(Some(expiry));
     /// assert!(session.active());
-    /// assert!(session.modified());
+    /// assert!(session.is_modified());
     /// ```
-    pub fn set_expiration_time(&self, expiration_time: OffsetDateTime) {
+    pub fn set_expiry(&self, expiry: Option<SessionExpiry>) {
         let mut inner = self.inner.lock();
-        inner.expiration_time = Some(expiration_time);
-        inner.modified = true;
+        inner.expiry = expiry;
+        inner.modified_at = Some(OffsetDateTime::now_utc());
     }
 
-    /// Set `expiration_time` to current time in UTC plus the given `max_age`
-    /// duration.
-    ///
-    /// This may be used within applications directly to alter the session's
-    /// time to live.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::Session;
-    /// let session = Session::default();
-    /// session.insert("foo", 42);
-    /// session.set_expiration_time_from_max_age(Duration::minutes(5));
-    /// assert!(session.active());
-    /// assert!(session.modified());
-    ///
-    /// session.set_expiration_time_from_max_age(Duration::ZERO);
-    /// assert!(!session.active());
-    /// assert!(session.modified());
-    /// ```
-    pub fn set_expiration_time_from_max_age(&self, max_age: Duration) {
-        self.set_expiration_time(OffsetDateTime::now_utc().saturating_add(max_age));
+    /// Get session expiry as `OffsetDateTime`.
+    pub fn expiry_date(&self) -> OffsetDateTime {
+        let inner = self.inner.lock();
+        match inner.expiry {
+            Some(SessionExpiry::InactivityDuration(duration)) => {
+                let modified_at = inner.modified_at.unwrap_or_else(OffsetDateTime::now_utc);
+                modified_at.saturating_add(duration)
+            }
+            Some(SessionExpiry::AbsoluteExpiration(datetime)) => datetime,
+            Some(SessionExpiry::BrowserClosed) | None => {
+                // TODO: The default should probably be configurable.
+                OffsetDateTime::now_utc().saturating_add(DEFAULT_DURATION)
+            }
+        }
+    }
+
+    /// Get session expiry as `Duration`.
+    pub fn expiry_age(&self) -> Duration {
+        self.expiry_date() - OffsetDateTime::now_utc()
     }
 
     /// Returns `true` if the session is active and `false` otherwise.
@@ -423,26 +403,22 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::Session;
+    /// use time::Duration;
+    /// use tower_sessions::{Session, SessionExpiry};
     /// let session = Session::default();
     /// assert!(session.active());
     ///
-    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
-    /// let session = Session::new(Some(expiration_time));
+    /// let expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// session.set_expiry(Some(expiry));
     /// assert!(session.active());
     ///
-    /// let expiration_time = OffsetDateTime::now_utc().saturating_add(Duration::ZERO);
-    /// let session = Session::new(Some(expiration_time));
+    /// let expiry = SessionExpiry::InactivityDuration(Duration::ZERO);
+    /// session.set_expiry(Some(expiry));
     /// assert!(!session.active());
     /// ```
     pub fn active(&self) -> bool {
-        let inner = self.inner.lock();
-        if let Some(expiration_time) = inner.expiration_time {
-            expiration_time > OffsetDateTime::now_utc()
-        } else {
-            true
-        }
+        let expiry_date = self.expiry_date();
+        expiry_date > OffsetDateTime::now_utc()
     }
 
     /// Returns `true` if the session has been modified and `false` otherwise.
@@ -451,14 +427,16 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
-    /// assert!(!session.modified());
+    /// assert!(!session.is_modified());
+    ///
     /// session.insert("foo", 42);
-    /// assert!(session.modified());
+    /// assert!(session.is_modified());
     /// ```
-    pub fn modified(&self) -> bool {
+    pub fn is_modified(&self) -> bool {
         let inner = self.inner.lock();
-        inner.modified && !inner.data.is_empty()
+        inner.modified_at.is_some() && !inner.data.is_empty()
     }
 
     /// Returns `Some(SessionDeletion)` if one has been set and `None`
@@ -493,7 +471,7 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{Session, SessionRecord};
+    /// use tower_sessions::Session;
     /// let session = Session::default();
     /// assert!(session.is_empty());
     ///
@@ -525,47 +503,24 @@ impl Borrow<SessionId> for Session {
     }
 }
 
-impl From<SessionRecord> for Session {
-    fn from(
-        SessionRecord {
-            id,
-            data,
-            expiration_time,
-        }: SessionRecord,
-    ) -> Self {
-        let inner = Inner {
-            data,
-            expiration_time,
-            modified: false,
-            deleted: None,
-        };
-        Self {
-            id,
-            inner: Arc::new(Mutex::new(inner)),
-        }
-    }
-}
-
 impl From<&CookieConfig> for Session {
     fn from(cookie_config: &CookieConfig) -> Self {
         let session = Session::default();
-        if let Some(max_age) = cookie_config.max_age {
+        if let Some(expiry) = &cookie_config.expiry {
             let mut inner = session.inner.lock();
             // N.B. We manually set the expiration time here because creating a session from
             // a config does *not* indicate the session has been modified.
-            inner.expiration_time = Some(OffsetDateTime::now_utc().saturating_add(max_age));
+            inner.expiry = Some(expiry.clone());
         }
         session
     }
 }
 
-type SessionData = HashMap<String, Value>;
-
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct Inner {
     data: SessionData,
-    expiration_time: Option<OffsetDateTime>,
-    modified: bool,
+    expiry: Option<SessionExpiry>,
+    modified_at: Option<OffsetDateTime>,
     deleted: Option<SessionDeletion>,
 }
 
@@ -609,7 +564,7 @@ impl TryFrom<String> for SessionId {
 }
 
 /// Session deletion, represented as an enumeration of possible deletion types.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum SessionDeletion {
     /// This indicates the session has been completely removed from the store.
     Deleted,
@@ -619,49 +574,22 @@ pub enum SessionDeletion {
     Cycled(SessionId),
 }
 
-/// A type that represents data to be persisted in a store for a session.
-///
-/// Saving to and loading from a store utilizes `SessionRecord`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionRecord {
-    id: SessionId,
-    expiration_time: Option<OffsetDateTime>,
-    data: SessionData,
-}
+/// Session expiry configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SessionExpiry {
+    /// Expiry based on inactivity duration.
+    ///
+    /// The session will expire when it has been inactive for the given
+    /// `Duration`.
+    InactivityDuration(Duration),
 
-impl SessionRecord {
-    /// Create a session record.
-    pub fn new(id: SessionId, expiration_time: Option<OffsetDateTime>, data: SessionData) -> Self {
-        Self {
-            id,
-            expiration_time,
-            data,
-        }
-    }
+    /// Expiry at a specific date and time.
+    ///
+    /// The session will expire when the specified `OffsetDateTime` is reached.
+    AbsoluteExpiration(OffsetDateTime),
 
-    /// Gets the session ID.
-    pub fn id(&self) -> SessionId {
-        self.id
-    }
-
-    /// Gets the session expiration time.
-    pub fn expiration_time(&self) -> Option<OffsetDateTime> {
-        self.expiration_time
-    }
-
-    /// Gets the data belonging to the record.
-    pub fn data(&self) -> SessionData {
-        self.data.clone()
-    }
-}
-
-impl From<&Session> for SessionRecord {
-    fn from(session: &Session) -> Self {
-        let session_guard = session.inner.lock();
-        Self {
-            id: session.id,
-            expiration_time: session_guard.expiration_time,
-            data: session_guard.data.clone(),
-        }
-    }
+    /// Expiry when the browser is closed.
+    ///
+    /// The session will expire when the user's web browser is closed.
+    BrowserClosed,
 }
