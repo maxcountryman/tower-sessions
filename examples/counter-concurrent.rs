@@ -7,7 +7,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{MemoryStore, Session, SessionExpiry, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -24,7 +24,7 @@ async fn main() {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_max_age(Duration::days(1)),
+                .with_expiry(SessionExpiry::InactivityDuration(Duration::days(1))),
         );
 
     let app = Router::new()

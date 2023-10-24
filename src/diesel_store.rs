@@ -6,18 +6,19 @@ use diesel::{
     associations::HasTable,
     backend::Backend,
     deserialize::FromStaticSqlRow,
-    dsl::{And, IsNull, Lt, Or},
+    dsl::{And, Lt},
     expression::{AsExpression, ValidGrouping},
     expression_methods::ExpressionMethods,
     helper_types::{Eq, Filter, Gt, IntoBoxed, SqlTypeOf},
     prelude::{BoolExpressionMethods, Insertable, Queryable},
     query_builder::{
         AsQuery, DeleteStatement, InsertStatement, IntoUpdateTarget, QueryBuilder, QueryFragment,
+        UpdateStatement,
     },
     query_dsl::methods::{BoxedDsl, ExecuteDsl, FilterDsl, LimitDsl, LoadQuery},
     r2d2::{ConnectionManager, ManageConnection, Pool, R2D2Connection},
-    sql_types::{Binary, Bool, Nullable, SingleValue, SqlType, Text, Timestamp},
-    BoxableExpression, Column, Expression, OptionalExtension, QueryDsl, RunQueryDsl,
+    sql_types::{Binary, Bool, SingleValue, SqlType, Text, Timestamp},
+    AsChangeset, BoxableExpression, Column, Expression, OptionalExtension, QueryDsl, RunQueryDsl,
     SelectableExpression, Table,
 };
 
@@ -62,8 +63,8 @@ diesel::table! {
     sessions {
         /// `id` column, contains a session id
         id -> Text,
-        /// `expiration_time` column, contains an optional expiration timestamp
-        expiration_time -> Nullable<Timestamp>,
+        /// `expiry_date` column, contains a required expiry timestamp
+        expiry_date -> Timestamp,
         /// `data` column, contains serialized session data
         data -> Binary,
     }
@@ -79,7 +80,7 @@ where
     C: R2D2Connection,
 {
     /// the `expiration_time` column of your table
-    type ExpirationTime: Column<SqlType = Nullable<Timestamp>>
+    type ExpiryDate: Column<SqlType = Timestamp>
         + Default
         + ValidGrouping<(), IsAggregate = diesel::expression::is_aggregate::No>
         + Send
@@ -88,7 +89,7 @@ where
     /// Insert a new record into the sessions table
     fn insert(
         conn: &mut C,
-        session_record: &crate::session::SessionRecord,
+        session_record: &crate::session::Session,
     ) -> Result<(), DieselStoreError>;
 
     /// An function to optionally create the session table in the database
@@ -105,27 +106,58 @@ where
         Self,
         <(
             Eq<sessions::id, String>,
-            Eq<sessions::expiration_time, Option<time::PrimitiveDateTime>>,
+            Eq<sessions::expiry_date, time::PrimitiveDateTime>,
             Eq<sessions::data, Vec<u8>>,
         ) as Insertable<Self>>::Values,
     >: ExecuteDsl<C>,
+    UpdateStatement<
+        Self,
+        <Filter<sessions::table, Eq<sessions::id, String>> as IntoUpdateTarget>::WhereClause,
+        <(
+            Eq<sessions::expiry_date, time::PrimitiveDateTime>,
+            Eq<sessions::data, Vec<u8>>,
+        ) as AsChangeset>::Changeset,
+    >: ExecuteDsl<C>,
 {
-    type ExpirationTime = self::sessions::expiration_time;
+    type ExpiryDate = self::sessions::expiry_date;
 
     fn insert(
         conn: &mut C,
-        session_record: &crate::session::SessionRecord,
+        session_record: &crate::session::Session,
     ) -> Result<(), DieselStoreError> {
-        diesel::insert_into(sessions::table)
-            .values((
-                sessions::id.eq(session_record.id().to_string()),
-                sessions::expiration_time.eq(session_record
-                    .expiration_time()
-                    .map(|t| time::PrimitiveDateTime::new(t.date(), t.time()))),
-                sessions::data.eq(rmp_serde::to_vec(&session_record.data())?),
-            ))
-            .execute(conn)?;
-        Ok(())
+        let expiry_date = session_record.expiry_date();
+        let expiry_date = time::PrimitiveDateTime::new(expiry_date.date(), expiry_date.time());
+        let data = rmp_serde::to_vec(session_record)?;
+        let session_id = session_record.id().to_string();
+        // we want to use an upsert statement here, but that's potentially not supported
+        // on all backends, therefore we do a seperate insert + check whether
+        // we got a `UniqueViolation` error
+        conn.transaction(|conn| {
+            let res = diesel::insert_into(sessions::table)
+                .values((
+                    sessions::id.eq(session_id.clone()),
+                    sessions::expiry_date.eq(expiry_date),
+                    sessions::data.eq(data.clone()),
+                ))
+                .execute(conn);
+            if matches!(
+                res,
+                Err(diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    _
+                ))
+            ) {
+                diesel::update(sessions::table.find(session_id))
+                    .set((
+                        sessions::expiry_date.eq(expiry_date),
+                        sessions::data.eq(data),
+                    ))
+                    .execute(conn)?;
+            } else {
+                res?;
+            }
+            Ok(())
+        })
     }
 
     fn migrate(conn: &mut C) -> Result<(), DieselStoreError> {
@@ -141,8 +173,8 @@ where
         } else {
             qb.push_sql(" TEXT PRIMARY KEY NOT NULL, ");
         }
-        qb.push_identifier(sessions::expiration_time::NAME)?;
-        qb.push_sql(" TIMESTAMP NULL, ");
+        qb.push_identifier(sessions::expiry_date::NAME)?;
+        qb.push_sql(" TIMESTAMP NOT NULL, ");
         qb.push_identifier(sessions::data::NAME)?;
         // we need these hacks to not depend on all diesel backends on the same time
         if connection_type.ends_with("Pg") {
@@ -204,12 +236,17 @@ where
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::diesel_store::{DieselStore};
-    /// use diesel::prelude::*;
-    /// use diesel::r2d2::{Pool, ConnectionManager};
+    /// use diesel::{
+    ///     prelude::*,
+    ///     r2d2::{ConnectionManager, Pool},
+    /// };
+    /// use tower_sessions::diesel_store::DieselStore;
     ///
-    /// let pool = Pool::builder().build(ConnectionManager::<SqliteConnection>::new(":memory:")).unwrap();
-    /// let session_store = DieselStore::with_table(tower_sessions::diesel_store::sessions::table, pool);
+    /// let pool = Pool::builder()
+    ///     .build(ConnectionManager::<SqliteConnection>::new(":memory:"))
+    ///     .unwrap();
+    /// let session_store =
+    ///     DieselStore::with_table(tower_sessions::diesel_store::sessions::table, pool);
     /// ```
     pub fn with_table(
         _table: T,
@@ -234,23 +271,16 @@ where
     }
 }
 
-impl<DB> Queryable<(Text, Nullable<Timestamp>, Binary), DB> for crate::session::Session
+impl<DB> Queryable<(Text, Timestamp, Binary), DB> for crate::session::Session
 where
     DB: Backend,
-    (String, Option<time::PrimitiveDateTime>, Vec<u8>):
-        FromStaticSqlRow<(Text, Nullable<Timestamp>, Binary), DB>,
+    (String, time::PrimitiveDateTime, Vec<u8>): FromStaticSqlRow<(Text, Timestamp, Binary), DB>,
 {
-    type Row = (String, Option<time::PrimitiveDateTime>, Vec<u8>);
+    type Row = (String, time::PrimitiveDateTime, Vec<u8>);
 
-    fn build((id, expiration_time, data): Self::Row) -> diesel::deserialize::Result<Self> {
-        let expiration_time = expiration_time.map(|t| t.assume_utc());
-        let session_id = crate::session::SessionId::try_from(id)?;
-        let session_record = crate::session::SessionRecord::new(
-            session_id,
-            expiration_time,
-            rmp_serde::from_slice(&data)?,
-        );
-        Ok(session_record.into())
+    fn build((_id, _expiration_time, data): Self::Row) -> diesel::deserialize::Result<Self> {
+        let session = rmp_serde::from_slice(&data)?;
+        Ok(session)
     }
 }
 
@@ -265,11 +295,7 @@ where
     T: FilterDsl<Eq<T::PrimaryKey, String>> + BoxedDsl<'static, C::Backend>,
     IntoBoxed<'static, T, C::Backend>: LimitDsl<Output = IntoBoxed<'static, T, C::Backend>>,
     IntoBoxed<'static, T, C::Backend>: FilterDsl<
-        And<
-            Eq<T::PrimaryKey, String>,
-            Or<IsNull<T::ExpirationTime>, Gt<T::ExpirationTime, diesel::dsl::now>, Nullable<Bool>>,
-            Nullable<Bool>,
-        >,
+        And<Eq<T::PrimaryKey, String>, Gt<T::ExpiryDate, diesel::dsl::now>>,
         Output = IntoBoxed<'static, T, C::Backend>,
     >,
     Filter<T, Eq<T::PrimaryKey, String>>: IntoUpdateTarget,
@@ -285,7 +311,7 @@ where
 {
     type Error = DieselStoreError;
 
-    async fn save(&self, session_record: &crate::SessionRecord) -> Result<(), Self::Error> {
+    async fn save(&self, session_record: &crate::Session) -> Result<(), Self::Error> {
         let pool = self.pool.clone();
         let record = session_record.clone();
         tokio::task::spawn_blocking(move || {
@@ -311,11 +337,9 @@ where
                 .into_boxed()
                 .limit(1)
                 .filter(
-                    T::PrimaryKey::default().eq(session_id.to_string()).and(
-                        T::ExpirationTime::default()
-                            .is_null()
-                            .or(T::ExpirationTime::default().gt(diesel::dsl::now)),
-                    ),
+                    T::PrimaryKey::default()
+                        .eq(session_id.to_string())
+                        .and(T::ExpiryDate::default().gt(diesel::dsl::now)),
                 )
                 .get_result(conn)
                 .optional()?;
@@ -347,19 +371,19 @@ where
     Self: SessionStore<Error = DieselStoreError>,
     C: R2D2Connection,
     T: SessionTable<C>,
-    T: FilterDsl<Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>,
-    Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>>: IntoUpdateTarget,
+    T: FilterDsl<Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>>,
+    Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>>: IntoUpdateTarget,
     DeleteStatement<
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as HasTable>::Table,
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>>> as IntoUpdateTarget>::WhereClause,
+        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>> as HasTable>::Table,
+        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>> as IntoUpdateTarget>::WhereClause,
     >: ExecuteDsl<C>,
-   Lt<T::ExpirationTime, diesel::dsl::now>: QueryFragment<C::Backend> + SelectableExpression<T> + Expression<SqlType = Nullable<Bool>>,
+   Lt<T::ExpiryDate, diesel::dsl::now>: QueryFragment<C::Backend> + SelectableExpression<T> + Expression<SqlType = Bool>,
 {
     async fn delete_expired(&self) -> Result<(), Self::Error> {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get()?;
-            let filter: Box<dyn BoxableExpression<T, C::Backend, SqlType = Nullable<Bool>>> = Box::new(T::ExpirationTime::default().lt(diesel::dsl::now)) as Box<_>;
+            let filter = Box::new(T::ExpiryDate::default().lt(diesel::dsl::now)) as Box<_>;
             diesel::delete(T::table().filter(filter))
                 .execute(&mut conn)?;
             Ok::<_, DieselStoreError>(())

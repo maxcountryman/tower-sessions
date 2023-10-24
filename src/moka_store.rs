@@ -3,15 +3,12 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use moka::future::Cache;
 
-use crate::{
-    session::{SessionId, SessionRecord},
-    Session, SessionStore,
-};
+use crate::{session::SessionId, Session, SessionStore};
 
 /// A session store that uses Moka, a fast and concurrent caching library.
 #[derive(Debug, Clone)]
 pub struct MokaStore {
-    cache: Cache<SessionId, SessionRecord>,
+    cache: Cache<SessionId, Session>,
 }
 
 impl MokaStore {
@@ -41,10 +38,8 @@ impl MokaStore {
 impl SessionStore for MokaStore {
     type Error = Infallible;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        self.cache
-            .insert(session_record.id(), session_record.clone())
-            .await;
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+        self.cache.insert(*session.id(), session.clone()).await;
         Ok(())
     }
 

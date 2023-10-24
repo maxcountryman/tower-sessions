@@ -7,7 +7,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{mongodb::Client, MongoDBStore, Session, SessionManagerLayer};
+use tower_sessions::{mongodb::Client, MongoDBStore, Session, SessionExpiry, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -17,7 +17,7 @@ struct Counter(usize);
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = std::option_env!("DATABASE_URL").expect("Missing DATABASE_URL.");
-    let client = Client::with_uri_str(database_url).await.unwrap();
+    let client = Client::with_uri_str(database_url).await?;
     let session_store = MongoDBStore::new(client, "tower-sessions".to_string());
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|_: BoxError| async {
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_max_age(Duration::seconds(10)),
+                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

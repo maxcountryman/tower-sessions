@@ -3,9 +3,7 @@ use sqlx::sqlite::SqlitePool;
 use time::OffsetDateTime;
 
 use crate::{
-    session::{SessionId, SessionRecord},
-    session_store::ExpiredDeletion,
-    Session, SessionStore, SqlxStoreError,
+    session::SessionId, session_store::ExpiredDeletion, Session, SessionStore, SqlxStoreError,
 };
 
 /// A SQLite session store.
@@ -57,8 +55,8 @@ impl SqliteStore {
             create table if not exists {}
             (
                 id text primary key not null,
-                expiration_time integer null,
-                data blob not null
+                data blob not null,
+                expiry_date integer not null
             )
             "#,
             self.table_name
@@ -74,7 +72,7 @@ impl ExpiredDeletion for SqliteStore {
         let query = format!(
             r#"
             delete from {table_name}
-            where expiration_time < datetime('now', 'utc')
+            where expiry_date < datetime('now', 'utc')
             "#,
             table_name = self.table_name
         );
@@ -87,21 +85,21 @@ impl ExpiredDeletion for SqliteStore {
 impl SessionStore for SqliteStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             insert into {}
-              (id, expiration_time, data) values (?, ?, ?)
+              (id, data, expiry_date) values (?, ?, ?)
             on conflict(id) do update set
-              expiration_time = excluded.expiration_time,
-              data = excluded.data
+              data = excluded.data,
+              expiry_date = excluded.expiry_date
             "#,
             self.table_name
         );
         sqlx::query(&query)
-            .bind(&session_record.id().to_string())
-            .bind(session_record.expiration_time())
-            .bind(rmp_serde::to_vec(&session_record.data())?)
+            .bind(&session.id().to_string())
+            .bind(rmp_serde::to_vec(session)?)
+            .bind(session.expiry_date())
             .execute(&self.pool)
             .await?;
 
@@ -111,23 +109,19 @@ impl SessionStore for SqliteStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
-            select * from {}
-            where id = ? and (expiration_time is null or expiration_time > ?)
+            select data from {}
+            where id = ? and expiry_date > ?
             "#,
             self.table_name
         );
-        let record_value: Option<(String, Option<OffsetDateTime>, Vec<u8>)> =
-            sqlx::query_as(&query)
-                .bind(session_id.to_string())
-                .bind(OffsetDateTime::now_utc())
-                .fetch_optional(&self.pool)
-                .await?;
+        let data: Option<(Vec<u8>,)> = sqlx::query_as(&query)
+            .bind(session_id.to_string())
+            .bind(OffsetDateTime::now_utc())
+            .fetch_optional(&self.pool)
+            .await?;
 
-        if let Some((session_id, expiration_time, data)) = record_value {
-            let session_id = SessionId::try_from(session_id)?;
-            let session_record =
-                SessionRecord::new(session_id, expiration_time, rmp_serde::from_slice(&data)?);
-            Ok(Some(session_record.into()))
+        if let Some((data,)) = data {
+            Ok(Some(rmp_serde::from_slice(&data)?))
         } else {
             Ok(None)
         }

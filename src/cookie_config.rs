@@ -1,8 +1,7 @@
 //! Defines the configuration for the cookie belonging to the session.
-use time::{Duration, OffsetDateTime};
 use tower_cookies::{cookie::SameSite, Cookie};
 
-use crate::Session;
+use crate::{session::SessionExpiry, Session};
 
 /// Defines the configuration for the cookie belonging to the session.
 #[derive(Debug, Clone)]
@@ -26,13 +25,8 @@ pub struct CookieConfig {
     ///   origin.
     pub same_site: SameSite,
 
-    /// Specifies the maximum age of the cookie.
-    ///
-    /// This field represents the duration for which the cookie is considered
-    /// valid before it expires. If set to `None`, the cookie will be
-    /// treated as a session cookie and will expire when the browser is
-    /// closed.
-    pub max_age: Option<Duration>,
+    /// Specifies the maximum age of the session.
+    pub expiry: Option<SessionExpiry>,
 
     /// Indicates whether the cookie should only be transmitted over secure
     /// (HTTPS) connections.
@@ -75,12 +69,7 @@ impl CookieConfig {
             .secure(self.secure)
             .path(self.path.clone());
 
-        if let Some(max_age) = session
-            .expiration_time()
-            .map(|et| et - OffsetDateTime::now_utc())
-        {
-            cookie_builder = cookie_builder.max_age(max_age);
-        }
+        cookie_builder = cookie_builder.max_age(session.expiry_age());
 
         if let Some(domain) = &self.domain {
             cookie_builder = cookie_builder.domain(domain.clone());
@@ -95,7 +84,7 @@ impl Default for CookieConfig {
         Self {
             name: String::from("tower.sid"),
             same_site: SameSite::Strict,
-            max_age: None, // TODO: Is `Max-Age: "Session"` the right default?
+            expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
             secure: false,
             path: String::from("/"),
             domain: None,

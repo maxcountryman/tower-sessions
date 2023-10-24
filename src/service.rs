@@ -8,13 +8,12 @@ use std::{
 
 use dashmap::{mapref::entry::Entry, DashMap};
 use http::{Request, Response};
-use time::Duration;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
 
 use crate::{
-    session::{SessionDeletion, SessionId},
+    session::{SessionDeletion, SessionExpiry, SessionId},
     CookieConfig, Session, SessionStore,
 };
 
@@ -152,10 +151,9 @@ where
                         session_store.delete(&deleted_id).await?;
                         cookies.remove(cookie_config.build_cookie(&session));
 
-                        if session.modified() {
+                        if session.is_modified() {
                             session.id = SessionId::default();
-                            let session_record = (&session).into();
-                            session_store.save(&session_record).await?;
+                            session_store.save(&session).await?;
                             cookies.add(cookie_config.build_cookie(&session));
                         }
 
@@ -176,9 +174,8 @@ where
                 Entry::Occupied(mut entry) => {
                     let loaded = entry.get_mut();
 
-                    if session.modified() {
-                        let session_record = (&session).into();
-                        session_store.save(&session_record).await?;
+                    if session.is_modified() {
+                        session_store.save(&session).await?;
                         cookies.add(cookie_config.build_cookie(&session));
                     }
 
@@ -191,14 +188,13 @@ where
                 }
 
                 Entry::Vacant(entry) => {
-                    if session.modified() {
+                    if session.is_modified() {
                         entry.insert(LoadedSession {
                             session: session.clone(),
                             refs: 0,
                         });
 
-                        let session_record = (&session).into();
-                        session_store.save(&session_record).await?;
+                        session_store.save(&session).await?;
                         cookies.add(cookie_config.build_cookie(&session));
                     }
                 }
@@ -254,13 +250,14 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     ///
     /// ```rust
     /// use time::Duration;
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SessionExpiry, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_max_age(Duration::hours(1));
+    /// let session_expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
     /// ```
-    pub fn with_max_age(mut self, max_age: Duration) -> Self {
-        self.cookie_config.max_age = Some(max_age);
+    pub fn with_expiry(mut self, expiry: SessionExpiry) -> Self {
+        self.cookie_config.expiry = Some(expiry);
         self
     }
 
