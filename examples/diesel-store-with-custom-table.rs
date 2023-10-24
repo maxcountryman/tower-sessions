@@ -15,7 +15,7 @@ use tower::ServiceBuilder;
 use tower_sessions::{
     diesel_store::{DieselStore, DieselStoreError, SessionTable},
     session_store::ExpiredDeletion,
-    Session, SessionManagerLayer,
+    Session, SessionExpiry, SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
@@ -28,27 +28,27 @@ diesel::table! {
     my_sessions {
         /// `id` column, contains a session id
         id -> Text,
-        /// `expiration_time` column, contains an optional expiration timestamp
-        expiration_time -> Nullable<Timestamp>,
+        /// `expiry_date` column, contains a required expiry timestamp
+        expiry_date -> Timestamp,
         /// `data` column, contains serialized session data
         data -> Binary,
     }
 }
 
 impl SessionTable<SqliteConnection> for self::my_sessions::table {
-    type ExpirationTime = self::my_sessions::expiration_time;
+    type ExpiryDate = self::my_sessions::expiry_date;
 
     fn insert(
         conn: &mut SqliteConnection,
-        session_record: &tower_sessions::session::SessionRecord,
+        session_record: &tower_sessions::session::Session,
     ) -> Result<(), DieselStoreError> {
+        let t = session_record.expiry_date();
+        let t = time::PrimitiveDateTime::new(t.date(), t.time());
         diesel::insert_into(my_sessions::table)
             .values((
                 my_sessions::id.eq(session_record.id().to_string()),
-                my_sessions::expiration_time.eq(session_record
-                    .expiration_time()
-                    .map(|t| time::PrimitiveDateTime::new(t.date(), t.time()))),
-                my_sessions::data.eq(rmp_serde::to_vec(&session_record.data())?),
+                my_sessions::expiry_date.eq(t),
+                my_sessions::data.eq(rmp_serde::to_vec(session_record)?),
             ))
             .execute(conn)?;
         Ok(())
@@ -58,8 +58,8 @@ impl SessionTable<SqliteConnection> for self::my_sessions::table {
         // or create the table via normal diesel migrations on startup and leave that
         // function empty
         conn.batch_execute(
-            "CREATE TABLE `my_sessions` (`id` TEXT PRIMARY KEY NOT NULL, `expiration_time` TEXT \
-             NULL, `data` BLOB NOT NULL);",
+            "CREATE TABLE `my_sessions` (`id` TEXT PRIMARY KEY NOT NULL, `expiry_date` TEXT \
+             NOT NULL, `data` BLOB NOT NULL);",
         )?;
         Ok(())
     }
@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_max_age(Duration::seconds(10)),
+                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

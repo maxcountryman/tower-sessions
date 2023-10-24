@@ -39,7 +39,7 @@
 //! use serde::{Deserialize, Serialize};
 //! use time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+//! use tower_sessions::{MemoryStore, Session, SessionExpiry, SessionManagerLayer};
 //!
 //! const COUNTER_KEY: &str = "counter";
 //!
@@ -56,7 +56,7 @@
 //!         .layer(
 //!             SessionManagerLayer::new(session_store)
 //!                 .with_secure(false)
-//!                 .with_max_age(Duration::seconds(10)),
+//!                 .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
 //!         );
 //!
 //!     let app = Router::new()
@@ -137,9 +137,8 @@
 //! # })};
 //! ```
 //!
-//! Note that sessions with no expiration time will **not** be deleted by this
-//! task and must be handled by some other process. This is left up to
-//! applications to manage on their own.
+//! Note that by default or when using browser session expiration, sessions are
+//! considered expired after two weeks.
 //!
 //! # Extractor pattern
 //!
@@ -392,15 +391,14 @@
 //!
 //! ## Session store
 //!
-//! The intermediary `HashMap` representation is converted to a
-//! [`SessionRecord`] type which provides the structure needed to store
-//! sessions. Implementations of `SessionStore` consume this type in order to
-//! translate the session to its persisted form. Note that the exact details of
-//! how a session is stored within a backend are left up to the implementation
-//! but generally three things are needed:
+//! Sessions are directly serialized to arbitrary storage backends.
+//! Implementations of `SessionStore` take a session and persist it such that it
+//! can later be loaded via the session ID.
+//!
+//! Three components are needed for storing a session:
 //!
 //! 1. The session ID.
-//! 2. The session expiration time.
+//! 2. The session expiry.
 //! 3. The session data itself.
 //!
 //! Together, these compose the session record and are enough to both encode and
@@ -410,12 +408,16 @@
 //!
 //! Cookies hold a pointer to the session, rather than the session's data, and
 //! because of this, the `tower` middleware is focused on managing the process
-//! of hydrating a session from the store. This works by first looking for a
-//! cookie that matches our configured session cookie name. If no such cookie is
-//! found or a cookie is found but the store has no such session or the session
-//! is no longer active, we create a new session. However, it's important to
-//! note that creating a session **does not** save the session to the store. In
-//! fact, the store is not used at all unless one of two conditions is true:
+//! of hydrating a session from the store.
+//!
+//! This works by first looking for a cookie that matches our configured session
+//! cookie name. If no such cookie is found or a cookie is found but the store
+//! has no such session or the session is no longer active, we create a new
+//! session.
+//!
+//! It's important to note that creating a session **does not** save the session
+//! to the store. In fact, the store is not used at all unless one of two
+//! conditions is true:
 //!
 //! 1. A session cookie was found and we attempt to load it from the store via
 //!    the [`load`](SessionStore::load) method or,
@@ -503,7 +505,7 @@ pub use self::sqlx_store::SqlxStoreError;
 pub use self::{
     cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
-    session::{Session, SessionRecord},
+    session::{Session, SessionExpiry},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
 

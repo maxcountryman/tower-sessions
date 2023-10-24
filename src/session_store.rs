@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use futures::TryFutureExt;
 
-use crate::session::{Session, SessionId, SessionRecord};
+use crate::session::{Session, SessionId};
 
 /// An arbitrary store which houses the session data.
 #[async_trait]
@@ -14,7 +14,7 @@ pub trait SessionStore: Clone + Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync;
 
     /// A method for saving a session in a store.
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error>;
+    async fn save(&self, session: &Session) -> Result<(), Self::Error>;
 
     /// A method for loading a session from a store.
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error>;
@@ -90,9 +90,9 @@ where
 {
     type Error = CachingStoreError<Cache, Store>;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        let cache_save_fut = self.store.save(session_record).map_err(Self::Error::Store);
-        let store_save_fut = self.cache.save(session_record).map_err(Self::Error::Cache);
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+        let cache_save_fut = self.store.save(session).map_err(Self::Error::Store);
+        let store_save_fut = self.cache.save(session).map_err(Self::Error::Cache);
 
         futures::try_join!(cache_save_fut, store_save_fut)?;
 
@@ -115,9 +115,8 @@ where
                     .map_err(Self::Error::Store)?;
 
                 if let Some(ref session) = session {
-                    let session_record = session.into();
                     self.cache
-                        .save(&session_record)
+                        .save(&session)
                         .await
                         .map_err(Self::Error::Cache)?;
                 }

@@ -4,7 +4,7 @@ use http::{header, HeaderMap, StatusCode};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_cookies::{cookie, Cookie};
-use tower_sessions::{Session, SessionManagerLayer, SessionStore};
+use tower_sessions::{Session, SessionExpiry, SessionManagerLayer, SessionStore};
 
 fn routes() -> Router {
     Router::new()
@@ -56,7 +56,7 @@ pub fn build_app<Store: SessionStore>(
     max_age: Option<Duration>,
 ) -> Router {
     if let Some(max_age) = max_age {
-        session_manager = session_manager.with_max_age(max_age);
+        session_manager = session_manager.with_expiry(SessionExpiry::InactivityDuration(max_age));
     }
 
     let session_service = ServiceBuilder::new()
@@ -173,7 +173,7 @@ macro_rules! route_tests {
         }
 
         #[tokio::test]
-        async fn session_expiration() {
+        async fn session_max_age() {
             let req = Request::builder()
                 .uri("/insert")
                 .body(Body::empty())
@@ -184,7 +184,9 @@ macro_rules! route_tests {
             assert_eq!(session_cookie.name(), "tower.sid");
             assert_eq!(session_cookie.http_only(), Some(true));
             assert_eq!(session_cookie.same_site(), Some(SameSite::Strict));
-            assert!(session_cookie.max_age().is_none());
+            assert!(session_cookie
+                .max_age()
+                .is_some_and(|d| d <= Duration::weeks(2)));
             assert_eq!(session_cookie.secure(), Some(true));
             assert_eq!(session_cookie.path(), Some("/"));
         }
@@ -206,6 +208,7 @@ macro_rules! route_tests {
                 .body(Body::empty())
                 .unwrap();
             let res = app.oneshot(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
 
             assert_eq!(body_string(res.into_body()).await, "42");
         }

@@ -2,10 +2,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 
-use crate::{
-    session::{SessionId, SessionRecord},
-    ExpiredDeletion, Session, SessionStore, SqlxStoreError,
-};
+use crate::{session::SessionId, ExpiredDeletion, Session, SessionStore, SqlxStoreError};
 
 /// A PostgreSQL session store.
 #[derive(Clone, Debug)]
@@ -77,8 +74,8 @@ impl PostgresStore {
             create table if not exists "{schema_name}"."{table_name}"
             (
                 id text primary key not null,
-                expiration_time timestamptz null,
-                data bytea not null
+                data bytea not null,
+                expiry_date timestamptz not null
             )
             "#,
             schema_name = self.schema_name,
@@ -98,7 +95,7 @@ impl ExpiredDeletion for PostgresStore {
         let query = format!(
             r#"
             delete from "{schema_name}"."{table_name}"
-            where expiration_time < (now() at time zone 'utc')
+            where expiry_date < (now() at time zone 'utc')
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
@@ -112,23 +109,23 @@ impl ExpiredDeletion for PostgresStore {
 impl SessionStore for PostgresStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
         let query = format!(
             r#"
-            insert into "{schema_name}"."{table_name}" (id, expiration_time, data)
+            insert into "{schema_name}"."{table_name}" (id, data, expiry_date)
             values ($1, $2, $3)
             on conflict (id) do update
             set
-              expiration_time = excluded.expiration_time,
-              data = excluded.data
+              data = excluded.data,
+              expiry_date = excluded.expiry_date
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
         sqlx::query(&query)
-            .bind(&session_record.id().to_string())
-            .bind(session_record.expiration_time())
-            .bind(rmp_serde::to_vec(&session_record.data())?)
+            .bind(&session.id().to_string())
+            .bind(rmp_serde::to_vec(&session)?)
+            .bind(session.expiry_date())
             .execute(&self.pool)
             .await?;
 
@@ -138,25 +135,20 @@ impl SessionStore for PostgresStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
-            select * from "{schema_name}"."{table_name}"
-            where id = $1
-            and (expiration_time is null or expiration_time > $2)
+            select data from "{schema_name}"."{table_name}"
+            where id = $1 and expiry_date > $2
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
-        let record_value: Option<(String, Option<OffsetDateTime>, Vec<u8>)> =
-            sqlx::query_as(&query)
-                .bind(session_id.to_string())
-                .bind(OffsetDateTime::now_utc())
-                .fetch_optional(&self.pool)
-                .await?;
+        let record_value: Option<(Vec<u8>,)> = sqlx::query_as(&query)
+            .bind(session_id.to_string())
+            .bind(OffsetDateTime::now_utc())
+            .fetch_optional(&self.pool)
+            .await?;
 
-        if let Some((session_id, expiration_time, data)) = record_value {
-            let session_id = SessionId::try_from(session_id)?;
-            let session_record =
-                SessionRecord::new(session_id, expiration_time, rmp_serde::from_slice(&data)?);
-            Ok(Some(session_record.into()))
+        if let Some((data,)) = record_value {
+            Ok(Some(rmp_serde::from_slice(&data)?))
         } else {
             Ok(None)
         }

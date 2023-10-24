@@ -2,10 +2,7 @@ use async_trait::async_trait;
 use sqlx::MySqlPool;
 use time::OffsetDateTime;
 
-use crate::{
-    session::{SessionId, SessionRecord},
-    ExpiredDeletion, Session, SessionStore, SqlxStoreError,
-};
+use crate::{session::SessionId, ExpiredDeletion, Session, SessionStore, SqlxStoreError};
 
 /// A MySQL session store.
 #[derive(Clone, Debug)]
@@ -65,8 +62,8 @@ impl MySqlStore {
             create table if not exists `{schema_name}`.`{table_name}`
             (
                 id char(36) primary key not null,
-                expiration_time timestamp(6) null,
-                data blob not null
+                data blob not null,
+                expiry_date timestamp(6) not null
             )
             "#,
             schema_name = self.schema_name,
@@ -86,7 +83,7 @@ impl ExpiredDeletion for MySqlStore {
         let query = format!(
             r#"
             delete from `{schema_name}`.`{table_name}`
-            where expiration_time < utc_timestamp()
+            where expiry_date < utc_timestamp()
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
@@ -100,22 +97,22 @@ impl ExpiredDeletion for MySqlStore {
 impl SessionStore for MySqlStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             insert into `{schema_name}`.`{table_name}`
-              (id, expiration_time, data) values (?, ?, ?)
+              (id, data, expiry_date) values (?, ?, ?)
             on duplicate key update
-              expiration_time = values(expiration_time),
-              data = values(data)
+              data = values(data),
+              expiry_date = values(expiry_date)
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
         sqlx::query(&query)
-            .bind(&session_record.id().to_string())
-            .bind(session_record.expiration_time())
-            .bind(rmp_serde::to_vec(&session_record.data())?)
+            .bind(&session.id().to_string())
+            .bind(rmp_serde::to_vec(&session)?)
+            .bind(session.expiry_date())
             .execute(&self.pool)
             .await?;
 
@@ -125,25 +122,20 @@ impl SessionStore for MySqlStore {
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
-            select * from `{schema_name}`.`{table_name}`
-            where id = ?
-            and (expiration_time is null or expiration_time > ?)
+            select data from `{schema_name}`.`{table_name}`
+            where id = ? and expiry_date > ?
             "#,
             schema_name = self.schema_name,
             table_name = self.table_name
         );
-        let record_value: Option<(String, Option<OffsetDateTime>, Vec<u8>)> =
-            sqlx::query_as(&query)
-                .bind(session_id.to_string())
-                .bind(OffsetDateTime::now_utc())
-                .fetch_optional(&self.pool)
-                .await?;
+        let data: Option<(Vec<u8>,)> = sqlx::query_as(&query)
+            .bind(session_id.to_string())
+            .bind(OffsetDateTime::now_utc())
+            .fetch_optional(&self.pool)
+            .await?;
 
-        if let Some((session_id, expiration_time, data)) = record_value {
-            let session_id = SessionId::try_from(session_id)?;
-            let session_record =
-                SessionRecord::new(session_id, expiration_time, rmp_serde::from_slice(&data)?);
-            Ok(Some(session_record.into()))
+        if let Some((data,)) = data {
+            Ok(Some(rmp_serde::from_slice(&data)?))
         } else {
             Ok(None)
         }

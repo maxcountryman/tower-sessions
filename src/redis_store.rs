@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use fred::prelude::*;
+use fred::{
+    prelude::{KeysInterface, RedisClient},
+    types::Expiration,
+};
 use time::OffsetDateTime;
 
-use crate::{
-    session::{SessionId, SessionRecord},
-    Session, SessionStore,
-};
+use crate::{session::SessionId, Session, SessionStore};
 
 /// An error type for `RedisStore`.
 #[derive(thiserror::Error, Debug)]
@@ -56,17 +56,16 @@ impl RedisStore {
 impl SessionStore for RedisStore {
     type Error = RedisStoreError;
 
-    async fn save(&self, session_record: &SessionRecord) -> Result<(), Self::Error> {
-        let expiration = session_record
-            .expiration_time()
+    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+        let expire = Some(session.expiry_date())
             .map(OffsetDateTime::unix_timestamp)
             .map(Expiration::EXAT);
 
         self.client
             .set(
-                session_record.id().to_string(),
-                rmp_serde::to_vec(&session_record)?.as_slice(),
-                expiration,
+                session.id().to_string(),
+                rmp_serde::to_vec(&session)?.as_slice(),
+                expire,
                 None,
                 false,
             )
@@ -76,13 +75,16 @@ impl SessionStore for RedisStore {
     }
 
     async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
-        Ok(self
+        let data = self
             .client
             .get::<Option<Vec<u8>>, _>(session_id.to_string())
-            .await?
-            .map(|bs| rmp_serde::from_slice::<SessionRecord>(&bs))
-            .transpose()?
-            .map(Into::into))
+            .await?;
+
+        if let Some(data) = data {
+            Ok(Some(rmp_serde::from_slice(&data)?))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {

@@ -121,10 +121,11 @@ mod mysql_store_tests {
 #[cfg(all(test, feature = "axum-core", feature = "diesel-store"))]
 mod diesel_sqlite_store_tests {
     use axum::Router;
-    use diesel::prelude::*;
-    use diesel::r2d2::{ConnectionManager, Pool};
-    use tower_sessions::diesel_store::DieselStore;
-    use tower_sessions::SessionManagerLayer;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
 
     use crate::common::build_app;
 
@@ -151,10 +152,11 @@ mod diesel_sqlite_store_tests {
 ))]
 mod diesel_pg_store_tests {
     use axum::Router;
-    use diesel::prelude::*;
-    use diesel::r2d2::{ConnectionManager, Pool};
-    use tower_sessions::diesel_store::DieselStore;
-    use tower_sessions::SessionManagerLayer;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
 
     use crate::common::build_app;
 
@@ -182,10 +184,11 @@ mod diesel_pg_store_tests {
 ))]
 mod diesel_mysql_store_tests {
     use axum::Router;
-    use diesel::prelude::*;
-    use diesel::r2d2::{ConnectionManager, Pool};
-    use tower_sessions::diesel_store::DieselStore;
-    use tower_sessions::SessionManagerLayer;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
 
     use crate::common::build_app;
 
