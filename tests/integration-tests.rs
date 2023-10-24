@@ -118,7 +118,12 @@ mod mysql_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(test, feature = "axum-core", feature = "diesel-sqlite-store"))]
+#[cfg(all(
+    test,
+    feature = "axum-core",
+    feature = "diesel-sqlite-store",
+    feature = "diesel-r2d2"
+))]
 mod diesel_sqlite_store_tests {
     use axum::Router;
     use diesel::{
@@ -144,7 +149,36 @@ mod diesel_sqlite_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(test, feature = "axum-core", feature = "diesel-postgres-store"))]
+#[cfg(all(test, feature = "axum-core", feature = "diesel-deadpool"))]
+mod deadpool_diesel_sqlite_store_tests {
+    use axum::Router;
+    use deadpool_diesel::{Manager, Pool};
+    use diesel::prelude::*;
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
+
+    use crate::common::build_app;
+
+    async fn app(max_age: Option<Duration>) -> Router {
+        let manager =
+            Manager::<SqliteConnection>::new(":memory:", deadpool_diesel::Runtime::Tokio1);
+        let pool = Pool::builder(manager).max_size(1).build().unwrap();
+
+        let session_store = DieselStore::new(pool);
+        session_store.migrate().await.unwrap();
+        let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+
+        build_app(session_manager, max_age)
+    }
+
+    route_tests!(app);
+}
+
+#[cfg(all(
+    test,
+    feature = "axum-core",
+    feature = "diesel-postgres-store",
+    feature = "diesel-r2d2"
+))]
 mod diesel_pg_store_tests {
     use axum::Router;
     use diesel::{
@@ -171,7 +205,12 @@ mod diesel_pg_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(test, feature = "axum-core", feature = "diesel-mysql-store"))]
+#[cfg(all(
+    test,
+    feature = "axum-core",
+    feature = "diesel-mysql-store",
+    feature = "diesel-r2d2"
+))]
 mod diesel_mysql_store_tests {
     use axum::Router;
     use diesel::{

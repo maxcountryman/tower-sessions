@@ -37,6 +37,8 @@ diesel-store = ["dep:diesel", "tokio/rt", "rmp-serde"]
 diesel-sqlite-store = ["diesel-store", "diesel/sqlite"]
 diesel-postgres-store = ["diesel-store", "diesel/postgres"]
 diesel-mysql-store = ["diesel-store", "diesel/mysql"]
+diesel-r2d2 = ["diesel/r2d2"]
+diesel-deadpool = ["dep:deadpool-diesel", "dep:deadpool"]
 
 [dependencies]
 async-trait = "0.1.73"
@@ -68,9 +70,10 @@ sqlx = { optional = true, version = "0.7.2", features = [
 tokio = { optional = true, version = "1.32.0", default-features = false }
 moka = { optional = true, version = "0.12.0", features = ["future"] }
 diesel = { optional = true, default-features = false, version = "2.1", features = [
-    "r2d2",
     "time",
 ] }
+deadpool-diesel = { version = "0.5", optional = true }
+deadpool = { version ="0.10", optional = true }
 
 [dev-dependencies]
 axum = "0.6.20"
@@ -142,6 +145,7 @@ required-features = [
     "diesel-store",
     "diesel/sqlite",
     "continuously-delete-expired",
+    "diesel-r2d2",
 ]
 
 
@@ -152,4 +156,15 @@ required-features = [
     "diesel-store",
     "diesel/sqlite",
     "continuously-delete-expired",
+    "diesel-r2d2",
+]
+
+[[example]]
+name = "diesel-deadpool"
+required-features = [
+   "axum-core",
+   "diesel-store",
+   "diesel/sqlite",
+   "continuously-delete-expired",
+   "diesel-deadpool",
 ]

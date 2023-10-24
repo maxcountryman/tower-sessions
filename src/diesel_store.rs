@@ -10,13 +10,12 @@ use diesel::{
     expression::{AsExpression, ValidGrouping},
     expression_methods::ExpressionMethods,
     helper_types::{Eq, Filter, Gt, IntoBoxed, SqlTypeOf},
-    prelude::{BoolExpressionMethods, Insertable, Queryable},
+    prelude::{BoolExpressionMethods, Connection, Insertable, Queryable},
     query_builder::{
         AsQuery, DeleteStatement, InsertStatement, IntoUpdateTarget, QueryBuilder, QueryFragment,
         UpdateStatement,
     },
     query_dsl::methods::{BoxedDsl, ExecuteDsl, FilterDsl, LimitDsl, LoadQuery},
-    r2d2::{ConnectionManager, ManageConnection, Pool, R2D2Connection},
     sql_types::{Binary, Bool, SingleValue, SqlType, Text, Timestamp},
     AsChangeset, BoxableExpression, Column, Expression, OptionalExtension, QueryDsl, RunQueryDsl,
     SelectableExpression, Table,
@@ -26,36 +25,37 @@ use crate::{session_store::ExpiredDeletion, SessionStore};
 
 /// An error type for diesel stores
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum DieselStoreError {
     /// A pool related error
+    #[cfg(feature = "diesel-r2d2")]
     #[error("Pool Error: {0}")]
     R2D2Error(#[from] diesel::r2d2::PoolError),
     /// A diesel related error
     #[error("Diesel Error: {0}")]
     DieselError(#[from] diesel::result::Error),
     /// Failed to join a blocking tokio task
+    #[cfg(feature = "diesel-r2d2")]
     #[error("Failed to join task: {0}")]
-    TokioJoinERror(#[from] tokio::task::JoinError),
+    TokioJoinError(#[from] tokio::task::JoinError),
     /// A variant to map `rmp_serde` encode errors.
     #[error("Failed to serialize session data: {0}")]
     SerializationError(#[from] rmp_serde::encode::Error),
+    #[cfg(feature = "diesel-deadpool")]
+    #[error("Failed to interact with deadpool: {0}")]
+    /// A variant that indicates that we cannot interact with deadpool
+    InteractError(String),
+    #[cfg(feature = "diesel-deadpool")]
+    #[error("Failed to get a connection from deadpool: {0}")]
+    /// A variant that indicates that we cannot get a connection from deadpool
+    DeadpoolError(#[from] deadpool_diesel::PoolError),
 }
 
 /// A Diesel session store
-#[derive(Debug)]
-pub struct DieselStore<C: R2D2Connection + 'static, T = self::sessions::table> {
+#[derive(Debug, Clone)]
+pub struct DieselStore<P, T = self::sessions::table> {
     p: PhantomData<T>,
-    pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<C>>,
-}
-
-// custom impl as we don't want to have `Clone bounds on the types
-impl<C: R2D2Connection + 'static, T> Clone for DieselStore<C, T> {
-    fn clone(&self) -> Self {
-        Self {
-            p: self.p,
-            pool: self.pool.clone(),
-        }
-    }
+    pool: P,
 }
 
 diesel::table! {
@@ -77,7 +77,7 @@ diesel::table! {
 /// definition
 pub trait SessionTable<C>: Copy + Send + Sync + AsQuery + HasTable<Table = Self> + Table
 where
-    C: R2D2Connection,
+    C: diesel::Connection,
 {
     /// the `expiration_time` column of your table
     type ExpiryDate: Column<SqlType = Timestamp>
@@ -98,10 +98,83 @@ where
     }
 }
 
+/// A helper trait to abstract over different pooling solutions for diesel
+#[async_trait::async_trait]
+pub trait DieselPool: Clone + Sync + Send + 'static {
+    /// The underlying diesel connection type used by this pool
+    type Connection: diesel::Connection + 'static;
+
+    /// Interact with a connection from that pool
+    async fn interact<R, E, F>(&self, c: F) -> Result<R, DieselStoreError>
+    where
+        R: Send + 'static,
+        E: Send + 'static,
+        F: FnOnce(&mut Self::Connection) -> Result<R, E> + Send + 'static,
+        DieselStoreError: From<E>;
+}
+
+#[cfg(feature = "diesel-r2d2")]
+#[async_trait::async_trait]
+impl<C> DieselPool for diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<C>>
+where
+    C: diesel::r2d2::R2D2Connection + 'static,
+{
+    type Connection = C;
+
+    async fn interact<R, E, F>(&self, c: F) -> Result<R, DieselStoreError>
+    where
+        F: FnOnce(&mut Self::Connection) -> Result<R, E> + Send + 'static,
+        DieselStoreError: From<E>,
+        R: Send + 'static,
+        E: Send + 'static,
+    {
+        let pool = self.clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            let r = c(&mut *conn)?;
+            Ok::<_, DieselStoreError>(r)
+        })
+        .await??)
+    }
+}
+
+#[cfg(feature = "diesel-deadpool")]
+#[async_trait::async_trait]
+impl<C> DieselPool for deadpool_diesel::Pool<deadpool_diesel::Manager<C>>
+where
+    C: Connection + 'static,
+    deadpool_diesel::Manager<C>: deadpool::managed::Manager<Type = deadpool_diesel::Connection<C>>,
+    <deadpool_diesel::Manager<C> as deadpool::managed::Manager>::Type: Send + Sync,
+    <deadpool_diesel::Manager<C> as deadpool::managed::Manager>::Error: std::fmt::Debug,
+    DieselStoreError: From<
+        deadpool::managed::PoolError<
+            <deadpool_diesel::Manager<C> as deadpool::managed::Manager>::Error,
+        >,
+    >,
+{
+    type Connection = C;
+
+    async fn interact<R, E, F>(&self, c: F) -> Result<R, DieselStoreError>
+    where
+        F: FnOnce(&mut Self::Connection) -> Result<R, E> + Send + 'static,
+        DieselStoreError: From<E>,
+        R: Send + 'static,
+        E: Send + 'static,
+    {
+        let conn = self.get().await?;
+        let r = conn
+            .as_ref()
+            .interact(c)
+            .await
+            .map_err(|e| DieselStoreError::InteractError(e.to_string()))?;
+        r.map_err(Into::into)
+    }
+}
+
 impl<C> SessionTable<C> for self::sessions::table
 where
     <C::Backend as Backend>::QueryBuilder: Default,
-    C: diesel::r2d2::R2D2Connection,
+    C: diesel::Connection,
     InsertStatement<
         Self,
         <(
@@ -198,15 +271,17 @@ where
     }
 }
 
-impl<C> DieselStore<C>
+impl<P> DieselStore<P>
 where
-    C: R2D2Connection,
+    P: DieselPool,
 {
     /// Create a new diesel store with a provided connection pool.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
+    /// # #[cfg(feature = "diesel-r2d2")]
+    /// # fn main() {
     /// use diesel::{
     ///     prelude::*,
     ///     r2d2::{ConnectionManager, Pool},
@@ -217,8 +292,12 @@ where
     ///     .build(ConnectionManager::<SqliteConnection>::new(":memory:"))
     ///     .unwrap();
     /// let session_store = DieselStore::new(pool);
+    /// # }
+    ///
+    /// # #[cfg(not(feature = "diesel-r2d2"))]
+    /// # fn main() {}
     /// ```
-    pub fn new(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<C>>) -> Self {
+    pub fn new(pool: P) -> Self {
         Self {
             pool,
             p: PhantomData,
@@ -226,16 +305,18 @@ where
     }
 }
 
-impl<C, T> DieselStore<C, T>
+impl<P, T> DieselStore<P, T>
 where
-    C: R2D2Connection,
-    T: SessionTable<C>,
+    P: DieselPool,
+    T: SessionTable<P::Connection>,
 {
     /// Create a new diesel store with a provided connection pool.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
+    /// # #[cfg(feature = "diesel-r2d2")]
+    /// # fn main() {
     /// use diesel::{
     ///     prelude::*,
     ///     r2d2::{ConnectionManager, Pool},
@@ -247,11 +328,12 @@ where
     ///     .unwrap();
     /// let session_store =
     ///     DieselStore::with_table(tower_sessions::diesel_store::sessions::table, pool);
+    /// # }
+    ///
+    /// # #[cfg(not(feature = "diesel-r2d2"))]
+    /// # fn main() {}
     /// ```
-    pub fn with_table(
-        _table: T,
-        pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<C>>,
-    ) -> Self {
+    pub fn with_table(_table: T, pool: P) -> Self {
         Self {
             pool,
             p: PhantomData,
@@ -260,13 +342,12 @@ where
 
     /// Migrate the session schema.
     pub async fn migrate(&self) -> Result<(), DieselStoreError> {
-        let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get()?;
-            T::migrate(&mut conn)?;
-            Ok::<_, DieselStoreError>(())
-        })
-        .await??;
+        self.pool
+            .interact(|conn| {
+                T::migrate(conn)?;
+                Ok::<_, DieselStoreError>(())
+            })
+            .await?;
         Ok(())
     }
 }
@@ -285,41 +366,38 @@ where
 }
 
 #[async_trait::async_trait]
-impl<C, T> SessionStore for DieselStore<C, T>
+impl<P, T> SessionStore for DieselStore<P, T>
 where
-    T: SessionTable<C> + 'static,
+    P: DieselPool,
+    T: SessionTable<P::Connection> + 'static,
     String: AsExpression<SqlTypeOf<T::PrimaryKey>>,
     T::PrimaryKey: Default,
     <T::PrimaryKey as Expression>::SqlType: SqlType + SingleValue,
-    DeleteStatement<T, Eq<T::PrimaryKey, String>>: ExecuteDsl<C>,
-    T: FilterDsl<Eq<T::PrimaryKey, String>> + BoxedDsl<'static, C::Backend>,
-    IntoBoxed<'static, T, C::Backend>: LimitDsl<Output = IntoBoxed<'static, T, C::Backend>>,
-    IntoBoxed<'static, T, C::Backend>: FilterDsl<
+    DeleteStatement<T, Eq<T::PrimaryKey, String>>: ExecuteDsl<P::Connection>,
+    T: FilterDsl<Eq<T::PrimaryKey, String>>
+        + BoxedDsl<'static, <P::Connection as Connection>::Backend>,
+    IntoBoxed<'static, T, <P::Connection as Connection>::Backend>:
+        LimitDsl<Output = IntoBoxed<'static, T, <P::Connection as Connection>::Backend>>,
+    IntoBoxed<'static, T, <P::Connection as Connection>::Backend>: FilterDsl<
         And<Eq<T::PrimaryKey, String>, Gt<T::ExpiryDate, diesel::dsl::now>>,
-        Output = IntoBoxed<'static, T, C::Backend>,
+        Output = IntoBoxed<'static, T, <P::Connection as Connection>::Backend>,
     >,
     Filter<T, Eq<T::PrimaryKey, String>>: IntoUpdateTarget,
     DeleteStatement<
         <Filter<T, Eq<T::PrimaryKey, String>> as HasTable>::Table,
         <Filter<T, Eq<T::PrimaryKey, String>> as IntoUpdateTarget>::WhereClause,
-    >: ExecuteDsl<C>,
+    >: ExecuteDsl<P::Connection>,
     Eq<T::PrimaryKey, String>: BoolExpressionMethods<SqlType = Bool>,
-    for<'a> IntoBoxed<'static, T, C::Backend>: LoadQuery<'a, C, crate::Session>,
-    Pool<ConnectionManager<C>>: Clone,
-    ConnectionManager<C>: ManageConnection<Connection = C>,
-    C: R2D2Connection,
+    for<'a> IntoBoxed<'static, T, <P::Connection as Connection>::Backend>:
+        LoadQuery<'a, P::Connection, crate::Session>,
 {
     type Error = DieselStoreError;
 
     async fn save(&self, session_record: &crate::Session) -> Result<(), Self::Error> {
-        let pool = self.pool.clone();
         let record = session_record.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn: &mut diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<C>> =
-                &mut pool.get()?;
-            T::insert(conn, &record)
-        })
-        .await??;
+        self.pool
+            .interact(move |conn| T::insert(conn, &record))
+            .await?;
         Ok(())
     }
 
@@ -328,67 +406,75 @@ where
         session_id: &crate::session::Id,
     ) -> Result<Option<crate::Session>, Self::Error> {
         let session_id = session_id.to_string();
-        let pool = self.pool.clone();
-        let res = tokio::task::spawn_blocking(move || {
-            let conn: &mut diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<C>> =
-                &mut pool.get()?;
-
-            let q = T::table()
-                .into_boxed()
-                .limit(1)
-                .filter(
-                    T::PrimaryKey::default()
-                        .eq(session_id.to_string())
-                        .and(T::ExpiryDate::default().gt(diesel::dsl::now)),
-                )
-                .get_result(conn)
-                .optional()?;
-            Ok::<_, DieselStoreError>(q)
-        })
-        .await??;
-
+        let res = self
+            .pool
+            .interact(move |conn| {
+                let q = T::table()
+                    .into_boxed()
+                    .limit(1)
+                    .filter(
+                        T::PrimaryKey::default()
+                            .eq(session_id.to_string())
+                            .and(T::ExpiryDate::default().gt(diesel::dsl::now)),
+                    )
+                    .get_result(conn)
+                    .optional()?;
+                Ok::<_, DieselStoreError>(q)
+            })
+            .await?;
         Ok(res)
     }
 
     async fn delete(&self, session_id: &crate::session::Id) -> Result<(), Self::Error> {
         let session_id = session_id.to_string();
-        let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn: &mut diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<C>> =
-                &mut pool.get()?;
-            diesel::delete(T::table().filter(T::PrimaryKey::default().eq(session_id.to_string())))
+        self.pool
+            .interact(move |conn| {
+                diesel::delete(
+                    T::table().filter(T::PrimaryKey::default().eq(session_id.to_string())),
+                )
                 .execute(conn)?;
-            Ok::<_, DieselStoreError>(())
-        })
-        .await??;
+                Ok::<_, DieselStoreError>(())
+            })
+            .await?;
         Ok(())
     }
 }
 
 #[async_trait]
-impl<C, T> ExpiredDeletion for DieselStore<C, T>
+impl<P, T> ExpiredDeletion for DieselStore<P, T>
 where
+    P: DieselPool,
     Self: SessionStore<Error = DieselStoreError>,
-    C: R2D2Connection,
-    T: SessionTable<C>,
-    T: FilterDsl<Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>>,
-    Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>>: IntoUpdateTarget,
+    T: SessionTable<P::Connection>,
+    T: FilterDsl<
+        Box<dyn BoxableExpression<T, <P::Connection as Connection>::Backend, SqlType = Bool>>,
+    >,
+    Filter<
+        T,
+        Box<dyn BoxableExpression<T, <P::Connection as Connection>::Backend, SqlType = Bool>>,
+    >: IntoUpdateTarget,
     DeleteStatement<
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>> as HasTable>::Table,
-        <Filter<T, Box<dyn BoxableExpression<T, C::Backend, SqlType = Bool>>> as IntoUpdateTarget>::WhereClause,
-    >: ExecuteDsl<C>,
-   Lt<T::ExpiryDate, diesel::dsl::now>: QueryFragment<C::Backend> + SelectableExpression<T> + Expression<SqlType = Bool>,
+        <Filter<
+            T,
+            Box<dyn BoxableExpression<T, <P::Connection as Connection>::Backend, SqlType = Bool>>,
+        > as HasTable>::Table,
+        <Filter<
+            T,
+            Box<dyn BoxableExpression<T, <P::Connection as Connection>::Backend, SqlType = Bool>>,
+        > as IntoUpdateTarget>::WhereClause,
+    >: ExecuteDsl<P::Connection>,
+    Lt<T::ExpiryDate, diesel::dsl::now>: QueryFragment<<P::Connection as Connection>::Backend>
+        + SelectableExpression<T>
+        + Expression<SqlType = Bool>,
 {
     async fn delete_expired(&self) -> Result<(), Self::Error> {
-        let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get()?;
-            let filter = Box::new(T::ExpiryDate::default().lt(diesel::dsl::now)) as Box<_>;
-            diesel::delete(T::table().filter(filter))
-                .execute(&mut conn)?;
-            Ok::<_, DieselStoreError>(())
-        })
-        .await??;
+        self.pool
+            .interact(|conn| {
+                let filter = Box::new(T::ExpiryDate::default().lt(diesel::dsl::now)) as Box<_>;
+                diesel::delete(T::table().filter(filter)).execute(conn)?;
+                Ok::<_, DieselStoreError>(())
+            })
+            .await?;
         Ok(())
     }
 }
