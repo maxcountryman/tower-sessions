@@ -118,7 +118,7 @@ mod mysql_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(test, feature = "axum-core", feature = "diesel-store"))]
+#[cfg(all(test, feature = "axum-core", feature = "diesel-sqlite-store"))]
 mod diesel_sqlite_store_tests {
     use axum::Router;
     use diesel::{
@@ -144,12 +144,7 @@ mod diesel_sqlite_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(
-    test,
-    feature = "axum-core",
-    feature = "diesel-store",
-    feature = "__diesel_postgres"
-))]
+#[cfg(all(test, feature = "axum-core", feature = "diesel-postgres-store"))]
 mod diesel_pg_store_tests {
     use axum::Router;
     use diesel::{
@@ -176,12 +171,7 @@ mod diesel_pg_store_tests {
     route_tests!(app);
 }
 
-#[cfg(all(
-    test,
-    feature = "axum-core",
-    feature = "diesel-store",
-    feature = "__diesel_mysql"
-))]
+#[cfg(all(test, feature = "axum-core", feature = "diesel-mysql-store"))]
 mod diesel_mysql_store_tests {
     use axum::Router;
     use diesel::{

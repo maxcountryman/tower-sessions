@@ -19,14 +19,24 @@ tokio-rt = ["tokio/rt"]
 tokio-time = ["tokio/time"]
 continuously-delete-expired = ["tokio-rt", "tokio-time"]
 memory-store = []
+
+moka-store = ["moka"]
+
 redis-store = ["fred", "rmp-serde"]
+
 mongodb-store = ["mongodb", "bson", "rmp-serde"]
+
+# SQLx feature flags.
 sqlx-store = ["sqlx", "rmp-serde"]
 sqlite-store = ["sqlx/sqlite", "sqlx-store"]
 postgres-store = ["sqlx/postgres", "sqlx-store"]
 mysql-store = ["sqlx/mysql", "sqlx-store"]
-moka-store = ["moka"]
+
+# Diesel feature flags.
 diesel-store = ["dep:diesel", "tokio/rt", "rmp-serde"]
+diesel-sqlite-store = ["diesel-store", "diesel/sqlite"]
+diesel-postgres-store = ["diesel-store", "diesel/postgres"]
+diesel-mysql-store = ["diesel-store", "diesel/mysql"]
 
 [dependencies]
 async-trait = "0.1.73"
