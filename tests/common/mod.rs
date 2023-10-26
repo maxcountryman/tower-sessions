@@ -4,7 +4,7 @@ use http::{header, HeaderMap, StatusCode};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_cookies::{cookie, Cookie};
-use tower_sessions::{Session, SessionExpiry, SessionManagerLayer, SessionStore};
+use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore};
 
 fn routes() -> Router {
     Router::new()
@@ -56,7 +56,7 @@ pub fn build_app<Store: SessionStore>(
     max_age: Option<Duration>,
 ) -> Router {
     if let Some(max_age) = max_age {
-        session_manager = session_manager.with_expiry(SessionExpiry::InactivityDuration(max_age));
+        session_manager = session_manager.with_expiry(Expiry::InactivityDuration(max_age));
     }
 
     let session_service = ServiceBuilder::new()

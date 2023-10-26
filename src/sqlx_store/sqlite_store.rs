@@ -2,9 +2,7 @@ use async_trait::async_trait;
 use sqlx::sqlite::SqlitePool;
 use time::OffsetDateTime;
 
-use crate::{
-    session::SessionId, session_store::ExpiredDeletion, Session, SessionStore, SqlxStoreError,
-};
+use crate::{session::Id, session_store::ExpiredDeletion, Session, SessionStore, SqlxStoreError};
 
 /// A SQLite session store.
 #[derive(Clone, Debug)]
@@ -106,7 +104,7 @@ impl SessionStore for SqliteStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
             select data from {}
@@ -127,7 +125,7 @@ impl SessionStore for SqliteStore {
         }
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             delete from {} where id = ?

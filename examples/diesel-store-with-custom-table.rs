@@ -15,7 +15,7 @@ use tower::ServiceBuilder;
 use tower_sessions::{
     diesel_store::{DieselStore, DieselStoreError, SessionTable},
     session_store::ExpiredDeletion,
-    Session, SessionExpiry, SessionManagerLayer,
+    Expiry, Session, SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
@@ -58,8 +58,8 @@ impl SessionTable<SqliteConnection> for self::my_sessions::table {
         // or create the table via normal diesel migrations on startup and leave that
         // function empty
         conn.batch_execute(
-            "CREATE TABLE `my_sessions` (`id` TEXT PRIMARY KEY NOT NULL, `expiry_date` TEXT \
-             NOT NULL, `data` BLOB NOT NULL);",
+            "CREATE TABLE `my_sessions` (`id` TEXT PRIMARY KEY NOT NULL, `expiry_date` TEXT NOT \
+             NULL, `data` BLOB NOT NULL);",
         )?;
         Ok(())
     }
@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

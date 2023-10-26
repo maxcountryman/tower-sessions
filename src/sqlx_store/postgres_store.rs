@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use time::OffsetDateTime;
 
-use crate::{session::SessionId, ExpiredDeletion, Session, SessionStore, SqlxStoreError};
+use crate::{session::Id, ExpiredDeletion, Session, SessionStore, SqlxStoreError};
 
 /// A PostgreSQL session store.
 #[derive(Clone, Debug)]
@@ -132,7 +132,7 @@ impl SessionStore for PostgresStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         let query = format!(
             r#"
             select data from "{schema_name}"."{table_name}"
@@ -154,7 +154,7 @@ impl SessionStore for PostgresStore {
         }
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         let query = format!(
             r#"delete from "{schema_name}"."{table_name}" where id = $1"#,
             schema_name = self.schema_name,

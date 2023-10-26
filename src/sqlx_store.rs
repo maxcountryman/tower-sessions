@@ -7,7 +7,7 @@ pub use self::postgres_store::PostgresStore;
 #[cfg(feature = "sqlite-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
 pub use self::sqlite_store::SqliteStore;
-use crate::session::SessionError;
+use crate::session::Error;
 
 #[cfg(feature = "sqlite-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
@@ -26,7 +26,7 @@ mod mysql_store;
 pub enum SqlxStoreError {
     /// A variant to map session errors.
     #[error(transparent)]
-    Session(#[from] SessionError),
+    Session(#[from] Error),
 
     /// A variant to map `sqlx` errors.
     #[error("SQLx error: {0}")]
