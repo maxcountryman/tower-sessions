@@ -208,6 +208,7 @@ macro_rules! route_tests {
                 .body(Body::empty())
                 .unwrap();
             let res = app.oneshot(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
 
             assert_eq!(body_string(res.into_body()).await, "42");
         }

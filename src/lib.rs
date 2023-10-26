@@ -533,6 +533,10 @@ mod mongodb_store;
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
 mod sqlx_store;
 
+#[cfg(feature = "diesel-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "diesel-store")))]
+pub mod diesel_store;
+
 pub mod cookie_config;
 pub mod service;
 pub mod session;

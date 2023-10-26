@@ -118,6 +118,96 @@ mod mysql_store_tests {
     route_tests!(app);
 }
 
+#[cfg(all(test, feature = "axum-core", feature = "diesel-store"))]
+mod diesel_sqlite_store_tests {
+    use axum::Router;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
+
+    use crate::common::build_app;
+
+    async fn app(max_age: Option<Duration>) -> Router {
+        let pool = Pool::builder()
+            .max_size(1)
+            .build(ConnectionManager::<SqliteConnection>::new(":memory:"))
+            .unwrap();
+        let session_store = DieselStore::new(pool);
+        session_store.migrate().await.unwrap();
+        let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+
+        build_app(session_manager, max_age)
+    }
+
+    route_tests!(app);
+}
+
+#[cfg(all(
+    test,
+    feature = "axum-core",
+    feature = "diesel-store",
+    feature = "__diesel_postgres"
+))]
+mod diesel_pg_store_tests {
+    use axum::Router;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
+
+    use crate::common::build_app;
+
+    async fn app(max_age: Option<Duration>) -> Router {
+        let database_url = std::option_env!("POSTGRES_URL").unwrap();
+        let pool = Pool::builder()
+            .max_size(1)
+            .build(ConnectionManager::<PgConnection>::new(database_url))
+            .unwrap();
+        let session_store = DieselStore::new(pool);
+        session_store.migrate().await.unwrap();
+        let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+
+        build_app(session_manager, max_age)
+    }
+
+    route_tests!(app);
+}
+
+#[cfg(all(
+    test,
+    feature = "axum-core",
+    feature = "diesel-store",
+    feature = "__diesel_mysql"
+))]
+mod diesel_mysql_store_tests {
+    use axum::Router;
+    use diesel::{
+        prelude::*,
+        r2d2::{ConnectionManager, Pool},
+    };
+    use tower_sessions::{diesel_store::DieselStore, SessionManagerLayer};
+
+    use crate::common::build_app;
+
+    async fn app(max_age: Option<Duration>) -> Router {
+        let database_url = std::option_env!("MYSQL_URL").unwrap();
+        let pool = Pool::builder()
+            .max_size(1)
+            .build(ConnectionManager::<MysqlConnection>::new(database_url))
+            .unwrap();
+        let session_store = DieselStore::new(pool);
+        session_store.migrate().await.unwrap();
+        let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+
+        build_app(session_manager, max_age)
+    }
+
+    route_tests!(app);
+}
+
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
 mod mongodb_store_tests {
     use axum::Router;
