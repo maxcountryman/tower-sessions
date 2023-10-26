@@ -325,7 +325,7 @@ where
 
     async fn load(
         &self,
-        session_id: &crate::session::SessionId,
+        session_id: &crate::session::Id,
     ) -> Result<Option<crate::Session>, Self::Error> {
         let session_id = session_id.to_string();
         let pool = self.pool.clone();
@@ -350,7 +350,7 @@ where
         Ok(res)
     }
 
-    async fn delete(&self, session_id: &crate::session::SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &crate::session::Id) -> Result<(), Self::Error> {
         let session_id = session_id.to_string();
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {

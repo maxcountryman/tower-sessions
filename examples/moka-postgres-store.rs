@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, Session, SessionExpiry,
+    sqlx::PgPool, CachingSessionStore, Expiry, MokaStore, PostgresStore, Session,
     SessionManagerLayer,
 };
 
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(caching_store)
                 .with_secure(false)
-                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

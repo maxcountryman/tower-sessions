@@ -20,7 +20,7 @@ const DEFAULT_DURATION: Duration = Duration::weeks(2);
 
 /// Session errors.
 #[derive(thiserror::Error, Debug)]
-pub enum SessionError {
+pub enum Error {
     /// A variant to map `uuid` errors.
     #[error("Invalid UUID: {0}")]
     InvalidUuid(#[from] uuid::Error),
@@ -30,15 +30,15 @@ pub enum SessionError {
     SerdeJsonError(#[from] serde_json::Error),
 }
 
-type SessionResult<T> = Result<T, SessionError>;
+type Result<T> = std::result::Result<T, Error>;
 
-type SessionData = HashMap<String, Value>;
+type Data = HashMap<String, Value>;
 
 /// A session which allows HTTP applications to associate key-value pairs with
 /// visitors.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Session {
-    pub(crate) id: SessionId,
+    pub(crate) id: Id,
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -56,7 +56,7 @@ impl Session {
     /// # Errors
     ///
     /// This method can fail when [`serde_json::to_value`] fails.
-    pub fn insert(&self, key: &str, value: impl Serialize) -> SessionResult<()> {
+    pub fn insert(&self, key: &str, value: impl Serialize) -> Result<()> {
         self.insert_value(key, serde_json::to_value(&value)?);
         Ok(())
     }
@@ -108,7 +108,7 @@ impl Session {
     /// # Errors
     ///
     /// This method can fail when [`serde_json::from_value`] fails.
-    pub fn get<T: DeserializeOwned>(&self, key: &str) -> SessionResult<Option<T>> {
+    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         Ok(self
             .get_value(key)
             .map(serde_json::from_value)
@@ -149,7 +149,7 @@ impl Session {
     /// # Errors
     ///
     /// This method can fail when [`serde_json::from_value`] fails.
-    pub fn remove<T: DeserializeOwned>(&self, key: &str) -> SessionResult<Option<T>> {
+    pub fn remove<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         Ok(self
             .remove_value(key)
             .map(serde_json::from_value)
@@ -215,7 +215,7 @@ impl Session {
         key: &str,
         old_value: impl Serialize,
         new_value: impl Serialize,
-    ) -> SessionResult<bool> {
+    ) -> Result<bool> {
         let mut inner = self.inner.lock();
         match inner.data.get(key) {
             Some(current_value) if serde_json::to_value(&old_value)? == *current_value => {
@@ -246,7 +246,7 @@ impl Session {
         inner.data.clear();
     }
 
-    /// Sets `deleted` on the session to `SessionDeletion::Deleted`.
+    /// Sets `deleted` on the session to `Deletion::Deleted`.
     ///
     /// Setting this flag indicates the session should be deleted from the
     /// underlying store.
@@ -257,17 +257,17 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{session::SessionDeletion, Session};
+    /// use tower_sessions::{session::Deletion, Session};
     /// let session = Session::default();
     /// session.delete();
-    /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
+    /// assert!(matches!(session.deleted(), Some(Deletion::Deleted)));
     /// ```
     pub fn delete(&self) {
         let mut inner = self.inner.lock();
-        inner.deleted = Some(SessionDeletion::Deleted);
+        inner.deleted = Some(Deletion::Deleted);
     }
 
-    /// Sets `deleted` on the session to `SessionDeletion::Cycled(self.id))`.
+    /// Sets `deleted` on the session to `Deletion::Cycled(self.id))`.
     ///
     /// Setting this flag indicates the session ID should be cycled while
     /// retaining the session's data.
@@ -278,22 +278,22 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{session::SessionDeletion, Session};
+    /// use tower_sessions::{session::Deletion, Session};
     /// let session = Session::default();
     /// session.insert("foo", 42);
     /// session.cycle_id();
     /// assert!(matches!(
     ///     session.deleted(),
-    ///     Some(SessionDeletion::Cycled(ref cycled_id)) if cycled_id == session.id()
+    ///     Some(Deletion::Cycled(ref cycled_id)) if cycled_id == session.id()
     /// ));
     /// ```
     pub fn cycle_id(&self) {
         let mut inner = self.inner.lock();
-        inner.deleted = Some(SessionDeletion::Cycled(self.id));
+        inner.deleted = Some(Deletion::Cycled(self.id));
         inner.modified_at = Some(OffsetDateTime::now_utc());
     }
 
-    /// Sets `deleted` on the session to `SessionDeletion::Deleted` and clears
+    /// Sets `deleted` on the session to `Deletion::Deleted` and clears
     /// the session data.
     ///
     /// This helps ensure that session data cannot be accessed beyond this
@@ -302,12 +302,12 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{session::SessionDeletion, Session};
+    /// use tower_sessions::{session::Deletion, Session};
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// session.flush();
     /// assert!(session.get_value("foo").is_none());
-    /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
+    /// assert!(matches!(session.deleted(), Some(Deletion::Deleted)));
     /// ```
     pub fn flush(&self) {
         self.clear();
@@ -323,7 +323,7 @@ impl Session {
     /// let session = Session::default();
     /// session.id();
     /// ```
-    pub fn id(&self) -> &SessionId {
+    pub fn id(&self) -> &Id {
         &self.id
     }
 
@@ -333,17 +333,17 @@ impl Session {
     ///
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::{Session, SessionExpiry};
+    /// use tower_sessions::{Expiry, Session};
     ///
-    /// let expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
     /// let session = Session::default();
     /// session.set_expiry(Some(expiry));
     /// assert_eq!(
     ///     session.expiry(),
-    ///     Some(SessionExpiry::InactivityDuration(Duration::hours(1)))
+    ///     Some(Expiry::InactivityDuration(Duration::hours(1)))
     /// );
     /// ```
-    pub fn expiry(&self) -> Option<SessionExpiry> {
+    pub fn expiry(&self) -> Option<Expiry> {
         let inner = self.inner.lock();
         inner.expiry.clone()
     }
@@ -357,21 +357,21 @@ impl Session {
     ///
     /// ```rust
     /// use time::{Duration, OffsetDateTime};
-    /// use tower_sessions::{Session, SessionExpiry};
+    /// use tower_sessions::{Expiry, Session};
     ///
     /// let session = Session::default();
-    /// let expiry = SessionExpiry::AbsoluteExpiration(OffsetDateTime::from_unix_timestamp(0).unwrap());
+    /// let expiry = Expiry::AbsoluteExpiration(OffsetDateTime::from_unix_timestamp(0).unwrap());
     /// session.set_expiry(Some(expiry));
     /// session.insert("foo", 42);
     /// assert!(!session.active());
     /// assert!(session.is_modified());
     ///
-    /// let expiry = SessionExpiry::InactivityDuration(Duration::weeks(2));
+    /// let expiry = Expiry::InactivityDuration(Duration::weeks(2));
     /// session.set_expiry(Some(expiry));
     /// assert!(session.active());
     /// assert!(session.is_modified());
     /// ```
-    pub fn set_expiry(&self, expiry: Option<SessionExpiry>) {
+    pub fn set_expiry(&self, expiry: Option<Expiry>) {
         let mut inner = self.inner.lock();
         inner.expiry = expiry;
         inner.modified_at = Some(OffsetDateTime::now_utc());
@@ -381,12 +381,12 @@ impl Session {
     pub fn expiry_date(&self) -> OffsetDateTime {
         let inner = self.inner.lock();
         match inner.expiry {
-            Some(SessionExpiry::InactivityDuration(duration)) => {
+            Some(Expiry::InactivityDuration(duration)) => {
                 let modified_at = inner.modified_at.unwrap_or_else(OffsetDateTime::now_utc);
                 modified_at.saturating_add(duration)
             }
-            Some(SessionExpiry::AbsoluteExpiration(datetime)) => datetime,
-            Some(SessionExpiry::BrowserClosed) | None => {
+            Some(Expiry::AbsoluteExpiration(datetime)) => datetime,
+            Some(Expiry::BrowserClosed) | None => {
                 // TODO: The default should probably be configurable.
                 OffsetDateTime::now_utc().saturating_add(DEFAULT_DURATION)
             }
@@ -404,15 +404,15 @@ impl Session {
     ///
     /// ```rust
     /// use time::Duration;
-    /// use tower_sessions::{Session, SessionExpiry};
+    /// use tower_sessions::{Expiry, Session};
     /// let session = Session::default();
     /// assert!(session.active());
     ///
-    /// let expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
     /// session.set_expiry(Some(expiry));
     /// assert!(session.active());
     ///
-    /// let expiry = SessionExpiry::InactivityDuration(Duration::ZERO);
+    /// let expiry = Expiry::InactivityDuration(Duration::ZERO);
     /// session.set_expiry(Some(expiry));
     /// assert!(!session.active());
     /// ```
@@ -439,28 +439,25 @@ impl Session {
         inner.modified_at.is_some() && !inner.data.is_empty()
     }
 
-    /// Returns `Some(SessionDeletion)` if one has been set and `None`
+    /// Returns `Some(Deletion)` if one has been set and `None`
     /// otherwise.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{session::SessionDeletion, Session};
+    /// use tower_sessions::{session::Deletion, Session};
     /// let session = Session::default();
     /// session.insert("foo", 42);
     /// assert!(session.deleted().is_none());
     /// session.delete();
-    /// assert!(matches!(session.deleted(), Some(SessionDeletion::Deleted)));
+    /// assert!(matches!(session.deleted(), Some(Deletion::Deleted)));
     /// session.cycle_id();
-    /// assert!(matches!(
-    ///     session.deleted(),
-    ///     Some(SessionDeletion::Cycled(_))
-    /// ))
+    /// assert!(matches!(session.deleted(), Some(Deletion::Cycled(_))))
     /// ```
-    pub fn deleted(&self) -> Option<SessionDeletion> {
+    pub fn deleted(&self) -> Option<Deletion> {
         // Empty sessions are deleted to ensure removal of the last key.
         if self.is_empty() {
-            return Some(SessionDeletion::Deleted);
+            return Some(Deletion::Deleted);
         };
 
         self.inner.lock().deleted
@@ -497,8 +494,8 @@ impl Hash for Session {
     }
 }
 
-impl Borrow<SessionId> for Session {
-    fn borrow(&self) -> &SessionId {
+impl Borrow<Id> for Session {
+    fn borrow(&self) -> &Id {
         self.id()
     }
 }
@@ -518,10 +515,10 @@ impl From<&CookieConfig> for Session {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Inner {
-    data: SessionData,
-    expiry: Option<SessionExpiry>,
+    data: Data,
+    expiry: Option<Expiry>,
     modified_at: Option<OffsetDateTime>,
-    deleted: Option<SessionDeletion>,
+    deleted: Option<Deletion>,
 }
 
 /// An ID type for sessions.
@@ -529,54 +526,54 @@ struct Inner {
 /// # Examples
 ///
 /// ```rust
-/// use tower_sessions::session::SessionId;
-/// let session_id = SessionId::default();
+/// use tower_sessions::session::Id;
+/// let session_id = Id::default();
 /// ```
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub struct SessionId(pub Uuid);
+pub struct Id(pub Uuid);
 
-impl Default for SessionId {
+impl Default for Id {
     fn default() -> Self {
         Self(Uuid::new_v4())
     }
 }
 
-impl Display for SessionId {
+impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0.as_hyphenated().to_string())
     }
 }
 
-impl TryFrom<&str> for SessionId {
-    type Error = SessionError;
+impl TryFrom<&str> for Id {
+    type Error = Error;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
         Ok(Self(Uuid::parse_str(value)?))
     }
 }
 
-impl TryFrom<String> for SessionId {
-    type Error = SessionError;
+impl TryFrom<String> for Id {
+    type Error = Error;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
         Ok(Self(Uuid::parse_str(&value)?))
     }
 }
 
 /// Session deletion, represented as an enumeration of possible deletion types.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub enum SessionDeletion {
+pub enum Deletion {
     /// This indicates the session has been completely removed from the store.
     Deleted,
 
     /// This indicates that the provided session ID should be cycled but that
     /// the session data should be retained in a new session.
-    Cycled(SessionId),
+    Cycled(Id),
 }
 
 /// Session expiry configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SessionExpiry {
+pub enum Expiry {
     /// Expiry based on inactivity duration.
     ///
     /// The session will expire when it has been inactive for the given

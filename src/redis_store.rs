@@ -5,7 +5,7 @@ use fred::{
 };
 use time::OffsetDateTime;
 
-use crate::{session::SessionId, Session, SessionStore};
+use crate::{session::Id, Session, SessionStore};
 
 /// An error type for `RedisStore`.
 #[derive(thiserror::Error, Debug)]
@@ -74,7 +74,7 @@ impl SessionStore for RedisStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         let data = self
             .client
             .get::<Option<Vec<u8>>, _>(session_id.to_string())
@@ -87,7 +87,7 @@ impl SessionStore for RedisStore {
         }
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         self.client.del(session_id.to_string()).await?;
         Ok(())
     }

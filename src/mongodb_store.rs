@@ -4,7 +4,7 @@ use mongodb::{options::UpdateOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::{session::SessionId, ExpiredDeletion, Session, SessionStore};
+use crate::{session::Id, ExpiredDeletion, Session, SessionStore};
 
 /// An error type for `MongoDBStore`.
 #[derive(thiserror::Error, Debug)]
@@ -103,7 +103,7 @@ impl SessionStore for MongoDBStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         let doc = self
             .collection
             .find_one(
@@ -122,7 +122,7 @@ impl SessionStore for MongoDBStore {
         }
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         self.collection
             .delete_one(doc! { "_id": session_id.to_string() }, None)
             .await?;

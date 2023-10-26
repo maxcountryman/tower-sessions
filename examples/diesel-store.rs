@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    diesel_store::DieselStore, session_store::ExpiredDeletion, Session, SessionExpiry,
-    SessionManagerLayer,
+    diesel_store::DieselStore, session_store::ExpiredDeletion, Expiry, Session, SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
@@ -43,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

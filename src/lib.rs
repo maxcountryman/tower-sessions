@@ -39,7 +39,7 @@
 //! use serde::{Deserialize, Serialize};
 //! use time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_sessions::{MemoryStore, Session, SessionExpiry, SessionManagerLayer};
+//! use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
 //!
 //! const COUNTER_KEY: &str = "counter";
 //!
@@ -56,7 +56,7 @@
 //!         .layer(
 //!             SessionManagerLayer::new(session_store)
 //!                 .with_secure(false)
-//!                 .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+//!                 .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
 //!         );
 //!
 //!     let app = Router::new()
@@ -505,7 +505,7 @@ pub use self::sqlx_store::SqlxStoreError;
 pub use self::{
     cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
-    session::{Session, SessionExpiry},
+    session::{Expiry, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
 

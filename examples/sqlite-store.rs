@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    session_store::ExpiredDeletion, sqlx::SqlitePool, Session, SessionExpiry, SessionManagerLayer,
+    session_store::ExpiredDeletion, sqlx::SqlitePool, Expiry, Session, SessionManagerLayer,
     SqliteStore,
 };
 
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

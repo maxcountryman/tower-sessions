@@ -13,7 +13,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 use crate::{
-    session::{SessionDeletion, SessionExpiry, SessionId},
+    session::{Deletion, Expiry, Id},
     CookieConfig, Session, SessionStore,
 };
 
@@ -29,7 +29,7 @@ pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     cookie_config: CookieConfig,
-    loaded_sessions: Arc<DashMap<SessionId, LoadedSession>>,
+    loaded_sessions: Arc<DashMap<Id, LoadedSession>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -81,7 +81,7 @@ where
             {
                 // We do have a session cookie, so we retrieve it either from memory or the
                 // backing session store.
-                let session_id: SessionId = session_cookie.value().try_into()?;
+                let session_id: Id = session_cookie.value().try_into()?;
                 match loaded_sessions.entry(session_id) {
                     Entry::Vacant(entry) => {
                         let session = session_store.load(&session_id).await?;
@@ -130,7 +130,7 @@ where
             // accounts for this check.
             if let Some(session_deletion) = session.deleted() {
                 match session_deletion {
-                    SessionDeletion::Deleted => {
+                    Deletion::Deleted => {
                         if let Entry::Occupied(entry) = loaded_session {
                             entry.remove();
                         };
@@ -143,7 +143,7 @@ where
                         return res;
                     }
 
-                    SessionDeletion::Cycled(deleted_id) => {
+                    Deletion::Cycled(deleted_id) => {
                         if let Entry::Occupied(entry) = loaded_session {
                             entry.remove();
                         }
@@ -152,7 +152,7 @@ where
                         cookies.remove(cookie_config.build_cookie(&session));
 
                         if session.is_modified() {
-                            session.id = SessionId::default();
+                            session.id = Id::default();
                             session_store.save(&session).await?;
                             cookies.add(cookie_config.build_cookie(&session));
                         }
@@ -250,13 +250,13 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     ///
     /// ```rust
     /// use time::Duration;
-    /// use tower_sessions::{MemoryStore, SessionExpiry, SessionManagerLayer};
+    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
-    /// let session_expiry = SessionExpiry::InactivityDuration(Duration::hours(1));
+    /// let session_expiry = Expiry::InactivityDuration(Duration::hours(1));
     /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
     /// ```
-    pub fn with_expiry(mut self, expiry: SessionExpiry) -> Self {
+    pub fn with_expiry(mut self, expiry: Expiry) -> Self {
         self.cookie_config.expiry = Some(expiry);
         self
     }

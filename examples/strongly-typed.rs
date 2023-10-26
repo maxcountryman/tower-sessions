@@ -9,7 +9,7 @@ use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use tower::ServiceBuilder;
-use tower_sessions::{MemoryStore, Session, SessionExpiry, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -117,7 +117,7 @@ async fn main() {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(SessionExpiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
         );
 
     let app = Router::new()

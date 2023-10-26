@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 
 use crate::{
-    session::{Session, SessionId},
+    session::{Id, Session},
     SessionStore,
 };
 
@@ -19,7 +19,7 @@ use crate::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<SessionId, Session>>>);
+pub struct MemoryStore(Arc<Mutex<HashMap<Id, Session>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
@@ -30,11 +30,11 @@ impl SessionStore for MemoryStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         Ok(self.0.lock().get(session_id).cloned())
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         self.0.lock().remove(session_id);
         Ok(())
     }

@@ -1,7 +1,7 @@
 //! Defines the configuration for the cookie belonging to the session.
 use tower_cookies::{cookie::SameSite, Cookie};
 
-use crate::{session::SessionExpiry, Session};
+use crate::{session::Expiry, Session};
 
 /// Defines the configuration for the cookie belonging to the session.
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub struct CookieConfig {
     pub same_site: SameSite,
 
     /// Specifies the maximum age of the session.
-    pub expiry: Option<SessionExpiry>,
+    pub expiry: Option<Expiry>,
 
     /// Indicates whether the cookie should only be transmitted over secure
     /// (HTTPS) connections.

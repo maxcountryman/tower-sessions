@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use futures::TryFutureExt;
 
-use crate::session::{Session, SessionId};
+use crate::session::{Id, Session};
 
 /// An arbitrary store which houses the session data.
 #[async_trait]
@@ -17,10 +17,10 @@ pub trait SessionStore: Clone + Send + Sync + 'static {
     async fn save(&self, session: &Session) -> Result<(), Self::Error>;
 
     /// A method for loading a session from a store.
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error>;
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error>;
 
     /// A method for deleting a session from a store.
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error>;
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error>;
 }
 
 /// An enumeration of both `SessionStore` error types.
@@ -99,7 +99,7 @@ where
         Ok(())
     }
 
-    async fn load(&self, session_id: &SessionId) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
         match self.cache.load(session_id).await {
             // We found a session in the cache, so let's use it.
             Ok(Some(session)) => Ok(Some(session)),
@@ -129,7 +129,7 @@ where
         }
     }
 
-    async fn delete(&self, session_id: &SessionId) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         let store_delete_fut = self.store.delete(session_id).map_err(Self::Error::Store);
         let cache_delete_fut = self.cache.delete(session_id).map_err(Self::Error::Cache);
 
