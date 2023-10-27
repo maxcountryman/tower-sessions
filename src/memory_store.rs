@@ -2,6 +2,7 @@ use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
+use time::OffsetDateTime;
 
 use crate::{
     session::{Id, Session},
@@ -31,11 +32,17 @@ impl SessionStore for MemoryStore {
     }
 
     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
-        Ok(self.0.lock().get(session_id).cloned())
+        dbg!(self);
+        Ok(self.0.lock().get(session_id).filter(is_active).cloned())
     }
 
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         self.0.lock().remove(session_id);
         Ok(())
     }
+}
+
+fn is_active(session: &&Session) -> bool {
+    let expiry_date = session.expiry_date();
+    expiry_date > OffsetDateTime::now_utc()
 }
