@@ -96,29 +96,19 @@ where
                             cookies.remove(session_cookie);
                         }
 
-                        session
+                        session.unwrap_or_else(|| (&cookie_config).into())
                     }
 
                     Entry::Occupied(mut entry) => {
                         let loaded_session = entry.get_mut();
                         loaded_session.refs += 1;
-                        Some(loaded_session.session.clone())
+                        loaded_session.session.clone()
                     }
                 }
             } else {
                 // We don't have a session cookie, so let's create a new session.
-                Some((&cookie_config).into())
-            }
-            .filter(Session::active)
-            .unwrap_or_else(|| {
-                // We either:
-                //
-                // 1. Didn't find the session in the store (but had a cookie) or,
-                // 2. We found a session but it was filtered out by `Session::active`.
-                //
-                // In both cases we want to create a new session.
                 (&cookie_config).into()
-            });
+            };
 
             req.extensions_mut().insert(session.clone());
 

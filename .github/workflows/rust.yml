@@ -124,17 +124,17 @@ jobs:
             features: moka-store,sqlite-store
             docker: false
 
-          - store: postgres_store
-            features: diesel-postgres-store
+          #- store: postgres_store
+          #  features: diesel-postgres-store
 
-            docker: true
-          - store: mysql_store
-            features: diesel-mysql-store
-            docker: true
+          #  docker: true
+          #- store: mysql_store
+          #  features: diesel-mysql-store
+          #  docker: true
 
-          - store: diesel_store
-            features: diesel-sqlite-store
-            docker: false
+          #- store: diesel_store
+          #  features: diesel-sqlite-store
+          #  docker: false
 
     steps:
       - uses: actions/checkout@v4

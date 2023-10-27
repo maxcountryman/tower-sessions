@@ -2,6 +2,7 @@ use std::convert::Infallible;
 
 use async_trait::async_trait;
 use moka::future::Cache;
+use time::OffsetDateTime;
 
 use crate::{session::Id, Session, SessionStore};
 
@@ -44,11 +45,25 @@ impl SessionStore for MokaStore {
     }
 
     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
-        Ok(self.cache.get(session_id).await.map(Into::into))
+        Ok(self
+            .cache
+            .get(session_id)
+            .await
+            .map(Into::into)
+            .clone()
+            .filter(is_active))
     }
 
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         self.cache.invalidate(session_id).await;
         Ok(())
     }
+}
+
+// TODO: Moka supports expiry natively, but that interface is being overhauled
+// such that it's more accessible. When that work is done, we should replace
+// this with actual expiry.
+fn is_active(session: &Session) -> bool {
+    let expiry_date = session.expiry_date();
+    expiry_date > OffsetDateTime::now_utc()
 }
