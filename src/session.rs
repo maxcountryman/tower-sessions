@@ -14,8 +14,6 @@ use time::Duration;
 use tower_cookies::cookie::time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::CookieConfig;
-
 const DEFAULT_DURATION: Duration = Duration::weeks(2);
 
 /// Session errors.
@@ -43,6 +41,39 @@ pub struct Session {
 }
 
 impl Session {
+    /// Create a new session with the given expiry.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::{Duration, OffsetDateTime};
+    /// use tower_sessions::{Expiry, Session};
+    ///
+    /// // Uses a so-called "session cookie".
+    /// let expiry = Expiry::BrowserClosed;
+    /// Session::new(Some(expiry));
+    ///
+    /// // Uses an expiry from the last recorded active time.
+    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
+    /// Session::new(Some(expiry));
+    ///
+    /// // Uses an expiry that will expire at the exact given time.
+    /// let expired_at = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
+    /// let expiry = Expiry::AbsoluteExpiration(expired_at);
+    /// Session::new(Some(expiry));
+    /// ```
+    pub fn new(expiry: Option<Expiry>) -> Self {
+        let inner = Inner {
+            expiry,
+            ..Default::default()
+        };
+
+        Self {
+            id: Id::default(),
+            inner: Arc::new(Mutex::new(inner)),
+        }
+    }
+
     /// Inserts a `impl Serialize` value into the session.
     ///
     /// # Examples
@@ -497,19 +528,6 @@ impl Hash for Session {
 impl Borrow<Id> for Session {
     fn borrow(&self) -> &Id {
         self.id()
-    }
-}
-
-impl From<&CookieConfig> for Session {
-    fn from(cookie_config: &CookieConfig) -> Self {
-        let session = Session::default();
-        if let Some(expiry) = &cookie_config.expiry {
-            let mut inner = session.inner.lock();
-            // N.B. We manually set the expiration time here because creating a session from
-            // a config does *not* indicate the session has been modified.
-            inner.expiry = Some(expiry.clone());
-        }
-        session
     }
 }
 

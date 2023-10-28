@@ -365,13 +365,6 @@
 //! session cookies **must never** be sent over a public, insecure channel.
 //! Doing so is **not** secure.
 //!
-//! An expiration time determines when the session will be considered expired.
-//! This translates to the cookie's `max-age` attribute. By default,
-//! [`CookieConfig`] will set this to `None`. When `None`, this means the cookie
-//! will be treated as a ["session" cookie][session-cookie], not to be confused
-//! with the session itself, which generally means that the cookie will expire
-//! once the user closes their browser.
-//!
 //! ## Key-value API
 //!
 //! Sessions manage a `HashMap<String, serde_json::Value>` but importantly are
@@ -456,8 +449,6 @@
 //! domains that only belong with ! users in certain states: we can pull these
 //! into our handlers where we need a particular domain. In this way, we
 //! minimize data pollution via self-contained domains in the form of buckets.
-//!
-//! [session-cookie]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
 #![warn(
     clippy::all,
     nonstandard_style,
@@ -503,7 +494,6 @@ pub use self::sqlx_store::SqliteStore;
 pub use self::sqlx_store::SqlxStoreError;
 #[doc(inline)]
 pub use self::{
-    cookie_config::CookieConfig,
     service::{SessionManager, SessionManagerLayer},
     session::{Expiry, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
@@ -537,7 +527,6 @@ mod sqlx_store;
 #[cfg_attr(docsrs, doc(cfg(feature = "diesel-store")))]
 pub mod diesel_store;
 
-pub mod cookie_config;
 pub mod service;
 pub mod session;
 pub mod session_store;

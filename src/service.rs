@@ -14,8 +14,53 @@ use tower_service::Service;
 
 use crate::{
     session::{Deletion, Expiry, Id},
-    CookieConfig, Session, SessionStore,
+    Session, SessionStore,
 };
+
+#[derive(Debug, Clone)]
+struct SessionConfig {
+    name: String,
+    same_site: SameSite,
+    expiry: Option<Expiry>,
+    secure: bool,
+    path: String,
+    domain: Option<String>,
+}
+
+impl SessionConfig {
+    fn build_cookie<'c>(&self, session: &Session) -> Cookie<'c> {
+        let mut cookie_builder = Cookie::build(self.name.clone(), session.id().to_string())
+            .http_only(true)
+            .same_site(self.same_site)
+            .secure(self.secure)
+            .path(self.path.clone());
+
+        cookie_builder = cookie_builder.max_age(session.expiry_age());
+
+        if let Some(domain) = &self.domain {
+            cookie_builder = cookie_builder.domain(domain.clone());
+        }
+
+        cookie_builder.finish()
+    }
+
+    fn new_session(&self) -> Session {
+        Session::new(self.expiry.clone())
+    }
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            name: String::from("tower.sid"),
+            same_site: SameSite::Strict,
+            expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
+            secure: false,
+            path: String::from("/"),
+            domain: None,
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 struct LoadedSession {
@@ -28,17 +73,17 @@ struct LoadedSession {
 pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
-    cookie_config: CookieConfig,
+    session_config: SessionConfig,
     loaded_sessions: Arc<DashMap<Id, LoadedSession>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
     /// Create a new [`SessionManager`].
-    pub fn new(inner: S, session_store: Store, cookie_config: CookieConfig) -> Self {
+    pub fn new(inner: S, session_store: Store) -> Self {
         Self {
             inner,
             session_store,
-            cookie_config,
+            session_config: Default::default(),
             loaded_sessions: Default::default(),
         }
     }
@@ -64,7 +109,7 @@ where
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let session_store = self.session_store.clone();
-        let cookie_config = self.cookie_config.clone();
+        let session_config = self.session_config.clone();
         let loaded_sessions = self.loaded_sessions.clone();
 
         let clone = self.inner.clone();
@@ -77,7 +122,7 @@ where
                 .expect("Something has gone wrong with tower-cookies.");
 
             let mut session = if let Some(session_cookie) =
-                cookies.get(&cookie_config.name).map(Cookie::into_owned)
+                cookies.get(&session_config.name).map(Cookie::into_owned)
             {
                 // We do have a session cookie, so we retrieve it either from memory or the
                 // backing session store.
@@ -96,7 +141,7 @@ where
                             cookies.remove(session_cookie);
                         }
 
-                        session.unwrap_or_else(|| (&cookie_config).into())
+                        session.unwrap_or_else(|| session_config.new_session())
                     }
 
                     Entry::Occupied(mut entry) => {
@@ -107,7 +152,7 @@ where
                 }
             } else {
                 // We don't have a session cookie, so let's create a new session.
-                (&cookie_config).into()
+                session_config.new_session()
             };
 
             req.extensions_mut().insert(session.clone());
@@ -126,7 +171,7 @@ where
                         };
 
                         session_store.delete(session.id()).await?;
-                        cookies.remove(cookie_config.build_cookie(&session));
+                        cookies.remove(session_config.build_cookie(&session));
 
                         // Since the session has been deleted, there's no need for further
                         // processing.
@@ -139,12 +184,12 @@ where
                         }
 
                         session_store.delete(&deleted_id).await?;
-                        cookies.remove(cookie_config.build_cookie(&session));
+                        cookies.remove(session_config.build_cookie(&session));
 
                         if session.is_modified() {
                             session.id = Id::default();
                             session_store.save(&session).await?;
-                            cookies.add(cookie_config.build_cookie(&session));
+                            cookies.add(session_config.build_cookie(&session));
                         }
 
                         return res;
@@ -166,7 +211,7 @@ where
 
                     if session.is_modified() {
                         session_store.save(&session).await?;
-                        cookies.add(cookie_config.build_cookie(&session));
+                        cookies.add(session_config.build_cookie(&session));
                     }
 
                     if loaded.refs <= 1 {
@@ -185,7 +230,7 @@ where
                         });
 
                         session_store.save(&session).await?;
-                        cookies.add(cookie_config.build_cookie(&session));
+                        cookies.add(session_config.build_cookie(&session));
                     }
                 }
             };
@@ -199,7 +244,7 @@ where
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store: SessionStore> {
     session_store: Store,
-    cookie_config: CookieConfig,
+    session_config: SessionConfig,
 }
 
 impl<Store: SessionStore> SessionManagerLayer<Store> {
@@ -214,7 +259,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
     /// ```
     pub fn with_name(mut self, name: &str) -> Self {
-        self.cookie_config.name = name.to_string();
+        self.session_config.name = name.to_string();
         self
     }
 
@@ -230,7 +275,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_service = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
     /// ```
     pub fn with_same_site(mut self, same_site: SameSite) -> Self {
-        self.cookie_config.same_site = same_site;
+        self.session_config.same_site = same_site;
         self
     }
 
@@ -247,7 +292,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
     /// ```
     pub fn with_expiry(mut self, expiry: Expiry) -> Self {
-        self.cookie_config.expiry = Some(expiry);
+        self.session_config.expiry = Some(expiry);
         self
     }
 
@@ -262,7 +307,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_service = SessionManagerLayer::new(session_store).with_secure(true);
     /// ```
     pub fn with_secure(mut self, secure: bool) -> Self {
-        self.cookie_config.secure = secure;
+        self.session_config.secure = secure;
         self
     }
 
@@ -278,7 +323,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     ///     SessionManagerLayer::new(session_store).with_path("/some/path".to_string());
     /// ```
     pub fn with_path(mut self, path: String) -> Self {
-        self.cookie_config.path = path;
+        self.session_config.path = path;
         self
     }
 
@@ -294,7 +339,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     ///     SessionManagerLayer::new(session_store).with_domain("localhost".to_string());
     /// ```
     pub fn with_domain(mut self, domain: String) -> Self {
-        self.cookie_config.domain = Some(domain);
+        self.session_config.domain = Some(domain);
         self
     }
 }
@@ -312,11 +357,11 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_service = SessionManagerLayer::new(session_store);
     /// ```
     pub fn new(session_store: Store) -> Self {
-        let cookie_config = CookieConfig::default();
+        let session_config = SessionConfig::default();
 
         Self {
             session_store,
-            cookie_config,
+            session_config,
         }
     }
 }
@@ -328,7 +373,7 @@ impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
         let session_manager = SessionManager {
             inner,
             session_store: self.session_store.clone(),
-            cookie_config: self.cookie_config.clone(),
+            session_config: self.session_config.clone(),
             loaded_sessions: Default::default(),
         };
 
