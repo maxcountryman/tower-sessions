@@ -32,7 +32,6 @@ impl SessionStore for MemoryStore {
     }
 
     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
-        dbg!(self);
         Ok(self.0.lock().get(session_id).filter(is_active).cloned())
     }
 
