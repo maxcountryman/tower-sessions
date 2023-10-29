@@ -427,29 +427,6 @@ impl Session {
         self.expiry_date() - OffsetDateTime::now_utc()
     }
 
-    /// Returns `true` if the session is active and `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::{Expiry, Session};
-    /// let session = Session::default();
-    /// assert!(session.active());
-    ///
-    /// let expiry = Expiry::OnInactivity(Duration::hours(1));
-    /// session.set_expiry(Some(expiry));
-    /// assert!(session.active());
-    ///
-    /// let expiry = Expiry::OnInactivity(Duration::ZERO);
-    /// session.set_expiry(Some(expiry));
-    /// assert!(!session.active());
-    /// ```
-    pub fn active(&self) -> bool {
-        let expiry_date = self.expiry_date();
-        expiry_date > OffsetDateTime::now_utc()
-    }
-
     /// Returns `true` if the session has been modified and `false` otherwise.
     ///
     /// # Examples
