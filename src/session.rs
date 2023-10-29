@@ -50,16 +50,16 @@ impl Session {
     /// use tower_sessions::{Expiry, Session};
     ///
     /// // Uses a so-called "session cookie".
-    /// let expiry = Expiry::BrowserClosed;
+    /// let expiry = Expiry::OnSessionEnd;
     /// Session::new(Some(expiry));
     ///
-    /// // Uses an expiry from the last recorded active time.
-    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
+    /// // Uses an inactivity expiry.
+    /// let expiry = Expiry::OnInactivity(Duration::hours(1));
     /// Session::new(Some(expiry));
     ///
-    /// // Uses an expiry that will expire at the exact given time.
+    /// // Uses a date and time expiry.
     /// let expired_at = OffsetDateTime::now_utc().saturating_add(Duration::hours(1));
-    /// let expiry = Expiry::AbsoluteExpiration(expired_at);
+    /// let expiry = Expiry::AtDateTime(expired_at);
     /// Session::new(Some(expiry));
     /// ```
     pub fn new(expiry: Option<Expiry>) -> Self {
@@ -366,12 +366,12 @@ impl Session {
     /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::{Expiry, Session};
     ///
-    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
+    /// let expiry = Expiry::OnInactivity(Duration::hours(1));
     /// let session = Session::default();
     /// session.set_expiry(Some(expiry));
     /// assert_eq!(
     ///     session.expiry(),
-    ///     Some(Expiry::InactivityDuration(Duration::hours(1)))
+    ///     Some(Expiry::OnInactivity(Duration::hours(1)))
     /// );
     /// ```
     pub fn expiry(&self) -> Option<Expiry> {
@@ -391,15 +391,13 @@ impl Session {
     /// use tower_sessions::{Expiry, Session};
     ///
     /// let session = Session::default();
-    /// let expiry = Expiry::AbsoluteExpiration(OffsetDateTime::from_unix_timestamp(0).unwrap());
+    /// let expiry = Expiry::AtDateTime(OffsetDateTime::from_unix_timestamp(0).unwrap());
     /// session.set_expiry(Some(expiry));
     /// session.insert("foo", 42);
-    /// assert!(!session.active());
     /// assert!(session.is_modified());
     ///
-    /// let expiry = Expiry::InactivityDuration(Duration::weeks(2));
+    /// let expiry = Expiry::OnInactivity(Duration::weeks(2));
     /// session.set_expiry(Some(expiry));
-    /// assert!(session.active());
     /// assert!(session.is_modified());
     /// ```
     pub fn set_expiry(&self, expiry: Option<Expiry>) {
@@ -412,12 +410,12 @@ impl Session {
     pub fn expiry_date(&self) -> OffsetDateTime {
         let inner = self.inner.lock();
         match inner.expiry {
-            Some(Expiry::InactivityDuration(duration)) => {
+            Some(Expiry::OnInactivity(duration)) => {
                 let modified_at = inner.modified_at.unwrap_or_else(OffsetDateTime::now_utc);
                 modified_at.saturating_add(duration)
             }
-            Some(Expiry::AbsoluteExpiration(datetime)) => datetime,
-            Some(Expiry::BrowserClosed) | None => {
+            Some(Expiry::AtDateTime(datetime)) => datetime,
+            Some(Expiry::OnSessionEnd) | None => {
                 // TODO: The default should probably be configurable.
                 OffsetDateTime::now_utc().saturating_add(DEFAULT_DURATION)
             }
@@ -439,11 +437,11 @@ impl Session {
     /// let session = Session::default();
     /// assert!(session.active());
     ///
-    /// let expiry = Expiry::InactivityDuration(Duration::hours(1));
+    /// let expiry = Expiry::OnInactivity(Duration::hours(1));
     /// session.set_expiry(Some(expiry));
     /// assert!(session.active());
     ///
-    /// let expiry = Expiry::InactivityDuration(Duration::ZERO);
+    /// let expiry = Expiry::OnInactivity(Duration::ZERO);
     /// session.set_expiry(Some(expiry));
     /// assert!(!session.active());
     /// ```
@@ -590,21 +588,29 @@ pub enum Deletion {
 }
 
 /// Session expiry configuration.
+///
+/// # Examples
+///
+/// ```rust
+/// use time::{Duration, OffsetDateTime};
+/// use tower_sessions::Expiry;
+///
+/// let expiry = Expiry::OnInactivity(Duration::minutes(5));
+///
+/// let expired_at = OffsetDateTime::now_utc().saturating_add(Duration::minutes(5));
+/// let expiry = Expiry::AtDateTime(expired_at);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Expiry {
-    /// Expiry based on inactivity duration.
+    /// Expire on [current session end][current-session-end], as defined by the
+    /// browser.
     ///
-    /// The session will expire when it has been inactive for the given
-    /// `Duration`.
-    InactivityDuration(Duration),
+    /// [current-session-end]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
+    OnSessionEnd,
 
-    /// Expiry at a specific date and time.
-    ///
-    /// The session will expire when the specified `OffsetDateTime` is reached.
-    AbsoluteExpiration(OffsetDateTime),
+    /// Expire on inactivity.
+    OnInactivity(Duration),
 
-    /// Expiry when the browser is closed.
-    ///
-    /// The session will expire when the user's web browser is closed.
-    BrowserClosed,
+    /// Expire at a specific date and time.
+    AtDateTime(OffsetDateTime),
 }

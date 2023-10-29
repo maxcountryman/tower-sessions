@@ -24,7 +24,7 @@ async fn main() {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(Expiry::InactivityDuration(Duration::days(1))),
+                .with_expiry(Expiry::OnInactivity(Duration::days(1))),
         );
 
     let app = Router::new()

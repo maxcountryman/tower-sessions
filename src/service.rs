@@ -288,7 +288,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
-    /// let session_expiry = Expiry::InactivityDuration(Duration::hours(1));
+    /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
     /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
     /// ```
     pub fn with_expiry(mut self, expiry: Expiry) -> Self {

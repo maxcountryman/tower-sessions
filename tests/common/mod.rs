@@ -56,7 +56,7 @@ pub fn build_app<Store: SessionStore>(
     max_age: Option<Duration>,
 ) -> Router {
     if let Some(max_age) = max_age {
-        session_manager = session_manager.with_expiry(Expiry::InactivityDuration(max_age));
+        session_manager = session_manager.with_expiry(Expiry::OnInactivity(max_age));
     }
 
     let session_service = ServiceBuilder::new()
