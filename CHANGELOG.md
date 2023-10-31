@@ -1,5 +1,15 @@
 # Unreleased
 
+# 0.4.0
+
+**Breaking Changes**
+
+- Sessions are serialized and deserialized from stores directly and `SessionRecord` is removed.
+- Expiration time has been replaced with an expiry type.
+- The session `modified` methid is renamed to `is_modified`.
+- Session active semantic is now defined by stores and the `active` method removed.
+- Service now contains session configuration and `CookieConfig` is removed.
+
 # 0.3.3
 
 - Ensure loaded sessions are removed whenever they can be; do not couple removal with session saving.
