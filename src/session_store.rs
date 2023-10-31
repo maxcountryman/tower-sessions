@@ -116,7 +116,7 @@ where
 
                 if let Some(ref session) = session {
                     self.cache
-                        .save(&session)
+                        .save(session)
                         .await
                         .map_err(Self::Error::Cache)?;
                 }
