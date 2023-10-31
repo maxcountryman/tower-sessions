@@ -25,3 +25,18 @@ services:
       - MYSQL_DATABASE=public
     ports:
       - "3306:3306"
+
+  diesel_pg_store_tests:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD: "postgres"
+    ports:
+      - "5432:5432"
+
+  diesel_mysql_store_tests:
+    image: mysql
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+      - MYSQL_DATABASE=public
+    ports:
+      - "3306:3306"
