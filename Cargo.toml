@@ -14,10 +14,10 @@ readme = "README.md"
 rust-version = "1.67.1"
 
 [features]
+deletion-task = ["tokio-rt", "tokio-time"]
 default = ["axum-core", "memory-store"]
 tokio-rt = ["tokio/rt"]
 tokio-time = ["tokio/time"]
-continuously-delete-expired = ["tokio-rt", "tokio-time"]
 memory-store = []
 
 moka-store = ["moka"]
@@ -88,23 +88,15 @@ required-features = ["axum-core", "redis-store"]
 
 [[example]]
 name = "mongodb-store"
-required-features = [
-    "axum-core",
-    "mongodb-store",
-    "continuously-delete-expired",
-]
+required-features = ["axum-core", "mongodb-store", "deletion-task"]
 
 [[example]]
 name = "sqlite-store"
-required-features = ["axum-core", "sqlite-store", "continuously-delete-expired"]
+required-features = ["axum-core", "sqlite-store", "deletion-task"]
 
 [[example]]
 name = "postgres-store"
-required-features = [
-    "axum-core",
-    "postgres-store",
-    "continuously-delete-expired",
-]
+required-features = ["axum-core", "postgres-store", "deletion-task"]
 
 [[example]]
 name = "moka-postgres-store"
@@ -112,12 +104,12 @@ required-features = [
     "axum-core",
     "postgres-store",
     "moka-store",
-    "continuously-delete-expired",
+    "deletion-task",
 ]
 
 [[example]]
 name = "mysql-store"
-required-features = ["axum-core", "mysql-store", "continuously-delete-expired"]
+required-features = ["axum-core", "mysql-store", "deletion-task"]
 
 [[example]]
 name = "strongly-typed"
