@@ -124,19 +124,19 @@ jobs:
             features: moka-store,sqlite-store
             docker: false
 
-          - store: diesel_pg_store_tests
+          - store: diesel_pg_store
             features: diesel-postgres-store,diesel-r2d2
             docker: true
 
-          - store: diesel_mysql_store_tests
+          - store: diesel_mysql_store
             features: diesel-mysql-store,diesel-r2d2
             docker: true
 
-          - store: diesel_sqlite_store_tests
+          - store: diesel_sqlite_store
             features: diesel-sqlite-store,diesel-r2d2
             docker: false
 
-          - store: deadpool_diesel_sqlite_store_tests
+          - store: deadpool_diesel_sqlite_store
             features: diesel-sqlite-store,diesel-deadpool
             docker: false
 
