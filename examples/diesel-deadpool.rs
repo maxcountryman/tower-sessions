@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(Expiry::InactivityDuration(Duration::seconds(10))),
+                .with_expiry(Expiry::OnInactivity(Duration::seconds(10))),
         );
 
     let app = Router::new()
