@@ -115,10 +115,7 @@ where
                     .map_err(Self::Error::Store)?;
 
                 if let Some(ref session) = session {
-                    self.cache
-                        .save(&session)
-                        .await
-                        .map_err(Self::Error::Cache)?;
+                    self.cache.save(session).await.map_err(Self::Error::Cache)?;
                 }
 
                 Ok(session)

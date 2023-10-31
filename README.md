@@ -47,13 +47,15 @@ It offers:
 - **Strongly-Typed Sessions:** Strong typing guarantees are easy to layer on
   top of this foundational key-value interface.
 
+This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
+
 ## 📦 Install
 
 To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.3.3"
+tower-sessions = "0.4.0"
 ```
 
 ## 🤸 Usage
@@ -70,7 +72,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -87,7 +89,7 @@ async fn main() {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_max_age(Duration::seconds(10)),
+                .with_expiry(Expiry::OnInactivity(Duration::seconds(10))),
         );
 
     let app = Router::new()

@@ -24,6 +24,8 @@
 //! - **Strongly-Typed Sessions:** Strong typing guarantees are easy to layer on
 //!   top of this foundational key-value interface.
 //!
+//! This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
+//!
 //! # Usage with an `axum` application
 //!
 //! A common use-case for sessions is when building HTTP servers. Using `axum`,

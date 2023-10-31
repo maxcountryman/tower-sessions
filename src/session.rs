@@ -80,6 +80,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).expect("Serialization error.");
     /// ```
@@ -104,6 +105,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// let value = session.insert_value("foo", serde_json::json!(42));
     /// assert!(value.is_none());
@@ -130,6 +132,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value = session.get::<usize>("foo").unwrap();
@@ -152,6 +155,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// let value = session.get_value("foo").unwrap();
@@ -169,10 +173,13 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
+    ///
     /// let value: Option<usize> = session.remove("foo").unwrap();
     /// assert_eq!(value, Some(42));
+    ///
     /// let value: Option<usize> = session.get("foo").unwrap();
     /// assert!(value.is_none());
     /// ```
@@ -193,10 +200,13 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
+    ///
     /// let value = session.remove_value("foo").unwrap();
     /// assert_eq!(value, serde_json::json!(42));
+    ///
     /// let value: Option<usize> = session.get("foo").unwrap();
     /// assert!(value.is_none());
     /// ```
@@ -267,6 +277,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// session.clear();
@@ -289,6 +300,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::Deletion, Session};
+    ///
     /// let session = Session::default();
     /// session.delete();
     /// assert!(matches!(session.deleted(), Some(Deletion::Deleted)));
@@ -310,6 +322,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::Deletion, Session};
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42);
     /// session.cycle_id();
@@ -334,6 +347,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::Deletion, Session};
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42).unwrap();
     /// session.flush();
@@ -351,6 +365,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// session.id();
     /// ```
@@ -379,7 +394,7 @@ impl Session {
         inner.expiry.clone()
     }
 
-    /// Set `expiration_time` give the given value.
+    /// Set `expiry` give the given value.
     ///
     /// This may be used within applications directly to alter the session's
     /// time to live.
@@ -407,6 +422,16 @@ impl Session {
     }
 
     /// Get session expiry as `OffsetDateTime`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::OffsetDateTime;
+    /// use tower_sessions::Session;
+    ///
+    /// let session = Session::default();
+    /// assert!(session.expiry_date() > OffsetDateTime::now_utc());
+    /// ```
     pub fn expiry_date(&self) -> OffsetDateTime {
         let inner = self.inner.lock();
         match inner.expiry {
@@ -423,6 +448,15 @@ impl Session {
     }
 
     /// Get session expiry as `Duration`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::Duration;
+    /// use tower_sessions::Session;
+    ///
+    /// let session = Session::default();
+    /// assert!(session.expiry_age() > Duration::days(11));   
     pub fn expiry_age(&self) -> Duration {
         self.expiry_date() - OffsetDateTime::now_utc()
     }
@@ -452,11 +486,14 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::{session::Deletion, Session};
+    ///
     /// let session = Session::default();
     /// session.insert("foo", 42);
     /// assert!(session.deleted().is_none());
+    ///
     /// session.delete();
     /// assert!(matches!(session.deleted(), Some(Deletion::Deleted)));
+    ///
     /// session.cycle_id();
     /// assert!(matches!(session.deleted(), Some(Deletion::Cycled(_))))
     /// ```
@@ -475,6 +512,7 @@ impl Session {
     ///
     /// ```rust
     /// use tower_sessions::Session;
+    ///
     /// let session = Session::default();
     /// assert!(session.is_empty());
     ///
@@ -520,6 +558,7 @@ struct Inner {
 ///
 /// ```rust
 /// use tower_sessions::session::Id;
+///
 /// let session_id = Id::default();
 /// ```
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
