@@ -191,6 +191,8 @@ where
             Eq<sessions::data, Vec<u8>>,
         ) as AsChangeset>::Changeset,
     >: ExecuteDsl<C>,
+    for<'a> diesel::dsl::BareSelect<diesel::dsl::exists<Filter<sessions::table, Eq<sessions::id, String>>>>:
+        LoadQuery<'a, C, bool>,
 {
     type ExpiryDate = self::sessions::expiry_date;
 
@@ -203,31 +205,31 @@ where
         let data = rmp_serde::to_vec(session_record)?;
         let session_id = session_record.id().to_string();
         // we want to use an upsert statement here, but that's potentially not supported
-        // on all backends, therefore we do a seperate insert + check whether
-        // we got a `UniqueViolation` error
+        // on all backends (at least in the same way)
+        // As we don't want to introduce backend specifc queries here (as that would
+        // require needing to enable backend specifc diesel features)
+        // we've opted for a lookup query + insert/update approach as that works
+        // on all backends
         conn.transaction(|conn| {
-            let res = diesel::insert_into(sessions::table)
-                .values((
-                    sessions::id.eq(session_id.clone()),
-                    sessions::expiry_date.eq(expiry_date),
-                    sessions::data.eq(data.clone()),
-                ))
-                .execute(conn);
-            if matches!(
-                res,
-                Err(diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::UniqueViolation,
-                    _
-                ))
-            ) {
-                diesel::update(sessions::table.find(session_id))
+            let exists = diesel::select(diesel::dsl::exists(
+                sessions::table.find(session_id.clone()),
+            ))
+            .get_result::<bool>(conn)?;
+            if exists {
+                diesel::update(sessions::table.find(session_id.clone()))
                     .set((
                         sessions::expiry_date.eq(expiry_date),
-                        sessions::data.eq(data),
+                        sessions::data.eq(data.clone()),
                     ))
                     .execute(conn)?;
             } else {
-                res?;
+                diesel::insert_into(sessions::table)
+                    .values((
+                        sessions::id.eq(session_id),
+                        sessions::expiry_date.eq(expiry_date),
+                        sessions::data.eq(data.clone()),
+                    ))
+                    .execute(conn)?;
             }
             Ok(())
         })
