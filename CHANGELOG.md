@@ -6,6 +6,7 @@
 
 - Sessions are serialized and deserialized from stores directly and `SessionRecord` is removed.
 - Expiration time has been replaced with an expiry type.
+- Drop session-prefix from session types.
 - The session `modified` methid is renamed to `is_modified`.
 - Session active semantic is now defined by stores and the `active` method removed.
 - Service now contains session configuration and `CookieConfig` is removed.
