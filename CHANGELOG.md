@@ -9,6 +9,7 @@
 - The session `modified` methid is renamed to `is_modified`.
 - Session active semantic is now defined by stores and the `active` method removed.
 - Service now contains session configuration and `CookieConfig` is removed.
+- Deletion task is now provided via the `deletion-task` feature flag.
 
 # 0.3.3
 
