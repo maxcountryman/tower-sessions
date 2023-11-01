@@ -310,6 +310,16 @@ impl Session {
         inner.deleted = Some(Deletion::Deleted);
     }
 
+    pub(crate) fn reset_deleted(&self) {
+        let mut inner = self.inner.lock();
+        inner.deleted = None;
+    }
+
+    pub(crate) fn reset_modified(&self) {
+        let mut inner = self.inner.lock();
+        inner.modified_at = None;
+    }
+
     /// Sets `deleted` on the session to `Deletion::Cycled(self.id))`.
     ///
     /// Setting this flag indicates the session ID should be cycled while

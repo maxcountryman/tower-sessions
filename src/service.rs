@@ -185,8 +185,10 @@ where
 
                         session_store.delete(&deleted_id).await?;
                         cookies.remove(session_config.build_cookie(&session));
+                        session.reset_deleted();
 
                         if session.is_modified() {
+                            session.reset_modified();
                             session.id = Id::default();
                             session_store.save(&session).await?;
                             cookies.add(session_config.build_cookie(&session));
@@ -210,6 +212,8 @@ where
                     let loaded = entry.get_mut();
 
                     if session.is_modified() {
+                        session.reset_modified();
+
                         session_store.save(&session).await?;
                         cookies.add(session_config.build_cookie(&session));
                     }
@@ -224,6 +228,8 @@ where
 
                 Entry::Vacant(entry) => {
                     if session.is_modified() {
+                        session.reset_modified();
+
                         entry.insert(LoadedSession {
                             session: session.clone(),
                             refs: 0,
