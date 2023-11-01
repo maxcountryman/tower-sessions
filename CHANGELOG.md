@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.4.1
+
+- Fix lifecycle state persisting in stores when it should not. #71
+
 # 0.4.0
 
 **Breaking Changes**
