@@ -11,6 +11,7 @@ use http::{Request, Response};
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
+use tracing::Instrument;
 
 use crate::{
     session::{Deletion, Expiry, Id},
@@ -108,141 +109,162 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        let span = tracing::debug_span!("session_middleware", session.id = tracing::field::Empty);
+
         let session_store = self.session_store.clone();
         let session_config = self.session_config.clone();
         let loaded_sessions = self.loaded_sessions.clone();
 
+        span.in_scope(|| tracing::trace!(loaded_sessions = loaded_sessions.len()));
+
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
-        Box::pin(async move {
-            let cookies = req
-                .extensions()
-                .get::<Cookies>()
-                .cloned()
-                .expect("Something has gone wrong with tower-cookies.");
+        Box::pin(
+            async move {
+                let cookies = req
+                    .extensions()
+                    .get::<Cookies>()
+                    .cloned()
+                    .expect("Something has gone wrong with tower-cookies.");
 
-            let mut session = if let Some(session_cookie) =
-                cookies.get(&session_config.name).map(Cookie::into_owned)
-            {
-                // We do have a session cookie, so we retrieve it either from memory or the
-                // backing session store.
-                let session_id: Id = session_cookie.value().try_into()?;
-                match loaded_sessions.entry(session_id) {
-                    Entry::Vacant(entry) => {
-                        let session = session_store.load(&session_id).await?;
+                let mut session = if let Some(session_cookie) =
+                    cookies.get(&session_config.name).map(Cookie::into_owned)
+                {
+                    // We do have a session cookie, so we retrieve it either from memory or the
+                    // backing session store.
+                    tracing::debug!("loading session from cookie");
+                    let session_id = session_cookie.value().try_into()?;
 
-                        // N.B.: Our store will *not* have the session if the session is empty.
-                        if let Some(session) = &session {
-                            entry.insert(LoadedSession {
-                                session: session.clone(),
-                                refs: 1,
-                            });
-                        } else {
-                            cookies.remove(session_cookie);
+                    match loaded_sessions.entry(session_id) {
+                        Entry::Vacant(entry) => {
+                            let session = session_store.load(&session_id).await?;
+                            tracing::trace!("loaded from store");
+
+                            // N.B.: Our store will *not* have the session if the session is empty.
+                            if let Some(session) = &session {
+                                entry.insert(LoadedSession {
+                                    session: session.clone(),
+                                    refs: 1,
+                                });
+                            } else {
+                                cookies.remove(session_cookie);
+                            }
+
+                            session.unwrap_or_else(|| session_config.new_session())
                         }
 
-                        session.unwrap_or_else(|| session_config.new_session())
+                        Entry::Occupied(mut entry) => {
+                            tracing::trace!("loaded from cache");
+                            let loaded_session = entry.get_mut();
+                            loaded_session.refs += 1;
+                            loaded_session.session.clone()
+                        }
                     }
+                } else {
+                    // We don't have a session cookie, so let's create a new session.
+                    let session = session_config.new_session();
+                    tracing::debug!("created new session");
+                    session
+                };
 
+                tracing::Span::current().record("session.id", session.id().to_string());
+
+                req.extensions_mut().insert(session.clone());
+
+                let res = Ok(inner.call(req).await.map_err(Into::into)?);
+
+                let loaded_session = loaded_sessions.entry(*session.id());
+
+                // N.B. When a session is empty, it will be deleted. Here the deleted method
+                // accounts for this check.
+                if let Some(session_deletion) = session.deleted() {
+                    match session_deletion {
+                        Deletion::Deleted => {
+                            tracing::debug!("deleted");
+
+                            if let Entry::Occupied(entry) = loaded_session {
+                                entry.remove();
+                            };
+
+                            session_store.delete(session.id()).await?;
+                            cookies.remove(session_config.build_cookie(&session));
+
+                            // Since the session has been deleted, there's no need for further
+                            // processing.
+                            return res;
+                        }
+
+                        Deletion::Cycled(deleted_id) => {
+                            tracing::debug!("key cycled");
+
+                            if let Entry::Occupied(entry) = loaded_session {
+                                entry.remove();
+                            }
+
+                            session_store.delete(&deleted_id).await?;
+                            cookies.remove(session_config.build_cookie(&session));
+                            session.reset_deleted();
+
+                            if session.is_modified() {
+                                session.reset_modified();
+                                session.id = Id::default();
+                                session_store.save(&session).await?;
+                                cookies.add(session_config.build_cookie(&session));
+                            }
+
+                            return res;
+                        }
+                    }
+                };
+
+                // For further consideration:
+                //
+                // We only persist the session in the store when the `modified` flag is set.
+                //
+                // However, we could offer additional configuration of this behavior via an
+                // extended interface in the future. For instance, we might consider providing
+                // the `Set-Cookie` header whenever modified or if some "always save" marker is
+                // set.
+                match loaded_session {
                     Entry::Occupied(mut entry) => {
-                        let loaded_session = entry.get_mut();
-                        loaded_session.refs += 1;
-                        loaded_session.session.clone()
-                    }
-                }
-            } else {
-                // We don't have a session cookie, so let's create a new session.
-                session_config.new_session()
-            };
-
-            req.extensions_mut().insert(session.clone());
-
-            let res = Ok(inner.call(req).await.map_err(Into::into)?);
-
-            let loaded_session = loaded_sessions.entry(*session.id());
-
-            // N.B. When a session is empty, it will be deleted. Here the deleted method
-            // accounts for this check.
-            if let Some(session_deletion) = session.deleted() {
-                match session_deletion {
-                    Deletion::Deleted => {
-                        if let Entry::Occupied(entry) = loaded_session {
-                            entry.remove();
-                        };
-
-                        session_store.delete(session.id()).await?;
-                        cookies.remove(session_config.build_cookie(&session));
-
-                        // Since the session has been deleted, there's no need for further
-                        // processing.
-                        return res;
-                    }
-
-                    Deletion::Cycled(deleted_id) => {
-                        if let Entry::Occupied(entry) = loaded_session {
-                            entry.remove();
-                        }
-
-                        session_store.delete(&deleted_id).await?;
-                        cookies.remove(session_config.build_cookie(&session));
-                        session.reset_deleted();
+                        let loaded = entry.get_mut();
 
                         if session.is_modified() {
+                            tracing::debug!("modified cached");
                             session.reset_modified();
-                            session.id = Id::default();
+
                             session_store.save(&session).await?;
                             cookies.add(session_config.build_cookie(&session));
                         }
 
-                        return res;
-                    }
-                }
-            };
+                        if loaded.refs <= 1 {
+                            entry.remove();
+                            return res;
+                        }
 
-            // For further consideration:
-            //
-            // We only persist the session in the store when the `modified` flag is set.
-            //
-            // However, we could offer additional configuration of this behavior via an
-            // extended interface in the future. For instance, we might consider providing
-            // the `Set-Cookie` header whenever modified or if some "always save" marker is
-            // set.
-            match loaded_session {
-                Entry::Occupied(mut entry) => {
-                    let loaded = entry.get_mut();
-
-                    if session.is_modified() {
-                        session.reset_modified();
-
-                        session_store.save(&session).await?;
-                        cookies.add(session_config.build_cookie(&session));
+                        loaded.refs -= 1;
                     }
 
-                    if loaded.refs <= 1 {
-                        entry.remove();
-                        return res;
+                    Entry::Vacant(entry) => {
+                        if session.is_modified() {
+                            tracing::debug!("modified uncached");
+                            session.reset_modified();
+
+                            entry.insert(LoadedSession {
+                                session: session.clone(),
+                                refs: 0,
+                            });
+
+                            session_store.save(&session).await?;
+                            cookies.add(session_config.build_cookie(&session));
+                        }
                     }
+                };
 
-                    loaded.refs -= 1;
-                }
-
-                Entry::Vacant(entry) => {
-                    if session.is_modified() {
-                        session.reset_modified();
-
-                        entry.insert(LoadedSession {
-                            session: session.clone(),
-                            refs: 0,
-                        });
-
-                        session_store.save(&session).await?;
-                        cookies.add(session_config.build_cookie(&session));
-                    }
-                }
-            };
-
-            res
-        })
+                res
+            }
+            .instrument(span),
+        )
     }
 }
 
