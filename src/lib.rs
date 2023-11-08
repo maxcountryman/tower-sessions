@@ -26,6 +26,10 @@
 //!
 //! This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
 //!
+//! ### User authentication
+//!
+//! For managing user authentication and authorization, please see [`axum-login`](https://github.com/maxcountryman/axum-login).
+//!
 //! # Usage with an `axum` application
 //!
 //! A common use-case for sessions is when building HTTP servers. Using `axum`,

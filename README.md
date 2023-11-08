@@ -49,6 +49,10 @@ It offers:
 
 This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
 
+### User authentication
+
+For managing user authentication and authorization, please see [`axum-login`](https://github.com/maxcountryman/axum-login).
+
 ## 📦 Install
 
 To use the crate in your project, add the following to your `Cargo.toml` file:
