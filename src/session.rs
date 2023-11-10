@@ -462,13 +462,21 @@ impl Session {
     /// # Examples
     ///
     /// ```rust
-    /// use time::Duration;
+    /// use time::{Duration, OffsetDateTime};
     /// use tower_sessions::Session;
+    /// use tower_sessions::Expiry;
     ///
     /// let session = Session::default();
     /// assert!(session.expiry_age() > Duration::days(11));   
+    ///
+    /// let yesterday = OffsetDateTime::now_utc().saturating_sub(Duration::days(1));
+    /// session.set_expiry(Some(Expiry::AtDateTime(yesterday)));
+    /// assert_eq!(session.expiry_age(), Duration::ZERO);
     pub fn expiry_age(&self) -> Duration {
-        self.expiry_date() - OffsetDateTime::now_utc()
+        std::cmp::max(
+            self.expiry_date() - OffsetDateTime::now_utc(),
+            Duration::ZERO,
+        )
     }
 
     /// Returns `true` if the session has been modified and `false` otherwise.
