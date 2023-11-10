@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.4.2
+
+- Provide tracing instrumentation.
+- Ensure non-negative max-age. #79
+
 # 0.4.1
 
 - Fix lifecycle state persisting in stores when it should not. #71
