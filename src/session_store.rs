@@ -8,6 +8,47 @@ use futures::TryFutureExt;
 use crate::session::{Id, Session};
 
 /// An arbitrary store which houses the session data.
+///
+/// # Implementing your own store
+///
+/// This crate is designed such that any arbirary session storage backend can be
+/// supported simply by implemeting the `SessionStore` trait. While a set of
+/// common stores are provided, should those not meet your needs or otherwise we
+/// lacking, it is encouraged to implement your own store.
+///
+/// For example, we might construct a session store for testing purposes that
+/// wraps `HashMap`. To do so, we can write a struct that houses this hash map
+/// and then implement `SessionStore`.
+///
+/// ```rust
+/// use std::{collections::HashMap, convert::Infallible, sync::Arc};
+///
+/// use async_trait::async_trait;
+/// use parking_lot::Mutex;
+/// use tower_sessions::{session::Id, Session, SessionStore};
+///
+/// #[derive(Clone)]
+/// pub struct TestingStore(Arc<Mutex<HashMap<Id, Session>>>);
+///
+/// #[async_trait]
+/// impl SessionStore for TestingStore {
+///     type Error = Infallible;
+///
+///     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+///         self.0.lock().insert(*session.id(), session.clone());
+///         Ok(())
+///     }
+///
+///     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+///         Ok(self.0.lock().get(session_id).cloned())
+///     }
+///
+///     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
+///         self.0.lock().remove(session_id);
+///         Ok(())
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait SessionStore: Clone + Send + Sync + 'static {
     /// An error that occurs when interacting with the store.
