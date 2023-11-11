@@ -21,6 +21,7 @@ use crate::{
 #[derive(Debug, Clone)]
 struct SessionConfig {
     name: String,
+    http_only: bool,
     same_site: SameSite,
     expiry: Option<Expiry>,
     secure: bool,
@@ -31,7 +32,7 @@ struct SessionConfig {
 impl SessionConfig {
     fn build_cookie<'c>(&self, session: &Session) -> Cookie<'c> {
         let mut cookie_builder = Cookie::build(self.name.clone(), session.id().to_string())
-            .http_only(true)
+            .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
             .path(self.path.clone());
@@ -54,6 +55,7 @@ impl Default for SessionConfig {
     fn default() -> Self {
         Self {
             name: String::from("tower.sid"),
+            http_only: true,
             same_site: SameSite::Strict,
             expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
             secure: false,
@@ -288,6 +290,21 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// ```
     pub fn with_name(mut self, name: &str) -> Self {
         self.session_config.name = name.to_string();
+        self
+    }
+
+    /// Configures the `"HTTP-Only` attribute of the cookie used for the session.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store).with_http_only(true);
+    /// ```
+    pub fn with_http_only(mut self, http_only: bool) -> Self {
+        self.session_config.http_only = http_only;
         self
     }
 
