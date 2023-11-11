@@ -9,7 +9,7 @@ use crate::{session::Id, Session, SessionStore};
 /// A session store that uses Moka, a fast and concurrent caching library.
 #[derive(Debug, Clone)]
 pub struct MokaStore {
-    cache: Cache<Id, Session>,
+    cache: Cache<Id, (Session, OffsetDateTime)>,
 }
 
 impl MokaStore {
@@ -40,7 +40,9 @@ impl SessionStore for MokaStore {
     type Error = Infallible;
 
     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
-        self.cache.insert(*session.id(), session.clone()).await;
+        self.cache
+            .insert(*session.id(), (session.clone(), session.expiry_date()))
+            .await;
         Ok(())
     }
 
@@ -49,9 +51,8 @@ impl SessionStore for MokaStore {
             .cache
             .get(session_id)
             .await
-            .map(Into::into)
-            .clone()
-            .filter(is_active))
+            .filter(|(_, expiry_date)| is_active(*expiry_date))
+            .map(|(session, _)| session))
     }
 
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
@@ -63,7 +64,6 @@ impl SessionStore for MokaStore {
 // TODO: Moka supports expiry natively, but that interface is being overhauled
 // such that it's more accessible. When that work is done, we should replace
 // this with actual expiry.
-fn is_active(session: &Session) -> bool {
-    let expiry_date = session.expiry_date();
+fn is_active(expiry_date: OffsetDateTime) -> bool {
     expiry_date > OffsetDateTime::now_utc()
 }
