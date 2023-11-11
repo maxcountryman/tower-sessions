@@ -54,7 +54,7 @@ impl SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            name: String::from("tower.sid"),
+            name: String::from("id"), /* See: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-id-name-fingerprinting */
             http_only: true,
             same_site: SameSite::Strict,
             expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
