@@ -20,19 +20,27 @@ use crate::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<Id, Session>>>);
+pub struct MemoryStore(Arc<Mutex<HashMap<Id, (Session, OffsetDateTime)>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
     type Error = Infallible;
 
     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
-        self.0.lock().insert(*session.id(), session.clone());
+        self.0
+            .lock()
+            .insert(*session.id(), (session.clone(), session.expiry_date()));
         Ok(())
     }
 
     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
-        Ok(self.0.lock().get(session_id).filter(is_active).cloned())
+        Ok(self
+            .0
+            .lock()
+            .get(session_id)
+            .filter(|(_, expiry_date)| is_active(*expiry_date))
+            .map(|(session, _)| session)
+            .cloned())
     }
 
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
@@ -41,7 +49,6 @@ impl SessionStore for MemoryStore {
     }
 }
 
-fn is_active(session: &&Session) -> bool {
-    let expiry_date = session.expiry_date();
+fn is_active(expiry_date: OffsetDateTime) -> bool {
     expiry_date > OffsetDateTime::now_utc()
 }
