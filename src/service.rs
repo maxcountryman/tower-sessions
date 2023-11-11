@@ -293,9 +293,14 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
         self
     }
 
-    /// Configures the `"HTTP-Only"` attribute of the cookie used for the session.  
-    /// For security reasons the default value is `true`.  
-    /// If this attribute is `false`, it indicates that the cookie is vulnerable to being accessed by JavaScript, thus posing a significant risk for potential XSS (Cross-Site Scripting) attacks.
+    /// Configures the `"HttpOnly"` attribute of the cookie used for the
+    /// session.
+    ///
+    /// # ⚠️ **Warning: Cross-site scripting risk**
+    ///
+    /// Applications should generally **not** override the default value of
+    /// `true`. If you do, you are exposing your application to increased risk
+    /// of cookie theft via techniques like cross-site scripting.
     ///
     /// # Examples
     ///
