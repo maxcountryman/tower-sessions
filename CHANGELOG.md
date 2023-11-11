@@ -6,6 +6,10 @@
 
 If your application uses `MokaStore` or `MemoryStore`, please update immediately to ensure proper server-side handling of expired sessions.
 
+**Other Changes**
+
+- Make `HttpOnly` configurable. #81
+
 # 0.4.2
 
 - Provide tracing instrumentation.
