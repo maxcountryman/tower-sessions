@@ -1,5 +1,11 @@
 # Unreleased
 
+# 0.4.3
+
+## **Important Security Fix**
+
+If your application uses `MokaStore` or `MemoryStore`, please update immediately to ensure proper server-side handling of expired sessions.
+
 # 0.4.2
 
 - Provide tracing instrumentation.

@@ -1,7 +1,7 @@
 [package]
 name = "tower-sessions"
 description = "🥠 Sessions as a `tower` and `axum` middleware."
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -70,6 +70,7 @@ tower = "0.4.13"
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
 reqwest = "0.11.22"
+axum-server = "0.5.1"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -115,3 +116,7 @@ required-features = ["axum-core", "mysql-store", "deletion-task"]
 [[example]]
 name = "strongly-typed"
 required-features = ["axum-core", "memory-store"]
+
+[[example]]
+name = "issue-74"
+required-features = ["axum-core", "moka", "moka-store"]
