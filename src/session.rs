@@ -643,8 +643,15 @@ pub enum Expiry {
     OnSessionEnd,
 
     /// Expire on inactivity.
+    ///
+    /// Reading a session is not considered activity for expiration purposes.
+    /// [`Session`] expiration is computed from the last time the session was
+    /// _modified_.
     OnInactivity(Duration),
 
     /// Expire at a specific date and time.
+    ///
+    /// This value may be extended manually with
+    /// [`set_expiry`](Session::set_expiry).
     AtDateTime(OffsetDateTime),
 }
