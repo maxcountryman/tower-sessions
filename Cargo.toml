@@ -116,7 +116,3 @@ required-features = ["axum-core", "mysql-store", "deletion-task"]
 [[example]]
 name = "strongly-typed"
 required-features = ["axum-core", "memory-store"]
-
-[[example]]
-name = "issue-74"
-required-features = ["axum-core", "moka", "moka-store"]
