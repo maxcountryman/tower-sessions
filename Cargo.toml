@@ -1,6 +1,16 @@
-[package]
-name = "tower-sessions"
-description = "🥠 Sessions as a `tower` and `axum` middleware."
+[workspace]
+members = [
+  ".",
+  "memory-store",
+  "moka-store",
+  "mongodb-store",
+  "redis-store",
+  "sqlx-store",
+  "tower-sessions-core",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.4.3"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
@@ -11,70 +21,84 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 repository = "https://github.com/maxcountryman/tower-sessions"
 documentation = "https://docs.rs/tower-sessions"
 readme = "README.md"
-rust-version = "1.67.1"
 
-[features]
-deletion-task = ["tokio-rt", "tokio-time"]
-default = ["axum-core", "memory-store"]
-tokio-rt = ["tokio/rt"]
-tokio-time = ["tokio/time"]
-memory-store = []
-
-moka-store = ["moka"]
-
-redis-store = ["fred", "rmp-serde"]
-
-mongodb-store = ["mongodb", "bson", "rmp-serde"]
-
-# SQLx feature flags.
-sqlx-store = ["sqlx", "rmp-serde"]
-sqlite-store = ["sqlx/sqlite", "sqlx-store"]
-postgres-store = ["sqlx/postgres", "sqlx-store"]
-mysql-store = ["sqlx/mysql", "sqlx-store"]
-
-[dependencies]
-async-trait = "0.1.73"
-dashmap = "5.5.3"
-http = "0.2.9"
-futures = { version = "0.3.28", default-features = false, features = [
-    "async-await",
-] }
-parking_lot = { version = "0.12.1", features = ["serde"] }
-serde = { version = "1.0.189", features = ["derive", "rc"] }
-serde_json = "1.0.107"
-thiserror = "1.0.49"
-time = { version = "0.3.29", features = ["serde"] }
-tower-cookies = "0.9.0"
-tower-layer = "0.3.2"
-tower-service = "0.3.2"
-uuid = { version = "1.4.1", features = ["v4", "serde"] }
-tracing = { version = "0.1.40", features = ["log"] }
-
-fred = { optional = true, version = "7.0.0" }
-axum-core = { optional = true, version = "0.3.4" }
-rmp-serde = { optional = true, version = "1.1.2" }
-mongodb = { optional = true, version = "2.7.0" }
-bson = { optional = true, version = "2.7.0", features = ["time-0_3", "uuid-1"] }
-sqlx = { optional = true, version = "0.7.2", features = [
-    "time",
-    "uuid",
-    "runtime-tokio",
-] }
-tokio = { optional = true, version = "1.32.0", default-features = false }
-moka = { optional = true, version = "0.12.0", features = ["future"] }
-
-[dev-dependencies]
-axum = "0.6.20"
-hyper = "0.14.27"
-tower = "0.4.13"
-tokio = { version = "1.32.0", features = ["full"] }
-tokio-test = "0.4.3"
-reqwest = "0.11.22"
-axum-server = "0.5.1"
+[package]
+name = "tower-sessions"
+description = "🥠 Sessions as a `tower` and `axum` middleware."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["axum-core", "memory-store"]
+
+# Runtime features.
+axum-core = ["tower-sessions-core/axum-core"]
+deletion-task = ["tower-sessions-core/deletion-task"]
+
+# Session stores.
+memory-store = ["tower-sessions-memory-store"]
+moka-store = ["tower-sessions-moka-store"]
+redis-store = ["tower-sessions-redis-store"]
+mongodb-store = ["tower-sessions-mongodb-store"]
+sqlx-store = []
+sqlite-store = ["sqlx-store", "tower-sessions-sqlx-store/sqlite"]
+postgres-store = ["sqlx-store", "tower-sessions-sqlx-store/postgres"]
+mysql-store = ["sqlx-store", "tower-sessions-sqlx-store/mysql"]
+
+[workspace.dependencies]
+tower-sessions = { version = "=0.4.3", path = ".", default-features = false }
+
+tower-sessions-core = { path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { path = "memory-store" }
+tower-sessions-moka-store = { path = "moka-store" }
+tower-sessions-redis-store = { path = "redis-store" }
+tower-sessions-mongodb-store = { path = "mongodb-store" }
+tower-sessions-sqlx-store = { path = "sqlx-store" }
+
+async-trait = "0.1.74"
+parking_lot = { version = "0.12.1", features = ["serde"] }
+rmp-serde = { version = "1.1.2" }
+serde = "1.0.192"
+time = "0.3.30"
+thiserror = "1.0.50"
+
+[dependencies]
+tower-sessions-core = { workspace = true, features = ["axum-core"] }
+tower-sessions-memory-store = { workspace = true, optional = true }
+tower-sessions-moka-store = { workspace = true, optional = true }
+tower-sessions-redis-store = { workspace = true, optional = true }
+tower-sessions-mongodb-store = { workspace = true, optional = true }
+tower-sessions-sqlx-store = { workspace = true, optional = true }
+
+[dev-dependencies]
+async-trait = "0.1.74"
+axum = "0.6.20"
+axum-core = "0.3.4"
+futures = { version = "0.3.28", default-features = false, features = [
+  "async-await",
+] }
+http = "0.2.10"
+hyper = "0.14.27"
+reqwest = "0.11.22"
+serde = "1.0.192"
+time = "0.3.30"
+tokio = { version = "1.32.0", features = ["full"] }
+tokio-test = "0.4.3"
+tower = "0.4.13"
+tower-cookies = "0.9.0"
+uuid = { version = "1.4.1", features = ["v4", "serde"] }
 
 [[example]]
 name = "counter"
@@ -103,10 +127,10 @@ required-features = ["axum-core", "postgres-store", "deletion-task"]
 [[example]]
 name = "moka-postgres-store"
 required-features = [
-    "axum-core",
-    "postgres-store",
-    "moka-store",
-    "deletion-task",
+  "axum-core",
+  "postgres-store",
+  "moka-store",
+  "deletion-task",
 ]
 
 [[example]]

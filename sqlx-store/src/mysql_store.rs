@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use sqlx::MySqlPool;
 use time::OffsetDateTime;
+use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
 
-use crate::{session::Id, ExpiredDeletion, Session, SessionStore, SqlxStoreError};
+use crate::SqlxStoreError;
 
 /// A MySQL session store.
 #[derive(Clone, Debug)]

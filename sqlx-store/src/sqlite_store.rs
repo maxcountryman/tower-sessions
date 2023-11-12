@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePool;
 use time::OffsetDateTime;
+use tower_sessions_core::{session::Id, session_store::ExpiredDeletion, Session, SessionStore};
 
-use crate::{session::Id, session_store::ExpiredDeletion, Session, SessionStore, SqlxStoreError};
+use crate::SqlxStoreError;
 
 /// A SQLite session store.
 #[derive(Clone, Debug)]

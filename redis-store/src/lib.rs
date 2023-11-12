@@ -1,11 +1,11 @@
 use async_trait::async_trait;
+pub use fred;
 use fred::{
     prelude::{KeysInterface, RedisClient},
     types::Expiration,
 };
 use time::OffsetDateTime;
-
-use crate::{session::Id, Session, SessionStore};
+use tower_sessions_core::{session::Id, Session, SessionStore};
 
 /// An error type for `RedisStore`.
 #[derive(thiserror::Error, Debug)]

@@ -1,0 +1,18 @@
+[package]
+name = "tower-sessions-memory-store"
+description = "Memory session store. Not for direct use; see the `tower-sessions` crate for details."
+documentation.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+tower-sessions-core = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+time = { workspace = true }
+
+[dev-dependencies]
+tower-sessions = { workspace = true }

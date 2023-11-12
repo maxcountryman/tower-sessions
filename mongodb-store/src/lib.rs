@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use bson::{doc, to_document};
+pub use mongodb;
 use mongodb::{options::UpdateOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-
-use crate::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
 
 /// An error type for `MongoDBStore`.
 #[derive(thiserror::Error, Debug)]
