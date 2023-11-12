@@ -57,9 +57,9 @@ impl SessionStore for RedisStore {
     type Error = RedisStoreError;
 
     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
-        let expire = Some(session.expiry_date())
-            .map(OffsetDateTime::unix_timestamp)
-            .map(Expiration::EXAT);
+        let expire = Some(Expiration::EXAT(OffsetDateTime::unix_timestamp(
+            session.expiry_date(),
+        )));
 
         self.client
             .set(

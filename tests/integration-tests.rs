@@ -121,7 +121,7 @@ mod mysql_store_tests {
 #[cfg(all(test, feature = "axum-core", feature = "mongodb-store"))]
 mod mongodb_store_tests {
     use axum::Router;
-    use tower_sessions::{MongoDBStore, SessionManagerLayer};
+    use tower_sessions::{mongodb, MongoDBStore, SessionManagerLayer};
 
     use crate::common::build_app;
 
