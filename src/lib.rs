@@ -5,9 +5,9 @@
 //!
 //! It offers:
 //!
-//! - **Pluggable Storage Backends:** Arbitrary storage backends are implemented
-//!   with the [`SessionStore`] trait, fully decoupling sessions from their
-//!   storage.
+//! - **Pluggable Storage Backends:** Bring your own backend simply by
+//!   implementing the [`SessionStore`] trait, fully decoupling sessions from
+//!   their storage.
 //! - **An `axum` Extractor for [`Session`]:** Applications built with `axum`
 //!   can use `Session` as an extractor directly in their handlers. This makes
 //!   using sessions as easy as including `Session` in your handler.

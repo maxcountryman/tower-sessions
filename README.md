@@ -28,8 +28,8 @@ visitor, as a `tower` middleware.
 
 It offers:
 
-- **Pluggable Storage Backends:** Arbitrary storage backends are implemented
-  with the `SessionStore` trait, fully decoupling sessions from their
+- **Pluggable Storage Backends:** Bring your own backend simply by
+  implementing the `SessionStore` trait, fully decoupling sessions from their
   storage.
 - **An `axum` Extractor for `Session`:** Applications built with `axum`
   can use `Session` as an extractor directly in their handlers. This makes
@@ -59,7 +59,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.4.3"
+tower-sessions = "0.5.0"
 ```
 
 ## 🤸 Usage
