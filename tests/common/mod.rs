@@ -112,7 +112,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn bogus_session_cookie() {
-            let session_cookie = Cookie::new("tower.sid", "00000000-0000-0000-0000-000000000000");
+            let session_cookie = Cookie::new("id", "00000000-0000-0000-0000-000000000000");
             let req = Request::builder()
                 .uri("/insert")
                 .header(header::COOKIE, session_cookie.encoded().to_string())
@@ -134,7 +134,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn malformed_session_cookie() {
-            let session_cookie = Cookie::new("tower.sid", "malformed");
+            let session_cookie = Cookie::new("id", "malformed");
             let req = Request::builder()
                 .uri("/")
                 .header(header::COOKIE, session_cookie.encoded().to_string())
@@ -162,7 +162,7 @@ macro_rules! route_tests {
                 .unwrap();
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
-            assert_eq!(session_cookie.name(), "tower.sid");
+            assert_eq!(session_cookie.name(), "id");
             assert_eq!(session_cookie.http_only(), Some(true));
             assert_eq!(session_cookie.same_site(), Some(SameSite::Strict));
             assert!(session_cookie
@@ -181,7 +181,7 @@ macro_rules! route_tests {
             let res = $create_app(None).await.oneshot(req).await.unwrap();
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
-            assert_eq!(session_cookie.name(), "tower.sid");
+            assert_eq!(session_cookie.name(), "id");
             assert_eq!(session_cookie.http_only(), Some(true));
             assert_eq!(session_cookie.same_site(), Some(SameSite::Strict));
             assert!(session_cookie

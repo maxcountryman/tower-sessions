@@ -1,5 +1,9 @@
 # Unreleased
 
+**Breaking Changes**
+
+- Use a default session name of "id" to avoid fingerprinting, as per https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-id-name-fingerprinting.
+
 # 0.4.3
 
 ## **Important Security Fix**
