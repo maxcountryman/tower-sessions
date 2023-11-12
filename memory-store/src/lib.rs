@@ -3,8 +3,7 @@ use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use time::OffsetDateTime;
-
-use crate::{
+use tower_sessions_core::{
     session::{Id, Session},
     SessionStore,
 };

@@ -465,70 +465,44 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(feature = "redis-store")]
-pub use fred;
-#[cfg(feature = "mongodb-store")]
-pub use mongodb;
-#[cfg(feature = "sqlx-store")]
-pub use sqlx;
-/// Ensure the underlying cookie interface is available.
-pub use tower_cookies::cookie;
-
-#[cfg(feature = "memory-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
-pub use self::memory_store::MemoryStore;
-#[cfg(feature = "moka-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
-pub use self::moka_store::MokaStore;
-#[cfg(feature = "mongodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
-pub use self::mongodb_store::MongoDBStore;
-#[cfg(feature = "redis-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
-pub use self::redis_store::RedisStore;
-#[cfg(feature = "mysql-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
-pub use self::sqlx_store::MySqlStore;
-#[cfg(feature = "postgres-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
-pub use self::sqlx_store::PostgresStore;
-#[cfg(feature = "sqlite-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
-pub use self::sqlx_store::SqliteStore;
-#[cfg(feature = "sqlx-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
-pub use self::sqlx_store::SqlxStoreError;
+pub use tower_sessions_core::{cookie, service, session, session_store};
 #[doc(inline)]
-pub use self::{
+pub use tower_sessions_core::{
     service::{SessionManager, SessionManagerLayer},
     session::{Expiry, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
-
-#[cfg(feature = "axum-core")]
-#[cfg_attr(docsrs, doc(cfg(feature = "axum-core")))]
-mod extract;
-
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
-mod memory_store;
-
+#[doc(inline)]
+pub use tower_sessions_memory_store::MemoryStore;
 #[cfg(feature = "moka-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
-mod moka_store;
-
-#[cfg(feature = "redis-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
-mod redis_store;
-
+#[doc(inline)]
+pub use tower_sessions_moka_store::MokaStore;
+#[cfg(feature = "mongodb-store")]
+pub use tower_sessions_mongodb_store::mongodb;
 #[cfg(feature = "mongodb-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
-mod mongodb_store;
-
+#[doc(inline)]
+pub use tower_sessions_mongodb_store::MongoDBStore;
+#[cfg(feature = "redis-store")]
+pub use tower_sessions_redis_store::fred;
+#[cfg(feature = "redis-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
+#[doc(inline)]
+pub use tower_sessions_redis_store::RedisStore;
 #[cfg(feature = "sqlx-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlx-store")))]
-mod sqlx_store;
-
-pub mod service;
-pub mod session;
-pub mod session_store;
+pub use tower_sessions_sqlx_store::sqlx;
+#[cfg(feature = "mysql-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
+#[doc(inline)]
+pub use tower_sessions_sqlx_store::MySqlStore;
+#[cfg(feature = "postgres-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
+#[doc(inline)]
+pub use tower_sessions_sqlx_store::PostgresStore;
+#[cfg(feature = "sqlite-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
+#[doc(inline)]
+pub use tower_sessions_sqlx_store::SqliteStore;

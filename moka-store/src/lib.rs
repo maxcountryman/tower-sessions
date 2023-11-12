@@ -3,8 +3,7 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use moka::future::Cache;
 use time::OffsetDateTime;
-
-use crate::{session::Id, Session, SessionStore};
+use tower_sessions_core::{session::Id, Session, SessionStore};
 
 /// A session store that uses Moka, a fast and concurrent caching library.
 #[derive(Debug, Clone)]
