@@ -60,12 +60,12 @@ mysql-store = ["sqlx-store", "tower-sessions-sqlx-store/mysql"]
 [workspace.dependencies]
 tower-sessions = { version = "=0.5.0", path = ".", default-features = false }
 
-tower-sessions-core = { path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { path = "memory-store" }
-tower-sessions-moka-store = { path = "moka-store" }
-tower-sessions-redis-store = { path = "redis-store" }
-tower-sessions-mongodb-store = { path = "mongodb-store" }
-tower-sessions-sqlx-store = { path = "sqlx-store" }
+tower-sessions-core = { version = "=0.5.0", path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { version = "=0.5.0", path = "memory-store" }
+tower-sessions-moka-store = { version = "=0.5.0", path = "moka-store" }
+tower-sessions-redis-store = { version = "=0.5.0", path = "redis-store" }
+tower-sessions-mongodb-store = { version = "=0.5.0", path = "mongodb-store" }
+tower-sessions-sqlx-store = { version = "=0.5.0", path = "sqlx-store" }
 
 async-trait = "0.1.74"
 parking_lot = { version = "0.12.1", features = ["serde"] }
