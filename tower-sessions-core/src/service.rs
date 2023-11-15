@@ -184,7 +184,7 @@ where
                 if let Some(session_deletion) = session.deleted() {
                     match session_deletion {
                         Deletion::Deleted => {
-                            tracing::debug!("deleted");
+                            tracing::debug!("deleted state");
 
                             if let Entry::Occupied(entry) = loaded_session {
                                 entry.remove();
@@ -193,6 +193,8 @@ where
                             if has_session_cookie {
                                 session_store.delete(session.id()).await?;
                                 cookies.remove(session_config.build_cookie(&session));
+
+                                tracing::trace!("deleted from store");
                             }
 
                             // Since the session has been deleted, there's no need for further
@@ -201,7 +203,7 @@ where
                         }
 
                         Deletion::Cycled(deleted_id) => {
-                            tracing::debug!("key cycled");
+                            tracing::debug!("cycled state");
 
                             if let Entry::Occupied(entry) = loaded_session {
                                 entry.remove();
