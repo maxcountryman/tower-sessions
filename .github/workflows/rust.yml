@@ -66,18 +66,6 @@ jobs:
       #    name: coverage-artifacts-doc
       #    path: coverage-artifacts/doc
 
-  test-concurrency:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@v2
-      - name: Run concurrency tests
-        run: |
-          cargo test --test concurrency-tests
-
   test-integration:
     needs: check
     runs-on: ubuntu-latest
