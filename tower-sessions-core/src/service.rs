@@ -2,11 +2,9 @@
 use std::{
     future::Future,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 
-use dashmap::{mapref::entry::Entry, DashMap};
 use http::{Request, Response};
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
@@ -65,36 +63,12 @@ impl Default for SessionConfig {
     }
 }
 
-// This structure allows us to track concurrent session access.
-//
-// Without this, we are subject to a data race where stale sessions can be
-// loaded from a store and pending changes are lost. Consider the following
-// timeline:
-//
-// - Request 1 loads session A from the store; A = 0
-// - Request 1 increments A; A = 1
-// - Request 2 loads session A from the store; A = 0
-// - Request 2 increments A; A = 1
-// - Request 1 saves A to the store; A = 1
-// - Request 2 saves A to the store; A = 1
-//
-// To address this, we track loaded sessions in memory, keeping a count of
-// concurrency references. This enables us to load from memory, instead of the
-// store, which allows us to share memory between concurrent processes whereas
-// if we were to load from the store we would lose any inflight data changes.
-#[derive(Debug, Default)]
-struct LoadedSession {
-    session: Session,
-    refs: usize,
-}
-
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
 pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Store,
     session_config: SessionConfig,
-    loaded_sessions: Arc<DashMap<Id, LoadedSession>>,
 }
 
 impl<S, Store: SessionStore> SessionManager<S, Store> {
@@ -104,7 +78,6 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
             inner,
             session_store,
             session_config: Default::default(),
-            loaded_sessions: Default::default(),
         }
     }
 }
@@ -132,9 +105,6 @@ where
 
         let session_store = self.session_store.clone();
         let session_config = self.session_config.clone();
-        let loaded_sessions = self.loaded_sessions.clone();
-
-        span.in_scope(|| tracing::trace!(loaded_sessions = loaded_sessions.len()));
 
         // This is necessary to prevent potential panics.
         //
@@ -160,31 +130,15 @@ where
                     has_session_cookie = true;
                     let session_id = session_cookie.value().try_into()?;
 
-                    match loaded_sessions.entry(session_id) {
-                        Entry::Vacant(entry) => {
-                            let session = session_store.load(&session_id).await?;
-                            tracing::trace!("loaded from store");
+                    let session = session_store.load(&session_id).await?;
+                    tracing::trace!("loaded from store");
 
-                            // N.B.: Our store will *not* have the session if the session is empty.
-                            if let Some(session) = &session {
-                                entry.insert(LoadedSession {
-                                    session: session.clone(),
-                                    refs: 1,
-                                });
-                            } else {
-                                cookies.remove(session_cookie);
-                            }
-
-                            session.unwrap_or_else(|| session_config.new_session())
-                        }
-
-                        Entry::Occupied(mut entry) => {
-                            tracing::trace!("loaded from cache");
-                            let loaded_session = entry.get_mut();
-                            loaded_session.refs += 1;
-                            loaded_session.session.clone()
-                        }
+                    // N.B.: Our store will *not* have the session if the session is empty.
+                    if session.is_none() {
+                        cookies.remove(session_cookie);
                     }
+
+                    session.unwrap_or_else(|| session_config.new_session())
                 } else {
                     // We don't have a session cookie, so let's create a new session.
                     let session = session_config.new_session();
@@ -198,18 +152,12 @@ where
 
                 let res = Ok(inner.call(req).await.map_err(Into::into)?);
 
-                let loaded_session = loaded_sessions.entry(*session.id());
-
                 // N.B. When a session is empty, it will be deleted. Here the deleted method
                 // accounts for this check.
                 if let Some(session_deletion) = session.deleted() {
                     match session_deletion {
                         Deletion::Deleted => {
                             tracing::debug!("deleted state");
-
-                            if let Entry::Occupied(entry) = loaded_session {
-                                entry.remove();
-                            };
 
                             if has_session_cookie {
                                 session_store.delete(session.id()).await?;
@@ -226,22 +174,11 @@ where
                         Deletion::Cycled(deleted_id) => {
                             tracing::debug!("cycled state");
 
-                            if let Entry::Occupied(entry) = loaded_session {
-                                entry.remove();
-                            }
-
                             session_store.delete(&deleted_id).await?;
                             cookies.remove(session_config.build_cookie(&session));
                             session.reset_deleted();
 
-                            if session.is_modified() {
-                                session.reset_modified();
-                                session.id = Id::default();
-                                session_store.save(&session).await?;
-                                cookies.add(session_config.build_cookie(&session));
-                            }
-
-                            return res;
+                            session.id = Id::default();
                         }
                     }
                 };
@@ -254,41 +191,13 @@ where
                 // extended interface in the future. For instance, we might consider providing
                 // the `Set-Cookie` header whenever modified or if some "always save" marker is
                 // set.
-                match loaded_session {
-                    Entry::Occupied(mut entry) => {
-                        let loaded = entry.get_mut();
+                if session.is_modified() {
+                    tracing::debug!("modified state");
+                    session.reset_modified();
 
-                        if session.is_modified() {
-                            tracing::debug!("modified cached");
-                            session.reset_modified();
-
-                            session_store.save(&session).await?;
-                            cookies.add(session_config.build_cookie(&session));
-                        }
-
-                        if loaded.refs <= 1 {
-                            entry.remove();
-                            return res;
-                        }
-
-                        loaded.refs -= 1;
-                    }
-
-                    Entry::Vacant(entry) => {
-                        if session.is_modified() {
-                            tracing::debug!("modified uncached");
-                            session.reset_modified();
-
-                            entry.insert(LoadedSession {
-                                session: session.clone(),
-                                refs: 0,
-                            });
-
-                            session_store.save(&session).await?;
-                            cookies.add(session_config.build_cookie(&session));
-                        }
-                    }
-                };
+                    session_store.save(&session).await?;
+                    cookies.add(session_config.build_cookie(&session));
+                }
 
                 res
             }
@@ -453,7 +362,6 @@ impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
             inner,
             session_store: self.session_store.clone(),
             session_config: self.session_config.clone(),
-            loaded_sessions: Default::default(),
         };
 
         CookieManager::new(session_manager)

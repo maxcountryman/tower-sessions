@@ -82,41 +82,6 @@
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
-//! ## Concurrent data access
-//!
-//! It's important to note that sessions can be accessed through concurrent
-//! processes. What this means is that it's **not safe** to read from a session,
-//! alter the read value, and write this modified value back to the session.
-//! Making an update to the session in this way will lead to **data loss**.
-//!
-//! To perform such writes safely, it's important to use
-//! [`replace_if_equal`](Session::replace_if_equal), which provides a [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap) interface for updating the session. For example, to safely
-//! update our counter, we should instead use `replace_if_equal`.
-//!
-//! ```rust,no_run
-//! # use axum::response::IntoResponse;
-//! # use tower_sessions::Session;
-//! # use serde::{Serialize, Deserialize};
-//! # const COUNTER_KEY: &str = "counter";
-//! # #[derive(Clone, Default, Deserialize, Serialize)]
-//! # struct Counter(usize);
-//! # tokio_test::block_on(async {
-//! async fn handler(session: Session) -> impl IntoResponse {
-//!     let mut counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_else(|| {
-//!         let counter = Counter::default();
-//!         session.insert(COUNTER_KEY, counter.clone()).unwrap();
-//!         counter
-//!     });
-//!
-//!     let mut new_counter = Counter(counter.0 + 1);
-//!
-//!     while let Ok(false) = session.replace_if_equal(COUNTER_KEY, counter, new_counter) {
-//!         counter = session.get(COUNTER_KEY).unwrap().unwrap();
-//!         new_counter = Counter(counter.0 + 1);
-//!     }
-//! }
-//! # });
-//! ```
 //!
 //! ## Session expiry management
 //!
@@ -341,6 +306,16 @@
 //! A cache is most helpful with read-heavy workloads, where the cache hit rate
 //! will be high. This is because write-heavy workloads will require a roundtrip
 //! to the store and therefore benefit less from caching.
+//!
+//!//! ## Data races under concurrent conditions
+//!
+//! Please note that it is **not safe** to access and mutate session state
+//! concurrently: this will result in data loss if your mutations are dependent
+//! on the state of the session.
+//!
+//! This is because a session is loaded first from its backing store. Once
+//! loaded it's possible for a second request to load the same session, but
+//! without the inflight changes the first request may have made.
 //!
 //! # Implementation
 //!

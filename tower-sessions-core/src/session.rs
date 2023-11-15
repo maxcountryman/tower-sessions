@@ -220,57 +220,6 @@ impl Session {
         }
     }
 
-    /// Replaces a value in the session with a new value if the current value
-    /// matches the old value.
-    ///
-    /// If the key was not present in the underlying map or the current value
-    /// does not match, `false` is returned, indicating failure.
-    ///
-    /// If the key was present and its value matches the old value, the new
-    /// value is inserted, and `true` is returned, indicating success.
-    ///
-    /// This method is essential for scenarios where data races need to be
-    /// prevented. For instance, reading from and writing to a session is
-    /// not transactional. To ensure that read values are not stale, it's
-    /// crucial to use `replace_if_equal` when modifying the session.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::Session;
-    /// let session = Session::default();
-    /// session.insert("foo", 42).unwrap();
-    ///
-    /// let success = session.replace_if_equal("foo", 42, 43).unwrap();
-    /// assert_eq!(success, true);
-    ///
-    /// let success = session.replace_if_equal("foo", 42, 44).unwrap();
-    /// assert_eq!(success, false);
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// This method can fail when [`serde_json::to_value`] fails.
-    pub fn replace_if_equal(
-        &self,
-        key: &str,
-        old_value: impl Serialize,
-        new_value: impl Serialize,
-    ) -> Result<bool> {
-        let mut inner = self.inner.lock();
-        match inner.data.get(key) {
-            Some(current_value) if serde_json::to_value(&old_value)? == *current_value => {
-                let new_value = serde_json::to_value(&new_value)?;
-                if *current_value != new_value {
-                    inner.modified_at = Some(OffsetDateTime::now_utc());
-                    inner.data.insert(key.to_string(), new_value);
-                }
-                Ok(true) // Success, old value matched.
-            }
-            _ => Ok(false), // Failure, key doesn't exist or old value doesn't match.
-        }
-    }
-
     /// Clears the session data.
     ///
     /// # Examples
