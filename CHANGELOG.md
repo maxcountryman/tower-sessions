@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.5.1
+
+- Only delete from session store if we have a session cookie. #90
+
 # 0.5.0
 
 **Breaking Changes**

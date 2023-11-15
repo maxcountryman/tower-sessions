@@ -1,17 +1,17 @@
 [workspace]
 members = [
-  ".",
-  "memory-store",
-  "moka-store",
-  "mongodb-store",
-  "redis-store",
-  "sqlx-store",
-  "tower-sessions-core",
+    ".",
+    "memory-store",
+    "moka-store",
+    "mongodb-store",
+    "redis-store",
+    "sqlx-store",
+    "tower-sessions-core",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -58,7 +58,7 @@ postgres-store = ["sqlx-store", "tower-sessions-sqlx-store/postgres"]
 mysql-store = ["sqlx-store", "tower-sessions-sqlx-store/mysql"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.5.0", path = ".", default-features = false }
+tower-sessions = { version = "=0.5.1", path = ".", default-features = false }
 
 tower-sessions-core = { path = "tower-sessions-core", default-features = false }
 tower-sessions-memory-store = { path = "memory-store" }
@@ -127,10 +127,10 @@ required-features = ["axum-core", "postgres-store", "deletion-task"]
 [[example]]
 name = "moka-postgres-store"
 required-features = [
-  "axum-core",
-  "postgres-store",
-  "moka-store",
-  "deletion-task",
+    "axum-core",
+    "postgres-store",
+    "moka-store",
+    "deletion-task",
 ]
 
 [[example]]
