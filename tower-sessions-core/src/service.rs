@@ -129,12 +129,14 @@ where
                     .cloned()
                     .expect("Something has gone wrong with tower-cookies.");
 
+                let mut has_session_cookie = false;
                 let mut session = if let Some(session_cookie) =
                     cookies.get(&session_config.name).map(Cookie::into_owned)
                 {
                     // We do have a session cookie, so we retrieve it either from memory or the
                     // backing session store.
                     tracing::debug!("loading session from cookie");
+                    has_session_cookie = true;
                     let session_id = session_cookie.value().try_into()?;
 
                     match loaded_sessions.entry(session_id) {
@@ -188,8 +190,10 @@ where
                                 entry.remove();
                             };
 
-                            session_store.delete(session.id()).await?;
-                            cookies.remove(session_config.build_cookie(&session));
+                            if has_session_cookie {
+                                session_store.delete(session.id()).await?;
+                                cookies.remove(session_config.build_cookie(&session));
+                            }
 
                             // Since the session has been deleted, there's no need for further
                             // processing.
