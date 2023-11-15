@@ -65,6 +65,23 @@ impl Default for SessionConfig {
     }
 }
 
+// This structure allows us to track concurrent session access.
+//
+// Without this, we are subject to a data race where stale sessions can be
+// loaded from a store and pending changes are lost. Consider the following
+// timeline:
+//
+// - Request 1 loads session A from the store; A = 0
+// - Request 1 increments A; A = 1
+// - Request 2 loads session A from the store; A = 0
+// - Request 2 increments A; A = 1
+// - Request 1 saves A to the store; A = 1
+// - Request 2 saves A to the store; A = 1
+//
+// To address this, we track loaded sessions in memory, keeping a count of
+// concurrency references. This enables us to load from memory, instead of the
+// store, which allows us to share memory between concurrent processes whereas
+// if we were to load from the store we would lose any inflight data changes.
 #[derive(Debug, Default)]
 struct LoadedSession {
     session: Session,
@@ -119,8 +136,12 @@ where
 
         span.in_scope(|| tracing::trace!(loaded_sessions = loaded_sessions.len()));
 
+        // This is necessary to prevent potential panics.
+        //
+        // See: https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
+
         Box::pin(
             async move {
                 let cookies = req
