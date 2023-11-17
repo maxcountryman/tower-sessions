@@ -89,7 +89,7 @@ axum-core = "0.3.4"
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
 ] }
-http = "0.2.10"
+http = "1.0.0"
 hyper = "0.14.27"
 reqwest = "0.11.22"
 serde = "1.0.192"
