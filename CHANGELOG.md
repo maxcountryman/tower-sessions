@@ -1,5 +1,16 @@
 # Unreleased
 
+# 0.6.0
+
+**Breaking Changes**
+
+- Remove concurrent shared memory access support; this may also address some performance degradations. #91
+- Related to shared memory support, we also remove `replace_if_equal`, as it is no longer relevant. #91
+
+**Other Changes**
+
+- Allow setting up table and schema name for Postgres. #93
+
 # 0.5.1
 
 - Only delete from session store if we have a session cookie. #90
