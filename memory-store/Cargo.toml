@@ -11,8 +11,8 @@ repository.workspace = true
 [dependencies]
 tower-sessions-core = { workspace = true }
 async-trait = { workspace = true }
-parking_lot = { workspace = true }
 time = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tower-sessions = { workspace = true }

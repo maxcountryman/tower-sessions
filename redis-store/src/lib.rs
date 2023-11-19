@@ -5,22 +5,31 @@ use fred::{
     types::Expiration,
 };
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    session_store, SessionStore,
+};
 
-/// An error type for `RedisStore`.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RedisStoreError {
-    /// A variant to map to `fred::error::RedisError` errors.
-    #[error("Redis error: {0}")]
+    #[error(transparent)]
     Redis(#[from] fred::error::RedisError),
 
-    /// A variant to map `rmp_serde` encode errors.
-    #[error("Rust MsgPack encode error: {0}")]
-    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
+    #[error(transparent)]
+    Decode(#[from] rmp_serde::decode::Error),
 
-    /// A variant to map `rmp_serde` decode errors.
-    #[error("Rust MsgPack decode error: {0}")]
-    RmpSerdeDecode(#[from] rmp_serde::decode::Error),
+    #[error(transparent)]
+    Encode(#[from] rmp_serde::encode::Error),
+}
+
+impl From<RedisStoreError> for session_store::Error {
+    fn from(err: RedisStoreError) -> Self {
+        match err {
+            RedisStoreError::Redis(inner) => session_store::Error::Backend(inner.to_string()),
+            RedisStoreError::Decode(inner) => session_store::Error::Decode(inner.to_string()),
+            RedisStoreError::Encode(inner) => session_store::Error::Encode(inner.to_string()),
+        }
+    }
 }
 
 /// A Redis session store.
@@ -54,41 +63,48 @@ impl RedisStore {
 
 #[async_trait]
 impl SessionStore for RedisStore {
-    type Error = RedisStoreError;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
         let expire = Some(Expiration::EXAT(OffsetDateTime::unix_timestamp(
-            session.expiry_date(),
+            record.expiry_date,
         )));
 
         self.client
             .set(
-                session.id().to_string(),
-                rmp_serde::to_vec(&session)?.as_slice(),
+                record.id.to_string(),
+                rmp_serde::to_vec(&record)
+                    .map_err(RedisStoreError::Encode)?
+                    .as_slice(),
                 expire,
                 None,
                 false,
             )
-            .await?;
+            .await
+            .map_err(RedisStoreError::Redis)?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let data = self
             .client
             .get::<Option<Vec<u8>>, _>(session_id.to_string())
-            .await?;
+            .await
+            .map_err(RedisStoreError::Redis)?;
 
         if let Some(data) = data {
-            Ok(Some(rmp_serde::from_slice(&data)?))
+            Ok(Some(
+                rmp_serde::from_slice(&data).map_err(RedisStoreError::Decode)?,
+            ))
         } else {
             Ok(None)
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
-        self.client.del(session_id.to_string()).await?;
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
+        self.client
+            .del(session_id.to_string())
+            .await
+            .map_err(RedisStoreError::Redis)?;
         Ok(())
     }
 }
