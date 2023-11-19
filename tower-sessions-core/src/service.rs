@@ -2,17 +2,19 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use http::{Request, Response};
+use time::Duration;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
 use tracing::Instrument;
 
 use crate::{
-    session::{Deletion, Expiry, Id},
+    session::{self, Expiry},
     Session, SessionStore,
 };
 
@@ -28,24 +30,20 @@ struct SessionConfig {
 }
 
 impl SessionConfig {
-    fn build_cookie<'c>(&self, session: &Session) -> Cookie<'c> {
-        let mut cookie_builder = Cookie::build((self.name.clone(), session.id().to_string()))
+    fn build_cookie<'c>(&self, session_id: session::Id, expiry_age: Duration) -> Cookie<'c> {
+        let mut cookie_builder = Cookie::build((self.name.clone(), session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
             .path(self.path.clone());
 
-        cookie_builder = cookie_builder.max_age(session.expiry_age());
+        cookie_builder = cookie_builder.max_age(expiry_age);
 
         if let Some(domain) = &self.domain {
             cookie_builder = cookie_builder.domain(domain.clone());
         }
 
         cookie_builder.build()
-    }
-
-    fn new_session(&self) -> Session {
-        Session::new(self.expiry.clone())
     }
 }
 
@@ -56,7 +54,7 @@ impl Default for SessionConfig {
             http_only: true,
             same_site: SameSite::Strict,
             expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
-            secure: false,
+            secure: true,
             path: String::from("/"),
             domain: None,
         }
@@ -67,7 +65,7 @@ impl Default for SessionConfig {
 #[derive(Debug, Clone)]
 pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
-    session_store: Store,
+    session_store: Arc<Store>,
     session_config: SessionConfig,
 }
 
@@ -76,7 +74,7 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
     pub fn new(inner: S, session_store: Store) -> Self {
         Self {
             inner,
-            session_store,
+            session_store: Arc::new(session_store),
             session_config: Default::default(),
         }
     }
@@ -101,12 +99,13 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let span = tracing::debug_span!("session_middleware", session.id = tracing::field::Empty);
+        let span = tracing::info_span!("call");
 
         let session_store = self.session_store.clone();
         let session_config = self.session_config.clone();
 
-        // This is necessary to prevent potential panics.
+        // Because the inner service can panic until ready, we need to ensure we only
+        // use the ready service.
         //
         // See: https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
         let clone = self.inner.clone();
@@ -114,92 +113,50 @@ where
 
         Box::pin(
             async move {
-                let cookies = req
-                    .extensions()
-                    .get::<Cookies>()
-                    .cloned()
-                    .expect("Something has gone wrong with tower-cookies.");
-
-                let mut has_session_cookie = false;
-                let mut session = if let Some(session_cookie) =
-                    cookies.get(&session_config.name).map(Cookie::into_owned)
-                {
-                    // We do have a session cookie, so we retrieve it either from memory or the
-                    // backing session store.
-                    tracing::debug!("loading session from cookie");
-                    has_session_cookie = true;
-                    let session_id = session_cookie.value().try_into()?;
-
-                    let session = session_store.load(&session_id).await?;
-                    tracing::trace!("loaded from store");
-
-                    // N.B.: Our store will *not* have the session if the session is empty.
-                    if session.is_none() {
-                        cookies.remove(session_cookie);
-                    }
-
-                    session.unwrap_or_else(|| session_config.new_session())
-                } else {
-                    // We don't have a session cookie, so let's create a new session.
-                    let session = session_config.new_session();
-                    tracing::debug!("created new session");
-                    session
+                let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
+                    return Err(session::Error::MissingCookies.into());
                 };
 
-                tracing::Span::current().record("session.id", session.id().to_string());
+                let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
+                let session_id = session_cookie
+                    .clone()
+                    .map(|cookie| cookie.value().to_string())
+                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok());
+
+                let session = Session::new(session_id, session_store, session_config.expiry);
 
                 req.extensions_mut().insert(session.clone());
 
-                let res = Ok(inner.call(req).await.map_err(Into::into)?);
+                let res = inner.call(req).await.map_err(Into::into)?;
 
-                // N.B. When a session is empty, it will be deleted. Here the deleted method
-                // accounts for this check.
-                if let Some(session_deletion) = session.deleted() {
-                    match session_deletion {
-                        Deletion::Deleted => {
-                            tracing::debug!("deleted state");
+                let modified = session.is_modified();
+                let empty = session.is_empty().await;
 
-                            if has_session_cookie {
-                                session_store.delete(session.id()).await?;
-                                cookies.remove(session_config.build_cookie(&session));
+                tracing::trace!(modified = modified, empty = empty, "session response state");
 
-                                tracing::trace!("deleted from store");
-                            }
-
-                            // Since the session has been deleted, there's no need for further
-                            // processing.
-                            return res;
-                        }
-
-                        Deletion::Cycled(deleted_id) => {
-                            tracing::debug!("cycled state");
-
-                            session_store.delete(&deleted_id).await?;
-                            cookies.remove(session_config.build_cookie(&session));
-                            session.reset_deleted();
-
-                            session.id = Id::default();
-                        }
+                match session_cookie {
+                    Some(cookie) if empty => {
+                        tracing::debug!("removing session cookie");
+                        cookies.remove(cookie)
                     }
+
+                    // TODO: We can consider an "always save" configuration option:
+                    _ if modified && !empty && !res.status().is_server_error() => {
+                        tracing::debug!("saving session");
+                        session.save().await?;
+
+                        let session_id = session.id().ok_or(session::Error::MissingId)?;
+                        let expiry_age = session.expiry_age();
+                        let session_cookie = session_config.build_cookie(session_id, expiry_age);
+
+                        tracing::debug!("adding session cookie");
+                        cookies.add(session_cookie);
+                    }
+
+                    _ => (),
                 };
 
-                // For further consideration:
-                //
-                // We only persist the session in the store when the `modified` flag is set.
-                //
-                // However, we could offer additional configuration of this behavior via an
-                // extended interface in the future. For instance, we might consider providing
-                // the `Set-Cookie` header whenever modified or if some "always save" marker is
-                // set.
-                if session.is_modified() {
-                    tracing::debug!("modified state");
-                    session.reset_modified();
-
-                    session_store.save(&session).await?;
-                    cookies.add(session_config.build_cookie(&session));
-                }
-
-                res
+                Ok(res)
             }
             .instrument(span),
         )
@@ -209,7 +166,7 @@ where
 /// A layer for providing [`Session`] as a request extension.
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store: SessionStore> {
-    session_store: Store,
+    session_store: Arc<Store>,
     session_config: SessionConfig,
 }
 
@@ -348,7 +305,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
         let session_config = SessionConfig::default();
 
         Self {
-            session_store,
+            session_store: Arc::new(session_store),
             session_config,
         }
     }

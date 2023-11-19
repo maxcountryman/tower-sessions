@@ -4,30 +4,42 @@ pub use mongodb;
 use mongodb::{options::UpdateOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    session_store, ExpiredDeletion, SessionStore,
+};
 
 /// An error type for `MongoDBStore`.
 #[derive(thiserror::Error, Debug)]
 pub enum MongoDBStoreError {
     /// A variant to map to `mongodb::error::Error` errors.
-    #[error("MongoDB error: {0}")]
+    #[error(transparent)]
     MongoDB(#[from] mongodb::error::Error),
 
-    /// A variant to map `mongodb::bson` encode errors.
-    #[error("Bson serialize error: {0}")]
-    BsonSerialize(#[from] bson::ser::Error),
-
-    /// A variant to map `mongodb::bson` decode errors.
-    #[error("Bson deserialize error: {0}")]
-    BsonDeserialize(#[from] bson::de::Error),
-
     /// A variant to map `rmp_serde` encode errors.
-    #[error("Rust MsgPack encode error: {0}")]
-    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
+    #[error(transparent)]
+    Encode(#[from] rmp_serde::encode::Error),
 
     /// A variant to map `rmp_serde` decode errors.
-    #[error("Rust MsgPack decode error: {0}")]
-    RmpSerdeDecode(#[from] rmp_serde::decode::Error),
+    #[error(transparent)]
+    Decode(#[from] rmp_serde::decode::Error),
+
+    /// A variant to map `mongodb::bson` encode errors.
+    #[error(transparent)]
+    BsonSerialize(#[from] bson::ser::Error),
+}
+
+impl From<MongoDBStoreError> for session_store::Error {
+    fn from(err: MongoDBStoreError) -> Self {
+        match err {
+            MongoDBStoreError::MongoDB(inner) => session_store::Error::Backend(inner.to_string()),
+            MongoDBStoreError::Decode(inner) => session_store::Error::Decode(inner.to_string()),
+            MongoDBStoreError::Encode(inner) => session_store::Error::Encode(inner.to_string()),
+            MongoDBStoreError::BsonSerialize(inner) => {
+                session_store::Error::Encode(inner.to_string())
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -67,13 +79,14 @@ impl MongoDBStore {
 
 #[async_trait]
 impl ExpiredDeletion for MongoDBStore {
-    async fn delete_expired(&self) -> Result<(), Self::Error> {
+    async fn delete_expired(&self) -> session_store::Result<()> {
         self.collection
             .delete_many(
                 doc! { "expireAt": {"$lt": OffsetDateTime::now_utc()} },
                 None,
             )
-            .await?;
+            .await
+            .map_err(MongoDBStoreError::MongoDB)?;
 
         Ok(())
     }
@@ -81,29 +94,29 @@ impl ExpiredDeletion for MongoDBStore {
 
 #[async_trait]
 impl SessionStore for MongoDBStore {
-    type Error = MongoDBStoreError;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
         let doc = to_document(&MongoDBSessionRecord {
             data: bson::Binary {
                 subtype: bson::spec::BinarySubtype::Generic,
-                bytes: rmp_serde::to_vec(session)?,
+                bytes: rmp_serde::to_vec(record).map_err(MongoDBStoreError::Encode)?,
             },
-            expiry_date: bson::DateTime::from(session.expiry_date()),
-        })?;
+            expiry_date: bson::DateTime::from(record.expiry_date),
+        })
+        .map_err(MongoDBStoreError::BsonSerialize)?;
 
         self.collection
             .update_one(
-                doc! { "_id": session.id().to_string() },
+                doc! { "_id": record.id.to_string() },
                 doc! { "$set": doc },
                 UpdateOptions::builder().upsert(true).build(),
             )
-            .await?;
+            .await
+            .map_err(MongoDBStoreError::MongoDB)?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let doc = self
             .collection
             .find_one(
@@ -113,19 +126,23 @@ impl SessionStore for MongoDBStore {
                 },
                 None,
             )
-            .await?;
+            .await
+            .map_err(MongoDBStoreError::MongoDB)?;
 
         if let Some(doc) = doc {
-            Ok(Some(rmp_serde::from_slice(&doc.data.bytes)?))
+            Ok(Some(
+                rmp_serde::from_slice(&doc.data.bytes).map_err(MongoDBStoreError::Decode)?,
+            ))
         } else {
             Ok(None)
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
         self.collection
             .delete_one(doc! { "_id": session_id.to_string() }, None)
-            .await?;
+            .await
+            .map_err(MongoDBStoreError::MongoDB)?;
 
         Ok(())
     }

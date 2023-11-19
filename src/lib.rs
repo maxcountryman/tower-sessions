@@ -8,15 +8,16 @@
 //! - **Pluggable Storage Backends:** Bring your own backend simply by
 //!   implementing the [`SessionStore`] trait, fully decoupling sessions from
 //!   their storage.
+//! - **Minimal Overhead**: Sessions are only loaded from their backing stores
+//!   when they're actually used and only in e.g. the handler they're used in.
+//!   That means this middleware can be installed at any point in your route
+//!   graph with minimal overhead.
 //! - **An `axum` Extractor for [`Session`]:** Applications built with `axum`
 //!   can use `Session` as an extractor directly in their handlers. This makes
 //!   using sessions as easy as including `Session` in your handler.
 //! - **Common Backends Out-of-the-Box:** [`RedisStore`], SQLx ([`SqliteStore`],
 //!   [`PostgresStore`], [`MySqlStore`]), and [`MongoDBStore`] stores are
 //!   available via their respective feature flags.
-//! - **Layered Caching:** With [`CachingSessionStore`], applications can
-//!   leverage a cache, such as [`MokaStore`], to reduce roundtrips to the store
-//!   when loading sessions.
 //! - **Simple Key-Value Interface:** Sessions offer a key-value interface that
 //!   supports native Rust types. So long as these types are `Serialize` and can
 //!   be converted to JSON, it's straightforward to insert, get, and remove any
@@ -26,9 +27,9 @@
 //!
 //! This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
 //!
-//! ### User authentication
+//! ### User session management
 //!
-//! For managing user authentication and authorization, please see [`axum-login`](https://github.com/maxcountryman/axum-login).
+//! To facilitate authentication and authorization, we've built [`axum-login`](https://github.com/maxcountryman/axum-login) on top of this crate. Please check it out if you're looking for a generalized auth solution.
 //!
 //! # Usage with an `axum` application
 //!
@@ -77,8 +78,8 @@
 //! }
 //!
 //! async fn handler(session: Session) -> impl IntoResponse {
-//!     let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
-//!     session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
+//!     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+//!     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
@@ -120,7 +121,7 @@
 //! # use axum::extract::FromRequestParts;
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
-//! # use tower_sessions::Session;
+//! # use tower_sessions::{SessionStore, Session, MemoryStore};
 //! const COUNTER_KEY: &str = "counter";
 //!
 //! #[derive(Default, Deserialize, Serialize)]
@@ -135,8 +136,8 @@
 //!
 //!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
 //!         let session = Session::from_request_parts(req, state).await?;
-//!         let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
-//!         session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
+//!         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+//!         session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!
 //!         Ok(counter)
 //!     }
@@ -160,7 +161,7 @@
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
 //! # use time::OffsetDateTime;
-//! # use tower_sessions::Session;
+//! # use tower_sessions::{SessionStore, Session};
 //! # use uuid::Uuid;
 //! #[derive(Clone, Deserialize, Serialize)]
 //! struct GuestData {
@@ -205,14 +206,15 @@
 //!         self.guest_data.pageviews
 //!     }
 //!
-//!     fn mark_pageview(&mut self) {
+//!     async fn mark_pageview(&mut self) {
 //!         self.guest_data.pageviews += 1;
-//!         Self::update_session(&self.session, &self.guest_data)
+//!         Self::update_session(&self.session, &self.guest_data).await
 //!     }
 //!
-//!     fn update_session(session: &Session, guest_data: &GuestData) {
+//!     async fn update_session(session: &Session, guest_data: &GuestData) {
 //!         session
 //!             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
+//!             .await
 //!             .unwrap()
 //!     }
 //! }
@@ -229,12 +231,13 @@
 //!
 //!         let mut guest_data: GuestData = session
 //!             .get(Self::GUEST_DATA_KEY)
+//!             .await
 //!             .unwrap()
 //!             .unwrap_or_default();
 //!
 //!         guest_data.last_seen = OffsetDateTime::now_utc();
 //!
-//!         Self::update_session(&session, &guest_data);
+//!         Self::update_session(&session, &guest_data).await;
 //!
 //!         Ok(Self {
 //!             session,
@@ -307,7 +310,7 @@
 //! will be high. This is because write-heavy workloads will require a roundtrip
 //! to the store and therefore benefit less from caching.
 //!
-//!//! ## Data races under concurrent conditions
+//! ## Data races under concurrent conditions
 //!
 //! Please note that it is **not safe** to access and mutate session state
 //! concurrently: this will result in data loss if your mutations are dependent
@@ -352,9 +355,8 @@
 //! transparently persisted to an arbitrary storage backend. Effectively,
 //! `HashMap` is an intermediary, in-memory representation. By using a map-like
 //! structure, we're able to present a familiar key-value interface for managing
-//! sessions. This also allows us to store and retrieve native Rust
-//! types, so long as our type is `impl Serialize` and can
-//! be represented as JSON.[^json]
+//! sessions. This allows us to store and retrieve native Rust types, so long as
+//! our type is `impl Serialize` and can be represented as JSON.[^json]
 //!
 //! Internally, this hash map state is protected by a lock in the form of
 //! `Mutex`. This allows us to safely share mutable state across thread
@@ -365,9 +367,9 @@
 //!
 //! ## Session store
 //!
-//! Sessions are directly serialized to arbitrary storage backends.
-//! Implementations of `SessionStore` take a session and persist it such that it
-//! can later be loaded via the session ID.
+//! Sessions are serialized to arbitrary storage backends via a session record
+//! intermediary. Implementations of `SessionStore` take a record and persist
+//! it such that it can later be loaded via the session ID.
 //!
 //! Three components are needed for storing a session:
 //!
@@ -382,27 +384,18 @@
 //!
 //! Cookies hold a pointer to the session, rather than the session's data, and
 //! because of this, the `tower` middleware is focused on managing the process
-//! of hydrating a session from the store.
+//! of hydrating a session from the store and managing its life cycle.
 //!
-//! This works by first looking for a cookie that matches our configured session
-//! cookie name. If no such cookie is found or a cookie is found but the store
-//! has no such session or the session is no longer active, we create a new
-//! session.
+//! We load a session by looking for a cookie that matches our configured
+//! session cookie name. If no such cookie is found or a cookie is found but the
+//! store has no such session or the session is no longer active, we create a
+//! new session.
 //!
 //! It's important to note that creating a session **does not** save the session
-//! to the store. In fact, the store is not used at all unless one of two
-//! conditions is true:
-//!
-//! 1. A session cookie was found and we attempt to load it from the store via
-//!    the [`load`](SessionStore::load) method or,
-//! 2. A session was marked as modified or deleted.
-//!
-//! In other words, creating a new session is a lightweight process that does
-//! not incur the overhead of talking to a store. It's also important to create
-//! a session proactively as the middleware will attach the session to the
-//! request as a request extension. This allows handlers to extract the cookie
-//! from the request and manipulate it.
-//!
+//! to the store. In fact, the session store is not used at all unless the
+//! session is read from or written to. In other words, the middleware only
+//! introduces session store overhead when the session is actually used.
+//!  
 //! Modified sessions will invoke the session store's
 //! [`save`](SessionStore::save) method as well as send a `Set-Cookie` header.
 //! While deleted sessions will either be:
@@ -412,6 +405,12 @@
 //! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
 //!    the session will have been marked as modified and so this will also set a
 //!    `Set-Cookie` header on the response.
+//!
+//! Empty sessions are considered to be deleted and are removed from the session
+//! store as well as the user agent.
+//!
+//! Sessions also carry with them a configurable expiry and will be deleted in
+//! accordance with this.
 //!
 //! [^getrandom]: `uuid` uses `getrandom` which varies by platform; the crucial
 //!   assumption `tower-sessions` makes is that your platform is secure.

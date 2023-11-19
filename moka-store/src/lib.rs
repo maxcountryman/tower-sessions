@@ -1,14 +1,15 @@
-use std::convert::Infallible;
-
 use async_trait::async_trait;
 use moka::future::Cache;
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    session_store, SessionStore,
+};
 
 /// A session store that uses Moka, a fast and concurrent caching library.
 #[derive(Debug, Clone)]
 pub struct MokaStore {
-    cache: Cache<Id, (Session, OffsetDateTime)>,
+    cache: Cache<Id, (Record, OffsetDateTime)>,
 }
 
 impl MokaStore {
@@ -36,16 +37,14 @@ impl MokaStore {
 
 #[async_trait]
 impl SessionStore for MokaStore {
-    type Error = Infallible;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
         self.cache
-            .insert(*session.id(), (session.clone(), session.expiry_date()))
+            .insert(record.id, (record.clone(), record.expiry_date))
             .await;
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         Ok(self
             .cache
             .get(session_id)
@@ -54,7 +53,7 @@ impl SessionStore for MokaStore {
             .map(|(session, _)| session))
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
         self.cache.invalidate(session_id).await;
         Ok(())
     }
