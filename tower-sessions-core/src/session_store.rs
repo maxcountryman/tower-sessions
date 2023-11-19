@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use futures::TryFutureExt;
 
-use crate::session::{Id, Session};
+use crate::session::{Id, Record};
 
 /// An arbitrary store which houses the session data.
 ///
@@ -50,15 +50,15 @@ use crate::session::{Id, Session};
 /// }
 /// ```
 #[async_trait]
-pub trait SessionStore: Clone + Send + Sync + 'static {
+pub trait SessionStore: Debug + Clone + Send + Sync + 'static {
     /// An error that occurs when interacting with the store.
     type Error: std::error::Error + Send + Sync;
 
     /// A method for saving a session in a store.
-    async fn save(&self, session: &Session) -> Result<(), Self::Error>;
+    async fn save(&self, session_record: &Record) -> Result<(), Self::Error>;
 
     /// A method for loading a session from a store.
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error>;
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error>;
 
     /// A method for deleting a session from a store.
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error>;
@@ -131,7 +131,7 @@ where
 {
     type Error = CachingStoreError<Cache, Store>;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, session: &Record) -> Result<(), Self::Error> {
         let cache_save_fut = self.store.save(session).map_err(Self::Error::Store);
         let store_save_fut = self.cache.save(session).map_err(Self::Error::Cache);
 
@@ -140,26 +140,29 @@ where
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         match self.cache.load(session_id).await {
             // We found a session in the cache, so let's use it.
-            Ok(Some(session)) => Ok(Some(session)),
+            Ok(Some(session_record)) => Ok(Some(session_record)),
 
             // We didn't find a session in the cache, so we'll try loading from the backend.
             //
             // When we find a session in the backend, we'll hydrate our cache with it.
             Ok(None) => {
-                let session = self
+                let session_record = self
                     .store
                     .load(session_id)
                     .await
                     .map_err(Self::Error::Store)?;
 
-                if let Some(ref session) = session {
-                    self.cache.save(session).await.map_err(Self::Error::Cache)?;
+                if let Some(ref session_record) = session_record {
+                    self.cache
+                        .save(session_record)
+                        .await
+                        .map_err(Self::Error::Cache)?;
                 }
 
-                Ok(session)
+                Ok(session_record)
             }
 
             // Some error occurred with our cache so we'll bubble this up.

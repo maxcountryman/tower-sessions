@@ -5,7 +5,10 @@ use fred::{
     types::Expiration,
 };
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    SessionStore,
+};
 
 /// An error type for `RedisStore`.
 #[derive(thiserror::Error, Debug)]
@@ -56,15 +59,15 @@ impl RedisStore {
 impl SessionStore for RedisStore {
     type Error = RedisStoreError;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> Result<(), Self::Error> {
         let expire = Some(Expiration::EXAT(OffsetDateTime::unix_timestamp(
-            session.expiry_date(),
+            record.expiry_date,
         )));
 
         self.client
             .set(
-                session.id().to_string(),
-                rmp_serde::to_vec(&session)?.as_slice(),
+                record.id.to_string(),
+                rmp_serde::to_vec(&record)?.as_slice(),
                 expire,
                 None,
                 false,
@@ -74,7 +77,7 @@ impl SessionStore for RedisStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         let data = self
             .client
             .get::<Option<Vec<u8>>, _>(session_id.to_string())

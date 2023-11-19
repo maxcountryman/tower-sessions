@@ -7,9 +7,11 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
+
+type Session = tower_sessions::Session<MemoryStore>;
 
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
@@ -24,7 +26,7 @@ async fn main() {
         .layer(
             SessionManagerLayer::new(session_store)
                 .with_secure(false)
-                .with_expiry(Expiry::OnInactivity(Duration::seconds(10))),
+                .with_expiry(Expiry::OnInactivity(Duration::days(1))),
         );
 
     let app = Router::new()
@@ -39,14 +41,7 @@ async fn main() {
 }
 
 async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session
-        .get(COUNTER_KEY)
-        .expect("Could not deserialize.")
-        .unwrap_or_default();
-
-    session
-        .insert(COUNTER_KEY, counter.0 + 1)
-        .expect("Could not serialize.");
-
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
     format!("Current count: {}", counter.0)
 }

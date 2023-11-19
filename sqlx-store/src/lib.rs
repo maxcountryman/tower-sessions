@@ -1,5 +1,4 @@
 pub use sqlx;
-use tower_sessions_core::session::Error;
 
 #[cfg(feature = "mysql")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mysql")))]
@@ -26,10 +25,6 @@ mod mysql_store;
 /// An error type for SQLx stores.
 #[derive(thiserror::Error, Debug)]
 pub enum SqlxStoreError {
-    /// A variant to map session errors.
-    #[error(transparent)]
-    Session(#[from] Error),
-
     /// A variant to map `sqlx` errors.
     #[error("SQLx error: {0}")]
     Sqlx(#[from] sqlx::Error),

@@ -1,7 +1,11 @@
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePool;
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, session_store::ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    session_store::ExpiredDeletion,
+    SessionStore,
+};
 
 use crate::SqlxStoreError;
 
@@ -84,7 +88,7 @@ impl ExpiredDeletion for SqliteStore {
 impl SessionStore for SqliteStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             insert into {}
@@ -96,16 +100,16 @@ impl SessionStore for SqliteStore {
             self.table_name
         );
         sqlx::query(&query)
-            .bind(&session.id().to_string())
-            .bind(rmp_serde::to_vec(session)?)
-            .bind(session.expiry_date())
+            .bind(&record.id.to_string())
+            .bind(rmp_serde::to_vec(record)?)
+            .bind(record.expiry_date)
             .execute(&self.pool)
             .await?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         let query = format!(
             r#"
             select data from {}

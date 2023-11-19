@@ -4,7 +4,10 @@ pub use mongodb;
 use mongodb::{options::UpdateOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    ExpiredDeletion, SessionStore,
+};
 
 /// An error type for `MongoDBStore`.
 #[derive(thiserror::Error, Debug)]
@@ -83,18 +86,18 @@ impl ExpiredDeletion for MongoDBStore {
 impl SessionStore for MongoDBStore {
     type Error = MongoDBStoreError;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> Result<(), Self::Error> {
         let doc = to_document(&MongoDBSessionRecord {
             data: bson::Binary {
                 subtype: bson::spec::BinarySubtype::Generic,
-                bytes: rmp_serde::to_vec(session)?,
+                bytes: rmp_serde::to_vec(record)?,
             },
-            expiry_date: bson::DateTime::from(session.expiry_date()),
+            expiry_date: bson::DateTime::from(record.expiry_date),
         })?;
 
         self.collection
             .update_one(
-                doc! { "_id": session.id().to_string() },
+                doc! { "_id": record.id.to_string() },
                 doc! { "$set": doc },
                 UpdateOptions::builder().upsert(true).build(),
             )
@@ -103,7 +106,7 @@ impl SessionStore for MongoDBStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         let doc = self
             .collection
             .find_one(

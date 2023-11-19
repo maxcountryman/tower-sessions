@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    ExpiredDeletion, SessionStore,
+};
 
 use crate::SqlxStoreError;
 
@@ -40,8 +43,9 @@ impl PostgresStore {
         let schema_name = schema_name.as_ref();
         if !is_valid_identifier(schema_name) {
             return Err(format!(
-                "Invalid schema name '{}'. Schema names must start with a letter or underscore (including letters with diacritical marks and non-Latin letters).\
-                    Subsequent characters can be letters, underscores, digits (0-9), or dollar signs ($).",
+                "Invalid schema name '{}'. Schema names must start with a letter or underscore \
+                 (including letters with diacritical marks and non-Latin letters).Subsequent \
+                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
                 schema_name
             ));
         }
@@ -55,8 +59,9 @@ impl PostgresStore {
         let table_name = table_name.as_ref();
         if !is_valid_identifier(table_name) {
             return Err(format!(
-                "Invalid table name '{}'. Table names must start with a letter or underscore (including letters with diacritical marks and non-Latin letters).\
-                    Subsequent characters can be letters, underscores, digits (0-9), or dollar signs ($).",
+                "Invalid table name '{}'. Table names must start with a letter or underscore \
+                 (including letters with diacritical marks and non-Latin letters).Subsequent \
+                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
                 table_name
             ));
         }
@@ -140,7 +145,7 @@ impl ExpiredDeletion for PostgresStore {
 impl SessionStore for PostgresStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             insert into "{schema_name}"."{table_name}" (id, data, expiry_date)
@@ -154,16 +159,16 @@ impl SessionStore for PostgresStore {
             table_name = self.table_name
         );
         sqlx::query(&query)
-            .bind(&session.id().to_string())
-            .bind(rmp_serde::to_vec(&session)?)
-            .bind(session.expiry_date())
+            .bind(&record.id.to_string())
+            .bind(rmp_serde::to_vec(&record)?)
+            .bind(record.expiry_date)
             .execute(&self.pool)
             .await?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         let query = format!(
             r#"
             select data from "{schema_name}"."{table_name}"
@@ -200,9 +205,10 @@ impl SessionStore for PostgresStore {
     }
 }
 
-/// A valid PostreSQL identifier must start with a letter or underscore (including letters with diacritical marks and non-Latin letters).
-/// Subsequent characters in an identifier or key word can be letters, underscores, digits (0-9), or dollar signs ($).
-/// See https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS for details.
+/// A valid PostreSQL identifier must start with a letter or underscore
+/// (including letters with diacritical marks and non-Latin letters). Subsequent
+/// characters in an identifier or key word can be letters, underscores, digits
+/// (0-9), or dollar signs ($). See https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS for details.
 fn is_valid_identifier(name: &str) -> bool {
     !name.is_empty()
         && name

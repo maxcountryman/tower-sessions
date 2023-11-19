@@ -12,7 +12,7 @@ use tower_service::Service;
 use tracing::Instrument;
 
 use crate::{
-    session::{Deletion, Expiry, Id},
+    session::{self, Expiry},
     Session, SessionStore,
 };
 
@@ -28,24 +28,23 @@ struct SessionConfig {
 }
 
 impl SessionConfig {
-    fn build_cookie<'c>(&self, session: &Session) -> Cookie<'c> {
-        let mut cookie_builder = Cookie::build(self.name.clone(), session.id().to_string())
+    async fn build_cookie<'c, Store: SessionStore>(
+        &self,
+        session: &Session<Store>,
+    ) -> Result<Cookie<'c>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut cookie_builder = Cookie::build(self.name.clone(), session.id().await?.to_string())
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
             .path(self.path.clone());
 
-        cookie_builder = cookie_builder.max_age(session.expiry_age());
+        cookie_builder = cookie_builder.max_age(session.expiry_age().await);
 
         if let Some(domain) = &self.domain {
             cookie_builder = cookie_builder.domain(domain.clone());
         }
 
-        cookie_builder.finish()
-    }
-
-    fn new_session(&self) -> Session {
-        Session::new(self.expiry.clone())
+        Ok(cookie_builder.finish())
     }
 }
 
@@ -101,12 +100,12 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let span = tracing::debug_span!("session_middleware", session.id = tracing::field::Empty);
+        let span = tracing::debug_span!("session_middleware");
 
         let session_store = self.session_store.clone();
         let session_config = self.session_config.clone();
 
-        // This is necessary to prevent potential panics.
+        // This is necessary to prevent potential panics within inner.
         //
         // See: https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
         let clone = self.inner.clone();
@@ -114,92 +113,45 @@ where
 
         Box::pin(
             async move {
-                let cookies = req
-                    .extensions()
-                    .get::<Cookies>()
-                    .cloned()
-                    .expect("Something has gone wrong with tower-cookies.");
+                let cookies =
+                    req.extensions().get::<Cookies>().cloned().expect(
+                        "Cookies should be provided as a request extension by tower-cookies.",
+                    );
 
-                let mut has_session_cookie = false;
-                let mut session = if let Some(session_cookie) =
-                    cookies.get(&session_config.name).map(Cookie::into_owned)
-                {
-                    // We do have a session cookie, so we retrieve it either from memory or the
-                    // backing session store.
-                    tracing::debug!("loading session from cookie");
-                    has_session_cookie = true;
-                    let session_id = session_cookie.value().try_into()?;
+                let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
+                let cookie_id = session_cookie
+                    .clone()
+                    .map(|cookie| cookie.value().to_string())
+                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok());
 
-                    let session = session_store.load(&session_id).await?;
-                    tracing::trace!("loaded from store");
-
-                    // N.B.: Our store will *not* have the session if the session is empty.
-                    if session.is_none() {
-                        cookies.remove(session_cookie);
-                    }
-
-                    session.unwrap_or_else(|| session_config.new_session())
-                } else {
-                    // We don't have a session cookie, so let's create a new session.
-                    let session = session_config.new_session();
-                    tracing::debug!("created new session");
-                    session
-                };
-
-                tracing::Span::current().record("session.id", session.id().to_string());
+                let session = Session::new(cookie_id, session_store, session_config.expiry);
 
                 req.extensions_mut().insert(session.clone());
 
-                let res = Ok(inner.call(req).await.map_err(Into::into)?);
+                let res = inner.call(req).await.map_err(Into::into)?;
 
-                // N.B. When a session is empty, it will be deleted. Here the deleted method
-                // accounts for this check.
-                if let Some(session_deletion) = session.deleted() {
-                    match session_deletion {
-                        Deletion::Deleted => {
-                            tracing::debug!("deleted state");
+                let modified = session.is_modified();
+                let empty = session.is_empty().await?;
 
-                            if has_session_cookie {
-                                session_store.delete(session.id()).await?;
-                                cookies.remove(session_config.build_cookie(&session));
+                tracing::trace!(modified = modified, empty = empty);
 
-                                tracing::trace!("deleted from store");
-                            }
-
-                            // Since the session has been deleted, there's no need for further
-                            // processing.
-                            return res;
-                        }
-
-                        Deletion::Cycled(deleted_id) => {
-                            tracing::debug!("cycled state");
-
-                            session_store.delete(&deleted_id).await?;
-                            cookies.remove(session_config.build_cookie(&session));
-                            session.reset_deleted();
-
-                            session.id = Id::default();
-                        }
+                match session_cookie {
+                    Some(cookie) if empty => {
+                        tracing::debug!("removing session cookie");
+                        cookies.remove(cookie)
                     }
+
+                    _ if modified && !empty => {
+                        tracing::debug!("saving session");
+                        session.save().await?;
+                        let session_cookie = session_config.build_cookie(&session).await?;
+                        cookies.add(session_cookie);
+                    }
+
+                    _ => (),
                 };
 
-                // For further consideration:
-                //
-                // We only persist the session in the store when the `modified` flag is set.
-                //
-                // However, we could offer additional configuration of this behavior via an
-                // extended interface in the future. For instance, we might consider providing
-                // the `Set-Cookie` header whenever modified or if some "always save" marker is
-                // set.
-                if session.is_modified() {
-                    tracing::debug!("modified state");
-                    session.reset_modified();
-
-                    session_store.save(&session).await?;
-                    cookies.add(session_config.build_cookie(&session));
-                }
-
-                res
+                Ok(res)
             }
             .instrument(span),
         )

@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use sqlx::MySqlPool;
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    ExpiredDeletion, SessionStore,
+};
 
 use crate::SqlxStoreError;
 
@@ -98,7 +101,7 @@ impl ExpiredDeletion for MySqlStore {
 impl SessionStore for MySqlStore {
     type Error = SqlxStoreError;
 
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> Result<(), Self::Error> {
         let query = format!(
             r#"
             insert into `{schema_name}`.`{table_name}`
@@ -111,16 +114,16 @@ impl SessionStore for MySqlStore {
             table_name = self.table_name
         );
         sqlx::query(&query)
-            .bind(&session.id().to_string())
-            .bind(rmp_serde::to_vec(&session)?)
-            .bind(session.expiry_date())
+            .bind(&record.id.to_string())
+            .bind(rmp_serde::to_vec(&record)?)
+            .bind(record.expiry_date)
             .execute(&self.pool)
             .await?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
         let query = format!(
             r#"
             select data from `{schema_name}`.`{table_name}`
