@@ -6,6 +6,7 @@ use std::{
 };
 
 use http::{Request, Response};
+use time::Duration;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -28,23 +29,20 @@ struct SessionConfig {
 }
 
 impl SessionConfig {
-    async fn build_cookie<'c, Store: SessionStore>(
-        &self,
-        session: &Session<Store>,
-    ) -> Result<Cookie<'c>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut cookie_builder = Cookie::build(self.name.clone(), session.id().await?.to_string())
+    fn build_cookie<'c>(&self, session_id: session::Id, expiry_age: Duration) -> Cookie<'c> {
+        let mut cookie_builder = Cookie::build(self.name.clone(), session_id.to_string())
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
             .path(self.path.clone());
 
-        cookie_builder = cookie_builder.max_age(session.expiry_age().await);
+        cookie_builder = cookie_builder.max_age(expiry_age);
 
         if let Some(domain) = &self.domain {
             cookie_builder = cookie_builder.domain(domain.clone());
         }
 
-        Ok(cookie_builder.finish())
+        cookie_builder.finish()
     }
 }
 
@@ -116,24 +114,27 @@ where
                 let cookies =
                     req.extensions().get::<Cookies>().cloned().expect(
                         "Cookies should be provided as a request extension by tower-cookies.",
-                    );
+                    ); // TODO: tower-cookies is always installed, but we really aren't supposed
+                       // to panic in `call`.
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
-                let cookie_id = session_cookie
+                // Parse the session ID from the cookie or if that fails create a new ID.
+                let session_id = session_cookie
                     .clone()
                     .map(|cookie| cookie.value().to_string())
-                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok());
+                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok())
+                    .unwrap_or_default();
 
-                let session = Session::new(cookie_id, session_store, session_config.expiry);
+                let session = Session::new(session_id, session_store, session_config.expiry);
 
                 req.extensions_mut().insert(session.clone());
 
                 let res = inner.call(req).await.map_err(Into::into)?;
 
                 let modified = session.is_modified();
-                let empty = session.is_empty().await?;
+                let empty = session.is_empty().await;
 
-                tracing::trace!(modified = modified, empty = empty);
+                tracing::trace!(modified = modified, empty = empty, "session response state");
 
                 match session_cookie {
                     Some(cookie) if empty => {
@@ -141,10 +142,18 @@ where
                         cookies.remove(cookie)
                     }
 
+                    // TODO: We can consider an "always save" configuration option.
+                    //
+                    // See: https://github.com/django/django/blob/f7389c4b07ceeb036436e065898e411b247bca78/django/contrib/sessions/middleware.py#L47
                     _ if modified && !empty => {
                         tracing::debug!("saving session");
                         session.save().await?;
-                        let session_cookie = session_config.build_cookie(&session).await?;
+
+                        let session_id = session.id().await;
+                        let expiry_age = session.expiry_age();
+                        let session_cookie = session_config.build_cookie(session_id, expiry_age);
+
+                        tracing::debug!("adding session cookie");
                         cookies.add(session_cookie);
                     }
 

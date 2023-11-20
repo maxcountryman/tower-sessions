@@ -41,10 +41,13 @@ pub enum Error<Store: SessionStore> {
 /// visitors.
 #[derive(Debug, Clone)]
 pub struct Session<Store: SessionStore> {
-    cookie_id: Option<Id>, // The `Id` as provided by the cookie, if there was one.
+    session_id: Id,
     store: Store,
     record: Arc<Mutex<Option<Record>>>,
-    expiry: Arc<Mutex<Option<Expiry>>>,
+
+    // See: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
+    expiry: Arc<parking_lot::Mutex<Option<Expiry>>>,
+
     is_modified: Arc<AtomicBool>,
 }
 
@@ -62,45 +65,47 @@ impl<Store: SessionStore> Session<Store> {
     /// let store = MemoryStore::default();
     /// Session::new(None, store.clone(), None);
     /// ```
-    pub fn new(cookie_id: Option<Id>, store: Store, expiry: Option<Expiry>) -> Self {
+    pub fn new(session_id: Id, store: Store, expiry: Option<Expiry>) -> Self {
         Self {
-            cookie_id,
+            session_id,
             store,
             record: Arc::new(Mutex::new(None)), // `None` indicates we have not loaded from store.
-            expiry: Arc::new(Mutex::new(expiry)),
+            expiry: Arc::new(parking_lot::Mutex::new(expiry)),
             is_modified: Arc::new(AtomicBool::new(false)),
         }
     }
 
+    async fn create_record(&self) -> Record {
+        Record::new(self.expiry_date())
+    }
+
     #[tracing::instrument(skip(self), err)]
     async fn record(&self) -> Result<MutexGuard<Option<Record>>, Store> {
-        let mut record = self.record.lock().await;
+        let mut record_guard = self.record.lock().await;
 
-        // If the record is `None`, this indicates we have not yet tried to load from
-        // the store.
-        //
-        // When this is the case, we try loading and either assign the loaded record,
-        // when it exists, or a new record as this session's internal record.
-        //
-        // In this way, loading is lazy and deferred until the record is first accessed.
-        if record.is_none() {
-            tracing::trace!("loading record from store");
+        // Lazily load the record from the store.
+        if record_guard.is_none() {
+            tracing::trace!("record not loaded from store; loading");
 
-            *record = if let Some(cookie_id) = self.cookie_id {
-                tracing::trace!("record found in store");
-
-                match self.store.load(&cookie_id).await.map_err(Error::Store)? {
-                    Some(loaded_record) => Some(loaded_record),
-                    None => Some(Record::new(self.expiry_date().await)),
+            *record_guard = match self
+                .store
+                .load(&self.session_id)
+                .await
+                .map_err(Error::Store)?
+            {
+                Some(loaded_record) => {
+                    tracing::trace!("record found in store");
+                    Some(loaded_record)
                 }
-            } else {
-                tracing::trace!("record not found in store");
-
-                Some(Record::new(self.expiry_date().await))
-            };
+                None => {
+                    tracing::trace!("record not found in store");
+                    let new_record = self.create_record().await;
+                    Some(new_record)
+                }
+            }
         }
 
-        Ok(record)
+        Ok(record_guard)
     }
 
     /// Inserts a `impl Serialize` value into the session.
@@ -121,7 +126,9 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// # Errors
     ///
-    /// This method can fail when [`serde_json::to_value`] fails.
+    /// - This method can fail when [`serde_json::to_value`] fails.
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn insert(&self, key: &str, value: impl Serialize) -> Result<(), Store> {
         self.insert_value(key, serde_json::to_value(&value)?)
             .await?;
@@ -162,6 +169,11 @@ impl<Store: SessionStore> Session<Store> {
     ///     .unwrap();
     /// assert_eq!(value, Some(serde_json::json!(42)));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn insert_value(&self, key: &str, value: Value) -> Result<Option<Value>, Store> {
         Ok(self.record().await?.as_mut().and_then(|record| {
             if record.data.get(key) != Some(&value) {
@@ -191,7 +203,9 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// # Errors
     ///
-    /// This method can fail when [`serde_json::from_value`] fails.
+    /// - This method can fail when [`serde_json::from_value`] fails.
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, Store> {
         Ok(self
             .get_value(key)
@@ -215,6 +229,11 @@ impl<Store: SessionStore> Session<Store> {
     /// let value = session.get_value("foo").await.unwrap();
     /// assert_eq!(value, serde_json::json!(42));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn get_value(&self, key: &str) -> Result<Option<Value>, Store> {
         Ok(self
             .record()
@@ -245,7 +264,9 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// # Errors
     ///
-    /// This method can fail when [`serde_json::from_value`] fails.
+    /// - This method can fail when [`serde_json::from_value`] fails.
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn remove<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, Store> {
         Ok(self
             .remove_value(key)
@@ -270,6 +291,11 @@ impl<Store: SessionStore> Session<Store> {
     /// let value: Option<usize> = session.get("foo").await.unwrap();
     /// assert!(value.is_none());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If the session has not been hydrated and loading from the store fails,
+    ///   we fail with [`Error::Store`].
     pub async fn remove_value(&self, key: &str) -> Result<Option<Value>, Store> {
         Ok(self.record().await?.as_mut().and_then(|record| {
             self.is_modified.store(true, atomic::Ordering::Release);
@@ -277,7 +303,7 @@ impl<Store: SessionStore> Session<Store> {
         }))
     }
 
-    /// Clears the session of all data.
+    /// Clears the session of all data but does not delete it from the store.
     ///
     /// # Examples
     ///
@@ -290,16 +316,17 @@ impl<Store: SessionStore> Session<Store> {
     /// session.insert("foo", 42).await.unwrap();
     /// session.clear().await;
     ///
-    /// assert!(session.is_empty().await.unwrap());
+    /// assert!(session.is_empty().await);
     /// ```
-    pub async fn clear(&self) -> Result<(), Store> {
-        if let Some(record) = self.record().await?.as_mut() {
+    pub async fn clear(&self) {
+        let mut record = self.record.lock().await;
+        if let Some(record) = record.as_mut() {
             record.data.clear();
         }
-        Ok(())
+        self.is_modified.store(true, atomic::Ordering::Release);
     }
 
-    /// Returns `true` if the session is empty.
+    /// Returns `true` if there is no cookie ID and the session is empty.
     ///
     /// # Examples
     ///
@@ -309,18 +336,18 @@ impl<Store: SessionStore> Session<Store> {
     /// let store = MemoryStore::default();
     /// let session = Session::new(None, store.clone(), None);
     ///
-    /// assert!(session.is_empty().await.unwrap(), true);
+    /// assert!(session.is_empty().await, true);
     ///
     /// session.insert("foo", "bar").await.unwrap();
     ///
-    /// assert!(session.is_empty().await.unwrap(), false);
+    /// assert!(session.is_empty().await, false);
     /// ```
-    pub async fn is_empty(&self) -> Result<bool, Store> {
-        Ok(self
-            .record()
-            .await?
-            .as_ref()
-            .is_some_and(|record| record.data.is_empty()))
+    pub async fn is_empty(&self) -> bool {
+        // N.B.: We do not load from the store here, so if we haven't loaded at all, we
+        // assume that the presence of cookie ID indicates there may be a
+        // session and therefore will not return `true` from this method.
+        let record = self.record.lock().await;
+        record.as_ref().is_some_and(|record| record.data.is_empty())
     }
 
     /// Get the session ID.
@@ -331,17 +358,17 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(store.clone(), Id::default(), None);
     ///
-    /// assert!(session.id().await.is_ok());
+    /// assert!(session.id().await.is_none());
     /// ```
-    pub async fn id(&self) -> Result<Id, Store> {
-        Ok(self
-            .record()
-            .await?
+    pub async fn id(&self) -> Id {
+        self.record
+            .lock()
+            .await
             .as_ref()
-            .expect("Session record should always exist.") // N.B.: A record will always exist after calling `record`.
-            .id)
+            .map(|record| record.id)
+            .unwrap_or(self.session_id)
     }
 
     /// Get the session expiry.
@@ -354,10 +381,10 @@ impl<Store: SessionStore> Session<Store> {
     /// let store = MemoryStore::default();
     /// let session = Session::new(None, store.clone(), None);
     ///
-    /// assert_eq!(session.expiry().await, None);
+    /// assert_eq!(session.expiry(), None);
     /// ```
-    pub async fn expiry(&self) -> Option<Expiry> {
-        *self.expiry.lock().await
+    pub fn expiry(&self) -> Option<Expiry> {
+        *self.expiry.lock()
     }
 
     /// Set `expiry` give the given value.
@@ -375,12 +402,12 @@ impl<Store: SessionStore> Session<Store> {
     /// let session = Session::new(None, store.clone(), None);
     ///
     /// let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc());
-    /// session.set_expiry(expiry).await;
+    /// session.set_expiry(expiry);
     ///
-    /// assert_eq!(session.expiry().await, expiry);
+    /// assert_eq!(session.expiry(), expiry);
     /// ```
-    pub async fn set_expiry(&self, expiry: Option<Expiry>) {
-        let mut current_expiry = self.expiry.lock().await;
+    pub fn set_expiry(&self, expiry: Option<Expiry>) {
+        let mut current_expiry = self.expiry.lock();
         *current_expiry = expiry;
     }
 
@@ -394,10 +421,10 @@ impl<Store: SessionStore> Session<Store> {
     /// let store = MemoryStore::default();
     /// let session = Session::new(None, store.clone(), None);
     ///
-    /// assert_eq!(session.expiry_date().await, DEFAULT_DURATION);
+    /// assert_eq!(session.expiry_date(), DEFAULT_DURATION);
     /// ```
-    pub async fn expiry_date(&self) -> OffsetDateTime {
-        let expiry = self.expiry.lock().await;
+    pub fn expiry_date(&self) -> OffsetDateTime {
+        let expiry = self.expiry.lock();
         match *expiry {
             Some(Expiry::OnInactivity(duration)) => {
                 OffsetDateTime::now_utc().saturating_add(duration)
@@ -419,11 +446,11 @@ impl<Store: SessionStore> Session<Store> {
     /// let store = MemoryStore::default();
     /// let session = Session::new(None, store.clone(), None);
     ///
-    /// assert_eq!(session.expiry_age().await, DEFAULT_DURATION);
+    /// assert_eq!(session.expiry_age(), DEFAULT_DURATION);
     /// ```
-    pub async fn expiry_age(&self) -> Duration {
+    pub fn expiry_age(&self) -> Duration {
         std::cmp::max(
-            self.expiry_date().await - OffsetDateTime::now_utc(),
+            self.expiry_date() - OffsetDateTime::now_utc(),
             Duration::ZERO,
         )
     }
@@ -473,6 +500,11 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// assert_eq!(session.get("foo").await.unwrap(), Some("bar"));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If loading from or saving to the store fails, we fail with
+    ///   [`Error::Store`].
     pub async fn save(&self) -> Result<(), Store> {
         if let Some(record) = self.record().await?.as_ref() {
             self.store.save(record).await.map_err(Error::Store)?;
@@ -500,10 +532,14 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// assert_eq!(session.get("foo").await.unwrap(), Some("bar"));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If loading from the store fails, we fail with [`Error::Store`].
     pub async fn load(&self) -> Result<(), Store> {
         let loaded_record = self
             .store
-            .load(&self.id().await?)
+            .load(&self.id().await)
             .await
             .map_err(Error::Store)?;
         let mut record = self.record().await?;
@@ -525,9 +561,13 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// assert!(store.load(session.id().await.unwrap()).unwrap().is_none());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If deleting from the store fails, we fail with [`Error::Store`].
     pub async fn delete(&self) -> Result<(), Store> {
         self.store
-            .delete(&self.id().await?)
+            .delete(&self.id().await)
             .await
             .map_err(Error::Store)?;
         Ok(())
@@ -550,8 +590,12 @@ impl<Store: SessionStore> Session<Store> {
     /// assert!(session.is_empty().await.unwrap());
     /// assert!(store.load(session.id().await.unwrap()).unwrap().is_none());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - If deleting from the store fails, we fail with [`Error::Store`].
     pub async fn flush(&self) -> Result<(), Store> {
-        self.clear().await?;
+        self.clear().await;
         self.delete().await?;
         Ok(())
     }
@@ -576,15 +620,28 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// session.cycle_id().await.unwrap();
     ///
-    /// assert_ne!(id, session.id().await.unwrap());
+    /// assert_ne!(Some(id), session.id().await);
     /// assert_eq!(session.get("foo").await.unwrap(), Some("foo"));
     /// ```
-    pub async fn cycle_id(&mut self) -> Result<(), Store> {
-        let id = self.id().await?;
-        self.store.delete(&id).await.map_err(Error::Store)?;
+    ///
+    /// # Errors
+    ///
+    /// - If deleting from the store fails or saving to the store fails, we fail
+    ///   with [`Error::Store`].
+    pub async fn cycle_id(&self) -> Result<(), Store> {
+        self.delete().await?;
 
-        if let Some(record) = self.record().await?.as_mut() {
-            record.id = Id::default()
+        {
+            let mut record_guard = self.record.lock().await;
+            match record_guard.as_mut() {
+                Some(record) => {
+                    record.id = Id::default();
+                }
+                None => {
+                    let record = self.create_record().await;
+                    *record_guard = Some(record);
+                }
+            }
         }
 
         self.save().await?;
@@ -596,7 +653,7 @@ impl<Store: SessionStore> Session<Store> {
 
 /// ID type for sessions.
 ///
-/// Wraps a UUID and is intended to be used with UUIDv4 specifically.
+/// Wraps a UUIDv4.
 ///
 /// # Examples
 ///

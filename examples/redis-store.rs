@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
     let app = Router::new()
-        .route("/", get(handler))
+        .route("/insert", get(insert_handler))
+        .route("/get", get(get_handler))
         .layer(session_service);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -48,8 +49,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn handler(session: Session) -> impl IntoResponse {
+async fn insert_handler(session: Session) -> impl IntoResponse {
     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+    format!("Current count: {}", counter.0)
+}
+
+async fn get_handler(session: Session) -> impl IntoResponse {
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
     format!("Current count: {}", counter.0)
 }
