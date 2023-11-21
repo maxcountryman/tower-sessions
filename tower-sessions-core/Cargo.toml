@@ -34,3 +34,4 @@ uuid = { version = "1.4.1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tower-sessions = { workspace = true }
+tokio-test = "0.4.3"

@@ -143,13 +143,11 @@ where
                     }
 
                     // TODO: We can consider an "always save" configuration option.
-                    //
-                    // See: https://github.com/django/django/blob/f7389c4b07ceeb036436e065898e411b247bca78/django/contrib/sessions/middleware.py#L47
                     _ if modified && !empty => {
                         tracing::debug!("saving session");
                         session.save().await?;
 
-                        let session_id = session.id().await;
+                        let session_id = session.id();
                         let expiry_age = session.expiry_age();
                         let session_cookie = session_config.build_cookie(session_id, expiry_age);
 

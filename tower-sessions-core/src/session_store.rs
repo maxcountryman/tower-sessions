@@ -25,21 +25,24 @@ use crate::session::{Id, Record};
 ///
 /// use async_trait::async_trait;
 /// use parking_lot::Mutex;
-/// use tower_sessions::{session::Id, Session, SessionStore};
+/// use tower_sessions::{
+///     session::{Id, Record},
+///     Session, SessionStore,
+/// };
 ///
-/// #[derive(Clone)]
-/// pub struct TestingStore(Arc<Mutex<HashMap<Id, Session>>>);
+/// #[derive(Debug, Clone)]
+/// pub struct TestingStore(Arc<Mutex<HashMap<Id, Record>>>);
 ///
 /// #[async_trait]
 /// impl SessionStore for TestingStore {
 ///     type Error = Infallible;
 ///
-///     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
-///         self.0.lock().insert(*session.id(), session.clone());
+///     async fn save(&self, record: &Record) -> Result<(), Self::Error> {
+///         self.0.lock().insert(record.id, record.clone());
 ///         Ok(())
 ///     }
 ///
-///     async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+///     async fn load(&self, session_id: &Id) -> Result<Option<Record>, Self::Error> {
 ///         Ok(self.0.lock().get(session_id).cloned())
 ///     }
 ///

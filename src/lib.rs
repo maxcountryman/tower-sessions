@@ -45,9 +45,11 @@
 //! use serde::{Deserialize, Serialize};
 //! use time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+//! use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 //!
 //! const COUNTER_KEY: &str = "counter";
+//!
+//! type Session = tower_sessions::Session<MemoryStore>;
 //!
 //! #[derive(Default, Deserialize, Serialize)]
 //! struct Counter(usize);
@@ -77,8 +79,8 @@
 //! }
 //!
 //! async fn handler(session: Session) -> impl IntoResponse {
-//!     let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
-//!     session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
+//!     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+//!     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!     format!("Current count: {}", counter.0)
 //! }
 //! ```
@@ -120,8 +122,10 @@
 //! # use axum::extract::FromRequestParts;
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
-//! # use tower_sessions::Session;
+//! # use tower_sessions::{SessionStore, MemoryStore};
 //! const COUNTER_KEY: &str = "counter";
+//!
+//! type Session = tower_sessions::Session<MemoryStore>;
 //!
 //! #[derive(Default, Deserialize, Serialize)]
 //! struct Counter(usize);
@@ -135,8 +139,8 @@
 //!
 //!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
 //!         let session = Session::from_request_parts(req, state).await?;
-//!         let counter: Counter = session.get(COUNTER_KEY).unwrap().unwrap_or_default();
-//!         session.insert(COUNTER_KEY, counter.0 + 1).unwrap();
+//!         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+//!         session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!
 //!         Ok(counter)
 //!     }
@@ -160,7 +164,7 @@
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
 //! # use time::OffsetDateTime;
-//! # use tower_sessions::Session;
+//! # use tower_sessions::{SessionStore, Session};
 //! # use uuid::Uuid;
 //! #[derive(Clone, Deserialize, Serialize)]
 //! struct GuestData {
@@ -181,12 +185,12 @@
 //!     }
 //! }
 //!
-//! struct Guest {
-//!     session: Session,
+//! struct Guest<Store: SessionStore> {
+//!     session: Session<Store>,
 //!     guest_data: GuestData,
 //! }
 //!
-//! impl Guest {
+//! impl<Store: SessionStore> Guest<Store> {
 //!     const GUEST_DATA_KEY: &'static str = "guest_data";
 //!
 //!     fn id(&self) -> Uuid {
@@ -205,20 +209,21 @@
 //!         self.guest_data.pageviews
 //!     }
 //!
-//!     fn mark_pageview(&mut self) {
+//!     async fn mark_pageview(&mut self) {
 //!         self.guest_data.pageviews += 1;
-//!         Self::update_session(&self.session, &self.guest_data)
+//!         Self::update_session(&self.session, &self.guest_data).await
 //!     }
 //!
-//!     fn update_session(session: &Session, guest_data: &GuestData) {
+//!     async fn update_session(session: &Session<Store>, guest_data: &GuestData) {
 //!         session
 //!             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
+//!             .await
 //!             .unwrap()
 //!     }
 //! }
 //!
 //! #[async_trait]
-//! impl<S> FromRequestParts<S> for Guest
+//! impl<S, Store: SessionStore> FromRequestParts<S> for Guest<Store>
 //! where
 //!     S: Send + Sync,
 //! {
@@ -229,12 +234,13 @@
 //!
 //!         let mut guest_data: GuestData = session
 //!             .get(Self::GUEST_DATA_KEY)
+//!             .await
 //!             .unwrap()
 //!             .unwrap_or_default();
 //!
 //!         guest_data.last_seen = OffsetDateTime::now_utc();
 //!
-//!         Self::update_session(&session, &guest_data);
+//!         Self::update_session(&session, &guest_data).await;
 //!
 //!         Ok(Self {
 //!             session,

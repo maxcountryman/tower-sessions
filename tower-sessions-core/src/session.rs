@@ -41,7 +41,9 @@ pub enum Error<Store: SessionStore> {
 /// visitors.
 #[derive(Debug, Clone)]
 pub struct Session<Store: SessionStore> {
-    session_id: Id,
+    // See: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
+    session_id: Arc<parking_lot::Mutex<Id>>,
+
     store: Store,
     record: Arc<Mutex<Option<Record>>>,
 
@@ -60,14 +62,14 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// Session::new(None, store.clone(), None);
+    /// Session::new(Id::default(), store.clone(), None);
     /// ```
     pub fn new(session_id: Id, store: Store, expiry: Option<Expiry>) -> Self {
         Self {
-            session_id,
+            session_id: Arc::new(parking_lot::Mutex::new(session_id)),
             store,
             record: Arc::new(Mutex::new(None)), // `None` indicates we have not loaded from store.
             expiry: Arc::new(parking_lot::Mutex::new(expiry)),
@@ -80,19 +82,15 @@ impl<Store: SessionStore> Session<Store> {
     }
 
     #[tracing::instrument(skip(self), err)]
-    async fn record(&self) -> Result<MutexGuard<Option<Record>>, Store> {
+    async fn get_record(&self) -> Result<MutexGuard<Option<Record>>, Store> {
         let mut record_guard = self.record.lock().await;
+        let session_id = *self.session_id.lock();
 
         // Lazily load the record from the store.
         if record_guard.is_none() {
             tracing::trace!("record not loaded from store; loading");
 
-            *record_guard = match self
-                .store
-                .load(&self.session_id)
-                .await
-                .map_err(Error::Store)?
-            {
+            *record_guard = match self.store.load(&session_id).await.map_err(Error::Store)? {
                 Some(loaded_record) => {
                     tracing::trace!("record found in store");
                     Some(loaded_record)
@@ -100,6 +98,7 @@ impl<Store: SessionStore> Session<Store> {
                 None => {
                     tracing::trace!("record not found in store");
                     let new_record = self.create_record().await;
+                    *self.session_id.lock() = new_record.id;
                     Some(new_record)
                 }
             }
@@ -113,15 +112,17 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", 42).await.unwrap();
     ///
     /// let value = session.get::<usize>("foo").await.unwrap();
     /// assert_eq!(value, Some(42));
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -146,10 +147,11 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// let value = session
     ///     .insert_value("foo", serde_json::json!(42))
@@ -168,6 +170,7 @@ impl<Store: SessionStore> Session<Store> {
     ///     .await
     ///     .unwrap();
     /// assert_eq!(value, Some(serde_json::json!(42)));
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -175,7 +178,7 @@ impl<Store: SessionStore> Session<Store> {
     /// - If the session has not been hydrated and loading from the store fails,
     ///   we fail with [`Error::Store`].
     pub async fn insert_value(&self, key: &str, value: Value) -> Result<Option<Value>, Store> {
-        Ok(self.record().await?.as_mut().and_then(|record| {
+        Ok(self.get_record().await?.as_mut().and_then(|record| {
             if record.data.get(key) != Some(&value) {
                 self.is_modified.store(true, atomic::Ordering::Release);
                 record.data.insert(key.to_string(), value)
@@ -190,15 +193,17 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", 42).await.unwrap();
     ///
     /// let value = session.get::<usize>("foo").await.unwrap();
     /// assert_eq!(value, Some(42));
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -219,15 +224,17 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", 42).await.unwrap();
     ///
-    /// let value = session.get_value("foo").await.unwrap();
+    /// let value = session.get_value("foo").await.unwrap().unwrap();
     /// assert_eq!(value, serde_json::json!(42));
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -236,7 +243,7 @@ impl<Store: SessionStore> Session<Store> {
     ///   we fail with [`Error::Store`].
     pub async fn get_value(&self, key: &str) -> Result<Option<Value>, Store> {
         Ok(self
-            .record()
+            .get_record()
             .await?
             .as_ref()
             .and_then(|record| record.data.get(key).cloned()))
@@ -248,10 +255,11 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", 42).await.unwrap();
     ///
@@ -260,6 +268,7 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// let value: Option<usize> = session.get("foo").await.unwrap();
     /// assert!(value.is_none());
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -280,16 +289,19 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
-    /// let value = session.remove_value("foo").await.unwrap();
+    /// session.insert("foo", 42).await.unwrap();
+    /// let value = session.remove_value("foo").await.unwrap().unwrap();
     /// assert_eq!(value, serde_json::json!(42));
     ///
     /// let value: Option<usize> = session.get("foo").await.unwrap();
     /// assert!(value.is_none());
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -297,7 +309,7 @@ impl<Store: SessionStore> Session<Store> {
     /// - If the session has not been hydrated and loading from the store fails,
     ///   we fail with [`Error::Store`].
     pub async fn remove_value(&self, key: &str) -> Result<Option<Value>, Store> {
-        Ok(self.record().await?.as_mut().and_then(|record| {
+        Ok(self.get_record().await?.as_mut().and_then(|record| {
             self.is_modified.store(true, atomic::Ordering::Release);
             record.data.remove(key)
         }))
@@ -308,15 +320,17 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", 42).await.unwrap();
     /// session.clear().await;
     ///
     /// assert!(session.is_empty().await);
+    /// # });
     /// ```
     pub async fn clear(&self) {
         let mut record = self.record.lock().await;
@@ -331,23 +345,28 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
-    /// assert!(session.is_empty().await, true);
+    /// assert!(session.is_empty().await);
     ///
-    /// session.insert("foo", "bar").await.unwrap();
+    /// session.insert("foo", 42).await.unwrap();
     ///
-    /// assert!(session.is_empty().await, false);
+    /// assert!(!session.is_empty().await);
+    /// # });
     /// ```
     pub async fn is_empty(&self) -> bool {
         // N.B.: We do not load from the store here, so if we haven't loaded at all, we
         // assume that the presence of cookie ID indicates there may be a
         // session and therefore will not return `true` from this method.
-        let record = self.record.lock().await;
-        record.as_ref().is_some_and(|record| record.data.is_empty())
+        let record_guard = self.record.lock().await;
+        let Some(record) = record_guard.as_ref() else {
+            return true;
+        };
+        record.data.is_empty()
     }
 
     /// Get the session ID.
@@ -355,20 +374,16 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(store.clone(), Id::default(), None);
+    /// let id = Id::default();
+    /// let session = Session::new(id, store.clone(), None);
     ///
-    /// assert!(session.id().await.is_none());
+    /// assert_eq!(id, session.id());
     /// ```
-    pub async fn id(&self) -> Id {
-        self.record
-            .lock()
-            .await
-            .as_ref()
-            .map(|record| record.id)
-            .unwrap_or(self.session_id)
+    pub fn id(&self) -> Id {
+        *self.session_id.lock()
     }
 
     /// Get the session expiry.
@@ -376,10 +391,13 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{session::Expiry, MemoryStore, Session};
+    /// use tower_sessions::{
+    ///     session::{Expiry, Id},
+    ///     MemoryStore, Session,
+    /// };
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// assert_eq!(session.expiry(), None);
     /// ```
@@ -396,15 +414,18 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// ```rust
     /// use time::OffsetDateTime;
-    /// use tower_sessions::{session::Expiry, MemoryStore, Session};
+    /// use tower_sessions::{
+    ///     session::{Expiry, Id},
+    ///     MemoryStore, Session,
+    /// };
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc());
-    /// session.set_expiry(expiry);
+    /// session.set_expiry(Some(expiry));
     ///
-    /// assert_eq!(session.expiry(), expiry);
+    /// assert_eq!(session.expiry(), Some(expiry));
     /// ```
     pub fn set_expiry(&self, expiry: Option<Expiry>) {
         let mut current_expiry = self.expiry.lock();
@@ -416,12 +437,13 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// use time::{Duration, OffsetDateTime};
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
-    /// assert_eq!(session.expiry_date(), DEFAULT_DURATION);
+    /// assert!(session.expiry_date() < OffsetDateTime::now_utc().saturating_add(Duration::weeks(2)));
     /// ```
     pub fn expiry_date(&self) -> OffsetDateTime {
         let expiry = self.expiry.lock();
@@ -441,12 +463,13 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// use time::Duration;
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
-    /// assert_eq!(session.expiry_age(), DEFAULT_DURATION);
+    /// assert!(session.expiry_age() < Duration::weeks(2))
     /// ```
     pub fn expiry_age(&self) -> Duration {
         std::cmp::max(
@@ -460,21 +483,23 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// // Not modified initially.
-    /// assert!(!session.is_modified().await.unwrap());
+    /// assert!(!session.is_modified());
     ///
     /// // Getting doesn't count as a modification.
-    /// session.get("foo").await.unwrap();
-    /// assert!(!session.is_modified().await.unwrap());
+    /// session.get::<usize>("foo").await.unwrap();
+    /// assert!(!session.is_modified());
     ///
     /// // Insertions and removals do though.
-    /// session.insert("foo", "bar").await.unwrap();
-    /// assert!(session.is_modified().await.unwrap());
+    /// session.insert("foo", 42).await.unwrap();
+    /// assert!(session.is_modified());
+    /// # });
     /// ```
     pub fn is_modified(&self) -> bool {
         self.is_modified.load(atomic::Ordering::Acquire)
@@ -489,24 +514,25 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
-    /// session.insert("foo", "bar").await.unwrap();
+    /// let session = Session::new(Id::default(), store.clone(), None);
+    ///
+    /// session.insert("foo", 42).await.unwrap();
     /// session.save().await.unwrap();
     ///
-    /// let session = Session::new(None, store.clone(), None);
-    ///
-    /// assert_eq!(session.get("foo").await.unwrap(), Some("bar"));
+    /// let session = Session::new(session.id(), store.clone(), None);
+    /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);
+    /// # });
     /// ```
     ///
     /// # Errors
     ///
-    /// - If loading from or saving to the store fails, we fail with
-    ///   [`Error::Store`].
+    /// - If saving to the store fails, we fail with [`Error::Store`].
     pub async fn save(&self) -> Result<(), Store> {
-        if let Some(record) = self.record().await?.as_ref() {
+        if let Some(record) = self.record.lock().await.as_ref() {
             self.store.save(record).await.map_err(Error::Store)?;
         }
         Ok(())
@@ -520,30 +546,30 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
-    /// session.insert("foo", "bar").await.unwrap();
+    /// let id = Id::default();
+    /// let session = Session::new(id, store.clone(), None);
+    ///
+    /// session.insert("foo", 42).await.unwrap();
     /// session.save().await.unwrap();
     ///
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(session.id(), store.clone(), None);
     /// session.load().await.unwrap();
     ///
-    /// assert_eq!(session.get("foo").await.unwrap(), Some("bar"));
+    /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);
+    /// # });
     /// ```
     ///
     /// # Errors
     ///
     /// - If loading from the store fails, we fail with [`Error::Store`].
     pub async fn load(&self) -> Result<(), Store> {
-        let loaded_record = self
-            .store
-            .load(&self.id().await)
-            .await
-            .map_err(Error::Store)?;
-        let mut record = self.record().await?;
-        *record = loaded_record;
+        let loaded_record = self.store.load(&self.id()).await.map_err(Error::Store)?;
+        let mut record_guard = self.record.lock().await;
+        *record_guard = loaded_record;
         Ok(())
     }
 
@@ -552,24 +578,23 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session, SessionStore};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store, None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.delete().await.unwrap();
     ///
-    /// assert!(store.load(session.id().await.unwrap()).unwrap().is_none());
+    /// assert!(store.load(&session.id()).await.unwrap().is_none());
+    /// # });
     /// ```
     ///
     /// # Errors
     ///
     /// - If deleting from the store fails, we fail with [`Error::Store`].
     pub async fn delete(&self) -> Result<(), Store> {
-        self.store
-            .delete(&self.id().await)
-            .await
-            .map_err(Error::Store)?;
+        self.store.delete(&self.id()).await.map_err(Error::Store)?;
         Ok(())
     }
 
@@ -579,16 +604,18 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session, SessionStore};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store, None);
+    /// let session = Session::new(Id::default(), store.clone(), None);
     ///
     /// session.insert("foo", "bar").await.unwrap();
     /// session.flush().await.unwrap();
     ///
-    /// assert!(session.is_empty().await.unwrap());
-    /// assert!(store.load(session.id().await.unwrap()).unwrap().is_none());
+    /// assert!(session.is_empty().await);
+    /// assert!(store.load(&session.id()).await.unwrap().is_none());
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -609,19 +636,19 @@ impl<Store: SessionStore> Session<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, Session};
+    /// # tokio_test::block_on(async {
+    /// use tower_sessions::{session::Id, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store, None);
+    /// let session = Session::new(Id::default(), store, None);
     ///
-    /// session.insert("foo", "bar").await.unwrap();
-    ///
-    /// let id = session.id().await.unwrap();
-    ///
+    /// session.insert("foo", 42).await.unwrap();
+    /// let id = session.id();
     /// session.cycle_id().await.unwrap();
     ///
-    /// assert_ne!(Some(id), session.id().await);
-    /// assert_eq!(session.get("foo").await.unwrap(), Some("foo"));
+    /// assert_ne!(id, session.id());
+    /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);
+    /// # });
     /// ```
     ///
     /// # Errors
@@ -636,9 +663,11 @@ impl<Store: SessionStore> Session<Store> {
             match record_guard.as_mut() {
                 Some(record) => {
                     record.id = Id::default();
+                    *self.session_id.lock() = record.id;
                 }
                 None => {
                     let record = self.create_record().await;
+                    *self.session_id.lock() = record.id;
                     *record_guard = Some(record);
                 }
             }
@@ -688,19 +717,6 @@ impl FromStr for Id {
 
 /// Record type that's appropriate for encoding and decoding sessions to and
 /// from session stores.
-///
-/// # Examples
-///
-/// ```rust
-/// use time::OffsetDateTime;
-/// use tower_sessions::session::{Data, Id, Record};
-///
-/// Record {
-///     id: Id::default(),
-///     data: Data::default(),
-///     expiry_date: OffsetDateTime::now_utc(),
-/// }
-/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
     pub id: Id,
