@@ -6,47 +6,49 @@ use tower::ServiceBuilder;
 use tower_cookies::{cookie, Cookie};
 use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore};
 
-fn routes() -> Router {
+fn routes<Store: SessionStore>() -> Router {
     Router::new()
-        .route("/", get(|_: Session| async move { "Hello, world!" }))
+        .route("/", get(|_: Session<Store>| async move { "Hello, world!" }))
         .route(
             "/insert",
-            get(|session: Session| async move {
-                session.insert("foo", 42).unwrap();
+            get(|session: Session<Store>| async move {
+                session.insert("foo", 42).await.unwrap();
             }),
         )
         .route(
             "/get",
-            get(|session: Session| async move {
-                format!("{}", session.get::<usize>("foo").unwrap().unwrap())
+            get(|session: Session<Store>| async move {
+                format!("{}", session.get::<usize>("foo").await.unwrap().unwrap())
             }),
         )
         .route(
             "/get_value",
-            get(|session: Session| async move { format!("{:?}", session.get_value("foo")) }),
+            get(|session: Session<Store>| async move {
+                format!("{:?}", session.get_value("foo").await.unwrap())
+            }),
         )
         .route(
             "/remove",
-            get(|session: Session| async move {
-                session.remove::<usize>("foo").unwrap();
+            get(|session: Session<Store>| async move {
+                session.remove::<usize>("foo").await.unwrap();
             }),
         )
         .route(
             "/remove_value",
-            get(|session: Session| async move {
-                session.remove_value("foo");
+            get(|session: Session<Store>| async move {
+                session.remove_value("foo").await.unwrap();
             }),
         )
         .route(
             "/cycle_id",
-            get(|session: Session| async move {
-                session.cycle_id();
+            get(|session: Session<Store>| async move {
+                session.cycle_id().await.unwrap();
             }),
         )
         .route(
-            "/delete",
-            get(|session: Session| async move {
-                session.delete();
+            "/flush",
+            get(|session: Session<Store>| async move {
+                session.flush().await.unwrap();
             }),
         )
 }
@@ -65,7 +67,7 @@ pub fn build_app<Store: SessionStore>(
         }))
         .layer(session_manager);
 
-    routes().layer(session_service)
+    routes::<Store>().layer(session_service)
 }
 
 pub async fn body_string(body: BoxBody) -> String {
@@ -146,7 +148,9 @@ macro_rules! route_tests {
                 .await
                 .unwrap();
 
-            assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+            assert_ne!(session_cookie.value(), "malformed");
+            assert_eq!(res.status(), StatusCode::OK);
         }
 
         #[tokio::test]
@@ -278,14 +282,15 @@ macro_rules! route_tests {
                 .header(header::COOKIE, second_session_cookie.encoded().to_string())
                 .body(Body::empty())
                 .unwrap();
-            let res = app.oneshot(req).await.unwrap();
+            dbg!("foo");
+            let res = dbg!(app.oneshot(req).await).unwrap();
 
             assert_ne!(first_session_cookie.value(), second_session_cookie.value());
             assert_eq!(body_string(res.into_body()).await, "42");
         }
 
         #[tokio::test]
-        async fn delete_session() {
+        async fn flush_session() {
             let app = $create_app(Some(Duration::hours(1))).await;
 
             let req = Request::builder()
@@ -296,7 +301,7 @@ macro_rules! route_tests {
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
             let req = Request::builder()
-                .uri("/delete")
+                .uri("/flush")
                 .header(header::COOKIE, session_cookie.encoded().to_string())
                 .body(Body::empty())
                 .unwrap();

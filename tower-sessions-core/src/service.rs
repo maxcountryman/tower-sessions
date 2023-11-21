@@ -98,7 +98,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let span = tracing::debug_span!("session_middleware");
+        let span = tracing::info_span!("call");
 
         let session_store = self.session_store.clone();
         let session_config = self.session_config.clone();
@@ -118,12 +118,10 @@ where
                        // to panic in `call`.
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
-                // Parse the session ID from the cookie or if that fails create a new ID.
                 let session_id = session_cookie
                     .clone()
                     .map(|cookie| cookie.value().to_string())
-                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok())
-                    .unwrap_or_default();
+                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok());
 
                 let session = Session::new(session_id, session_store, session_config.expiry);
 
@@ -143,11 +141,11 @@ where
                     }
 
                     // TODO: We can consider an "always save" configuration option.
-                    _ if modified && !empty => {
+                    _ if modified && !empty && !res.status().is_server_error() => {
                         tracing::debug!("saving session");
                         session.save().await?;
 
-                        let session_id = session.id();
+                        let session_id = session.id().ok_or(session::Error::<Store>::MissingId)?;
                         let expiry_age = session.expiry_age();
                         let session_cookie = session_config.build_cookie(session_id, expiry_age);
 
