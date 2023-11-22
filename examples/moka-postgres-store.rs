@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{
-    sqlx::PgPool, CachingSessionStore, Expiry, MokaStore, PostgresStore, Session,
-    SessionManagerLayer,
+    sqlx::PgPool, CachingSessionStore, Expiry, MokaStore, PostgresStore, SessionManagerLayer,
 };
 
 const COUNTER_KEY: &str = "counter";
+
+type Session = tower_sessions::Session<CachingSessionStore<MokaStore, PostgresStore>>;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Counter(usize);
@@ -51,14 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session
-        .get(COUNTER_KEY)
-        .expect("Could not deserialize.")
-        .unwrap_or_default();
-
-    session
-        .insert(COUNTER_KEY, counter.0 + 1)
-        .expect("Could not serialize.");
-
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
     format!("Current count: {}", counter.0)
 }

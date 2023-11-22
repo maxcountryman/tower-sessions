@@ -45,20 +45,29 @@ pub enum Error<Store: SessionStore> {
 /// visitors.
 #[derive(Debug, Clone)]
 pub struct Session<Store: SessionStore> {
-    // See: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
+    // This will be `None` when:
+    //
+    // 1. We have not been provided a session cookie or have failed to parse it,
+    // 2. The store has not found the session.
+    //
+    // Sync lock, see: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
     session_id: Arc<parking_lot::Mutex<Option<Id>>>,
 
     store: Store,
+
+    // A lazy representation of the session's value, hydrated on a just-in-time basis. A
+    // `None` value indicates we have not tried to access it yet. After access, it will always
+    // contain `Some(Record)`.
     record: Arc<Mutex<Option<Record>>>,
 
-    // See: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
+    // Sync lock, see: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
     expiry: Arc<parking_lot::Mutex<Option<Expiry>>>,
 
     is_modified: Arc<AtomicBool>,
 }
 
 impl<Store: SessionStore> Session<Store> {
-    /// Creates a new session with the cookie ID, store, and expiry.
+    /// Creates a new session with the session ID, store, and expiry.
     ///
     /// This method is lazy and does not invoke the overhead of talking to the
     /// backing store.
@@ -96,8 +105,9 @@ impl<Store: SessionStore> Session<Store> {
 
             *record_guard = if let Some(session_id) = session_id {
                 match self.store.load(&session_id).await.map_err(Error::Store)? {
-                    Some(loaded_record) => {
+                    Some(mut loaded_record) => {
                         tracing::trace!("record found in store");
+                        loaded_record.expiry_date = self.expiry_date();
                         Some(loaded_record)
                     }
                     None => {
@@ -437,7 +447,7 @@ impl<Store: SessionStore> Session<Store> {
     /// assert!(session.id().is_none());
     ///
     /// let id = Some(Id::default());
-    /// let session = Session::new(id, store.clone(), None);
+    /// let session = Session::new(id, store, None);
     /// assert_eq!(id, session.id());
     /// ```
     pub fn id(&self) -> Option<Id> {
@@ -452,7 +462,7 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{session::Expiry, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// assert_eq!(session.expiry(), None);
     /// ```
@@ -472,7 +482,7 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{session::Expiry, MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc());
     /// session.set_expiry(Some(expiry));
@@ -493,7 +503,7 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// // Our default duration is two weeks.
     /// let expected_expiry = OffsetDateTime::now_utc().saturating_add(Duration::weeks(2));
@@ -523,7 +533,7 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// let expected_duration = Duration::weeks(2);
     ///
@@ -546,7 +556,7 @@ impl<Store: SessionStore> Session<Store> {
     /// use tower_sessions::{MemoryStore, Session};
     ///
     /// let store = MemoryStore::default();
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// // Not modified initially.
     /// assert!(!session.is_modified());
@@ -582,7 +592,7 @@ impl<Store: SessionStore> Session<Store> {
     /// session.insert("foo", 42).await.unwrap();
     /// session.save().await.unwrap();
     ///
-    /// let session = Session::new(session.id(), store.clone(), None);
+    /// let session = Session::new(session.id(), store, None);
     /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);
     /// # });
     /// ```
@@ -593,7 +603,7 @@ impl<Store: SessionStore> Session<Store> {
     #[tracing::instrument(skip(self), err)]
     pub async fn save(&self) -> Result<(), Store> {
         // N.B.: `get_record` will create a new record if one isn't found in the store.
-        if let Some(record) = self.get_record().await?.as_ref() {
+        if let Some(record) = self.get_record().await?.as_mut() {
             {
                 let mut session_id_guard = self.session_id.lock();
                 if session_id_guard.is_none() {
@@ -601,6 +611,7 @@ impl<Store: SessionStore> Session<Store> {
                     *session_id_guard = Some(record.id);
                 }
             }
+
             self.store.save(record).await.map_err(Error::Store)?;
         }
 
@@ -625,7 +636,7 @@ impl<Store: SessionStore> Session<Store> {
     /// session.insert("foo", 42).await.unwrap();
     /// session.save().await.unwrap();
     ///
-    /// let session = Session::new(session.id(), store.clone(), None);
+    /// let session = Session::new(session.id(), store, None);
     /// session.load().await.unwrap();
     ///
     /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);
@@ -744,7 +755,7 @@ impl<Store: SessionStore> Session<Store> {
     ///
     /// session.save().await.unwrap();
     ///
-    /// let session = Session::new(dbg!(session.id()), store, None);
+    /// let session = Session::new(session.id(), store, None);
     ///
     /// assert_ne!(id, session.id());
     /// assert_eq!(session.get::<usize>("foo").await.unwrap().unwrap(), 42);

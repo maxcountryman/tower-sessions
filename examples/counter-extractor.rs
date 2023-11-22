@@ -9,9 +9,11 @@ use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
+
+type Session = tower_sessions::Session<MemoryStore>;
 
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
@@ -25,16 +27,8 @@ where
 
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let session = Session::from_request_parts(req, state).await?;
-
-        let counter: Counter = session
-            .get(COUNTER_KEY)
-            .expect("Could not deserialize.")
-            .unwrap_or_default();
-
-        session
-            .insert(COUNTER_KEY, counter.0 + 1)
-            .expect("Could not serialize.");
-
+        let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+        session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
         Ok(counter)
     }
 }

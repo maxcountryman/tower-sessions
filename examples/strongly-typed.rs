@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use tower::ServiceBuilder;
 use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions_core::SessionStore;
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -31,13 +32,13 @@ impl Default for GuestData {
     }
 }
 
-struct Guest {
-    session: Session,
+struct Guest<Store: SessionStore> {
+    session: Session<Store>,
     guest_data: GuestData,
 }
 
-impl Guest {
-    const GUEST_DATA_KEY: &'static str = "guest_data";
+impl<Store: SessionStore> Guest<Store> {
+    const GUEST_DATA_KEY: &'static str = "guest.data";
 
     fn id(&self) -> Uuid {
         self.guest_data.id
@@ -55,19 +56,20 @@ impl Guest {
         self.guest_data.pageviews
     }
 
-    fn mark_pageview(&mut self) {
+    async fn mark_pageview(&mut self) {
         self.guest_data.pageviews += 1;
-        Self::update_session(&self.session, &self.guest_data)
+        Self::update_session(&self.session, &self.guest_data).await
     }
 
-    fn update_session(session: &Session, guest_data: &GuestData) {
+    async fn update_session(session: &Session<Store>, guest_data: &GuestData) {
         session
             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
-            .expect("infallible")
+            .await
+            .unwrap()
     }
 }
 
-impl Display for Guest {
+impl<Store: SessionStore> Display for Guest<Store> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let now = OffsetDateTime::now_utc();
         write!(
@@ -82,7 +84,7 @@ impl Display for Guest {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for Guest
+impl<S, Store: SessionStore> FromRequestParts<S> for Guest<Store>
 where
     S: Send + Sync,
 {
@@ -93,12 +95,13 @@ where
 
         let mut guest_data: GuestData = session
             .get(Self::GUEST_DATA_KEY)
-            .expect("infallible")
+            .await
+            .unwrap()
             .unwrap_or_default();
 
         guest_data.last_seen = OffsetDateTime::now_utc();
 
-        Self::update_session(&session, &guest_data);
+        Self::update_session(&session, &guest_data).await;
 
         Ok(Self {
             session,
@@ -136,7 +139,7 @@ async fn main() {
 //
 // Use cases could include buckets for site preferences, analytics,
 // feature flags, etc.
-async fn handler(mut guest: Guest) -> impl IntoResponse {
-    guest.mark_pageview();
+async fn handler(mut guest: Guest<MemoryStore>) -> impl IntoResponse {
+    guest.mark_pageview().await;
     format!("{}", guest)
 }
