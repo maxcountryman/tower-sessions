@@ -111,11 +111,9 @@ where
 
         Box::pin(
             async move {
-                let cookies =
-                    req.extensions().get::<Cookies>().cloned().expect(
-                        "Cookies should be provided as a request extension by tower-cookies.",
-                    ); // TODO: tower-cookies is always installed, but we really aren't supposed
-                       // to panic in `call`.
+                let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
+                    return Err(session::Error::<Store>::MissingCookies.into());
+                };
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
                 let session_id = session_cookie

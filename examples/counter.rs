@@ -7,9 +7,11 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tower::ServiceBuilder;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
+
+type Session = tower_sessions::Session<MemoryStore>;
 
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
