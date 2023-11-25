@@ -29,7 +29,7 @@ struct SessionConfig {
 
 impl SessionConfig {
     fn build_cookie<'c>(&self, session: &Session) -> Cookie<'c> {
-        let mut cookie_builder = Cookie::build(self.name.clone(), session.id().to_string())
+        let mut cookie_builder = Cookie::build((self.name.clone(), session.id().to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
@@ -41,7 +41,7 @@ impl SessionConfig {
             cookie_builder = cookie_builder.domain(domain.clone());
         }
 
-        cookie_builder.finish()
+        cookie_builder.build()
     }
 
     fn new_session(&self) -> Session {
