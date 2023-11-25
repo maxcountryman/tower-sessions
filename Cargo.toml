@@ -84,21 +84,22 @@ tower-sessions-sqlx-store = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.74"
-axum = "0.6.20"
-axum-core = "0.3.4"
+axum = "0.7.1"
+axum-core = "0.4.0"
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
 ] }
-http = "0.2.10"
-hyper = "0.14.27"
+http = "1.0"
+hyper = "1.0"
 reqwest = "0.11.22"
 serde = "1.0.192"
 time = "0.3.30"
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
 tower = "0.4.13"
-tower-cookies = "0.9.0"
+tower-cookies = "0.10.0"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
+http-body-util = "0.1"
 
 [[example]]
 name = "counter"
