@@ -1,0 +1,22 @@
+[package]
+name = "tower-sessions-redis-pool-store"
+description = "Redis session store with pool support. Not for direct use; see the `tower-sessions` crate for details."
+documentation.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+redis_pool = "0.2.1"
+redis = "0.23.4"
+rmp-serde = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tower-sessions-core = { workspace = true }
+
+[dev-dependencies]
+tower-sessions = { workspace = true }
+tokio-test = "0.4.3"

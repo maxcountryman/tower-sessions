@@ -5,6 +5,7 @@ members = [
     "moka-store",
     "mongodb-store",
     "redis-store",
+    "redis-pool-store",
     "sqlx-store",
     "tower-sessions-core",
 ]
@@ -51,6 +52,7 @@ deletion-task = ["tower-sessions-core/deletion-task"]
 memory-store = ["tower-sessions-memory-store"]
 moka-store = ["tower-sessions-moka-store"]
 redis-store = ["tower-sessions-redis-store"]
+redis-pool-store = ["tower-sessions-redis-pool-store"]
 mongodb-store = ["tower-sessions-mongodb-store"]
 sqlx-store = []
 sqlite-store = ["sqlx-store", "tower-sessions-sqlx-store/sqlite"]
@@ -64,6 +66,7 @@ tower-sessions-core = { version = "=0.6.0", path = "tower-sessions-core", defaul
 tower-sessions-memory-store = { version = "=0.6.0", path = "memory-store" }
 tower-sessions-moka-store = { version = "=0.6.0", path = "moka-store" }
 tower-sessions-redis-store = { version = "=0.6.0", path = "redis-store" }
+tower-sessions-redis-pool-store = { version = "=0.6.0", path = "redis-pool-store" }
 tower-sessions-mongodb-store = { version = "=0.6.0", path = "mongodb-store" }
 tower-sessions-sqlx-store = { version = "=0.6.0", path = "sqlx-store" }
 
@@ -79,6 +82,7 @@ tower-sessions-core = { workspace = true, features = ["axum-core"] }
 tower-sessions-memory-store = { workspace = true, optional = true }
 tower-sessions-moka-store = { workspace = true, optional = true }
 tower-sessions-redis-store = { workspace = true, optional = true }
+tower-sessions-redis-pool-store = { workspace = true, optional = true }
 tower-sessions-mongodb-store = { workspace = true, optional = true }
 tower-sessions-sqlx-store = { workspace = true, optional = true }
 
@@ -111,6 +115,10 @@ required-features = ["axum-core", "memory-store"]
 [[example]]
 name = "redis-store"
 required-features = ["axum-core", "redis-store"]
+
+[[example]]
+name = "redis-pool-store"
+required-features = ["axum-core", "redis-pool-store"]
 
 [[example]]
 name = "mongodb-store"
