@@ -60,12 +60,11 @@ impl SessionStore for RedisPoolStore {
     async fn save(&self, session: &Session) -> Result<(), Self::Error> {
         let expire = OffsetDateTime::unix_timestamp(session.expiry_date());
         let mut con = self.client.aquire().await?;
-        redis::pipe()
-            .atomic() //makes this a transation.
-            .set(session.id().to_string(), rmp_serde::to_vec(&session)?)
-            .ignore()
-            .expire_at(session.id().to_string(), expire as usize)
-            .ignore()
+        redis::cmd("SET")
+            .arg(session.id().to_string())
+            .arg(rmp_serde::to_vec(&session)?)
+            .arg("EXAT") // EXAT: set expiry timestamp
+            .arg(expire as usize)
             .query_async(&mut con)
             .await?;
         Ok(())
@@ -86,8 +85,7 @@ impl SessionStore for RedisPoolStore {
 
     async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
         let mut con = self.client.aquire().await?;
-        redis::pipe()
-            .cmd("DEL")
+        redis::cmd("DEL")
             .arg(session_id.to_string().as_str())
             .query_async(&mut con)
             .await?;
