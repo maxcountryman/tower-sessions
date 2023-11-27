@@ -15,11 +15,11 @@ deletion-task = ["tokio/time"]
 
 [dependencies]
 async-trait = "0.1.73"
-axum-core = { version = "0.3.4", optional = true }
+axum-core = { version = "0.4.0", optional = true }
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
 ] }
-http = "0.2.9"
+http = "1.0.0"
 parking_lot = { version = "0.12.1", features = ["serde"] }
 serde = { version = "1.0.189", features = ["derive", "rc"] }
 serde_json = "1.0.107"
