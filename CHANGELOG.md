@@ -4,7 +4,7 @@
 
 **Breaking Changes**
 
-- Bump `axum-core` to 0.4.0, `http` to 0.1, `tower-cookies` to 0.10.0. #107
+- Bump `axum-core` to 0.4.0, `http` to 1.0, `tower-cookies` to 0.10.0. #107
 
 This brings `tower-cookies` up-to-date which includes an update to the `cookies` crate.
 
