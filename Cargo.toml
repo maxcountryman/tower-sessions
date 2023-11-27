@@ -84,7 +84,7 @@ tower-sessions-sqlx-store = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.74"
-axum = "0.6.20"
+axum = "0.7.1"
 axum-core = "0.3.4"
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
