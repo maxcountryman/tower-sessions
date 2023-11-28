@@ -59,7 +59,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.6.0"
+tower-sessions = "0.7.0"
 ```
 
 ## 🤸 Usage
@@ -101,8 +101,8 @@ async fn main() {
         .layer(session_service);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
 }

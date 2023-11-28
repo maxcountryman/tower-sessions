@@ -1,6 +1,7 @@
 use axum::{error_handling::HandleErrorLayer, routing::get, Router};
-use axum_core::{body::BoxBody, BoxError};
+use axum_core::{body::Body, BoxError};
 use http::{header, HeaderMap, StatusCode};
+use http_body_util::BodyExt;
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_cookies::{cookie, Cookie};
@@ -68,8 +69,8 @@ pub fn build_app<Store: SessionStore>(
     routes().layer(session_service)
 }
 
-pub async fn body_string(body: BoxBody) -> String {
-    let bytes = hyper::body::to_bytes(body).await.unwrap();
+pub async fn body_string(body: Body) -> String {
+    let bytes = body.collect().await.unwrap().to_bytes();
     String::from_utf8_lossy(&bytes).into()
 }
 

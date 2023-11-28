@@ -37,9 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(session_service);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await?;
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app.into_make_service()).await?;
 
     redis_conn.await??;
 
