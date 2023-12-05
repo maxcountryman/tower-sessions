@@ -646,8 +646,11 @@ impl Session {
             {
                 let mut session_id_guard = self.session_id.lock();
                 if session_id_guard.is_none() {
-                    // Set the session ID to the newly created record's ID.
-                    *session_id_guard = Some(record.id);
+                    // Generate a new ID here since e.g. flush may have been called, which will
+                    // not directly update the record ID.
+                    let id = Id::default();
+                    *session_id_guard = Some(id);
+                    record.id = id;
                 }
             }
 
@@ -758,6 +761,7 @@ impl Session {
     ///
     /// session.flush().await.unwrap();
     ///
+    /// assert!(session.id().is_none());
     /// assert!(session.is_empty().await);
     /// assert!(store.load(&id).await.unwrap().is_none());
     /// # });
