@@ -63,6 +63,16 @@ impl SqliteStore {
         sqlx::query(&query).execute(&self.pool).await?;
         Ok(())
     }
+
+    /// Get the store's pool
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    /// Get the store's table name
+    pub fn table_name(&self) -> &str {
+        &self.table_name
+    }
 }
 
 #[async_trait]
