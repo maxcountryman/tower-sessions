@@ -61,7 +61,7 @@ jobs:
       #    cargo tarpaulin -olcov --doc  --output-dir $output_dir
       #    mkdir -p coverage-artifacts/doc
       #    mv $output_dir coverage-artifacts/doc/
-      #- uses: actions/upload-artifact@v3
+      #- uses: actions/upload-artifact@v4
       #  with:
       #    name: coverage-artifacts-doc
       #    path: coverage-artifacts/doc
@@ -133,7 +133,7 @@ jobs:
           cargo tarpaulin -olcov --test integration-tests --features ${{ matrix.features }} --output-dir $output_dir
           mkdir -p coverage-artifacts/integration
           mv $output_dir coverage-artifacts/integration/
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: coverage-artifacts-integration
           path: coverage-artifacts/integration
