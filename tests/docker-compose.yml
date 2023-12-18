@@ -25,3 +25,10 @@ services:
       - MYSQL_DATABASE=public
     ports:
       - "3306:3306"
+
+  dynamodb_store:
+    image: "amazon/dynamodb-local:latest"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    container_name: dynamodb-local
+    ports:
+      - "8000:8000"

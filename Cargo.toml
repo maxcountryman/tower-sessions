@@ -4,6 +4,7 @@ members = [
   "memory-store",
   "moka-store",
   "mongodb-store",
+  "dynamodb-store",
   "redis-store",
   "sqlx-store",
   "tower-sessions-core",
@@ -52,6 +53,7 @@ memory-store = ["tower-sessions-memory-store"]
 moka-store = ["tower-sessions-moka-store"]
 redis-store = ["tower-sessions-redis-store"]
 mongodb-store = ["tower-sessions-mongodb-store"]
+dynamodb-store = ["tower-sessions-dynamodb-store"]
 sqlx-store = []
 sqlite-store = ["sqlx-store", "tower-sessions-sqlx-store/sqlite"]
 postgres-store = ["sqlx-store", "tower-sessions-sqlx-store/postgres"]
@@ -65,6 +67,7 @@ tower-sessions-memory-store = { version = "=0.7.0", path = "memory-store" }
 tower-sessions-moka-store = { version = "=0.7.0", path = "moka-store" }
 tower-sessions-redis-store = { version = "=0.7.0", path = "redis-store" }
 tower-sessions-mongodb-store = { version = "=0.7.0", path = "mongodb-store" }
+tower-sessions-dynamodb-store = { version = "=0.7.0", path = "dynamodb-store" }
 tower-sessions-sqlx-store = { version = "=0.7.0", path = "sqlx-store" }
 
 async-trait = "0.1.74"
@@ -80,6 +83,7 @@ tower-sessions-memory-store = { workspace = true, optional = true }
 tower-sessions-moka-store = { workspace = true, optional = true }
 tower-sessions-redis-store = { workspace = true, optional = true }
 tower-sessions-mongodb-store = { workspace = true, optional = true }
+tower-sessions-dynamodb-store = { workspace = true, optional = true }
 tower-sessions-sqlx-store = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -118,6 +122,10 @@ required-features = ["axum-core", "redis-store"]
 [[example]]
 name = "mongodb-store"
 required-features = ["axum-core", "mongodb-store", "deletion-task"]
+
+[[example]]
+name = "dynamodb-store"
+required-features = ["axum-core", "dynamodb-store", "deletion-task"]
 
 [[example]]
 name = "sqlite-store"

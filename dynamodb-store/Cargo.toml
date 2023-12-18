@@ -1,0 +1,23 @@
+[package]
+name = "tower-sessions-dynamodb-store"
+description = "AWS DynamoDB session store. Not for direct use; see the `tower-sessions` crate for details."
+documentation.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+aws-config = "1.0.3"
+aws-sdk-dynamodb = "1.4.0"
+rmp-serde = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tower-sessions-core = { workspace = true }
+
+[dev-dependencies]
+tower-sessions = { workspace = true }
+tokio-test = "0.4.3"
