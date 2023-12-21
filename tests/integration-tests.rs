@@ -58,6 +58,28 @@ mod redis_store_tests {
     route_tests!(app);
 }
 
+#[cfg(all(test, feature = "axum-core", feature = "redis-pool-store"))]
+mod redis_store_pool_tests {
+    use axum::Router;
+    use tower_sessions::{redis, RedisPoolStore, SessionManagerLayer};
+
+    use crate::common::build_app;
+
+    async fn app(max_age: Option<Duration>) -> Router {
+        let database_url = std::option_env!("REDIS_URL").unwrap();
+
+        let client = redis::Client::open(database_url)
+            .expect("Error while trying to open the redis connection");
+
+        let session_store = RedisPoolStore::new(client.into());
+        let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
+
+        build_app(session_manager, max_age)
+    }
+
+    route_tests!(app);
+}
+
 #[cfg(all(test, feature = "axum-core", feature = "sqlite-store"))]
 mod sqlite_store_tests {
     use axum::Router;

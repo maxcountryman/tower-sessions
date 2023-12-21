@@ -77,6 +77,10 @@ jobs:
             features: redis-store
             docker: true
 
+          - store: redis_store
+            features: redis-pool-store
+            docker: true
+
           - store: mongodb_store
             features: mongodb-store
             docker: true
