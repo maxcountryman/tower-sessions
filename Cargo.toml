@@ -1,17 +1,17 @@
 [workspace]
 members = [
-  ".",
-  "memory-store",
-  "moka-store",
-  "mongodb-store",
-  "redis-store",
-  "sqlx-store",
-  "tower-sessions-core",
+    ".",
+    "memory-store",
+    "moka-store",
+    "mongodb-store",
+    "redis-store",
+    "sqlx-store",
+    "tower-sessions-core",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -58,14 +58,14 @@ postgres-store = ["sqlx-store", "tower-sessions-sqlx-store/postgres"]
 mysql-store = ["sqlx-store", "tower-sessions-sqlx-store/mysql"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.7.0", path = ".", default-features = false }
+tower-sessions = { version = "=0.8.0", path = ".", default-features = false }
 
-tower-sessions-core = { version = "=0.7.0", path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { version = "=0.7.0", path = "memory-store" }
-tower-sessions-moka-store = { version = "=0.7.0", path = "moka-store" }
-tower-sessions-redis-store = { version = "=0.7.0", path = "redis-store" }
-tower-sessions-mongodb-store = { version = "=0.7.0", path = "mongodb-store" }
-tower-sessions-sqlx-store = { version = "=0.7.0", path = "sqlx-store" }
+tower-sessions-core = { version = "=0.8.0", path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { version = "=0.8.0", path = "memory-store" }
+tower-sessions-moka-store = { version = "=0.8.0", path = "moka-store" }
+tower-sessions-redis-store = { version = "=0.8.0", path = "redis-store" }
+tower-sessions-mongodb-store = { version = "=0.8.0", path = "mongodb-store" }
+tower-sessions-sqlx-store = { version = "=0.8.0", path = "sqlx-store" }
 
 async-trait = "0.1.74"
 parking_lot = { version = "0.12.1", features = ["serde"] }
@@ -88,12 +88,12 @@ async-trait = "0.1.74"
 axum = "0.7.1"
 axum-core = "0.4.0"
 futures = { version = "0.3.28", default-features = false, features = [
-  "async-await",
+    "async-await",
 ] }
 http = "1.0"
 hyper = "1.0"
 reqwest = { version = "0.11.22", default-features = false, features = [
-  "rustls",
+    "rustls",
 ] }
 serde = "1.0.192"
 time = "0.3.30"
@@ -131,10 +131,10 @@ required-features = ["axum-core", "postgres-store", "deletion-task"]
 [[example]]
 name = "moka-postgres-store"
 required-features = [
-  "axum-core",
-  "postgres-store",
-  "moka-store",
-  "deletion-task",
+    "axum-core",
+    "postgres-store",
+    "moka-store",
+    "deletion-task",
 ]
 
 [[example]]
