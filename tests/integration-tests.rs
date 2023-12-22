@@ -44,12 +44,12 @@ mod redis_store_tests {
         let database_url = std::option_env!("REDIS_URL").unwrap();
 
         let config = RedisConfig::from_url(database_url).unwrap();
-        let client = RedisClient::new(config, None, None, None);
+        let pool = RedisPool::new(config, None, None, None, 6).unwrap();
 
-        client.connect();
-        client.wait_for_connect().await.unwrap();
+        pool.connect();
+        pool.wait_for_connect().await.unwrap();
 
-        let session_store = RedisStore::new(client);
+        let session_store = RedisStore::new(pool);
         let session_manager = SessionManagerLayer::new(session_store).with_secure(true);
 
         build_app(session_manager, max_age)

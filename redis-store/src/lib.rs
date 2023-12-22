@@ -1,9 +1,8 @@
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 pub use fred;
-use fred::{
-    prelude::{KeysInterface, RedisClient},
-    types::Expiration,
-};
+use fred::{prelude::KeysInterface, types::Expiration};
 use time::OffsetDateTime;
 use tower_sessions_core::{
     session::{Id, Record},
@@ -34,11 +33,11 @@ impl From<RedisStoreError> for session_store::Error {
 
 /// A Redis session store.
 #[derive(Debug, Clone, Default)]
-pub struct RedisStore {
-    client: RedisClient,
+pub struct RedisStore<C: KeysInterface + Send + Sync> {
+    client: C,
 }
 
-impl RedisStore {
+impl<C: KeysInterface + Send + Sync> RedisStore<C> {
     /// Create a new Redis store with the provided client.
     ///
     /// # Examples
@@ -48,21 +47,24 @@ impl RedisStore {
     /// use tower_sessions::RedisStore;
     ///
     /// # tokio_test::block_on(async {
-    /// let client = RedisClient::default();
+    /// let pool = RedisPool::new(RedisConfig::default(), None, None, None, 6).unwrap();
     ///
-    /// let _ = client.connect();
-    /// client.wait_for_connect().await.unwrap();
+    /// let _ = pool.connect();
+    /// pool.wait_for_connect().await.unwrap();
     ///
-    /// let session_store = RedisStore::new(client);
+    /// let session_store = RedisStore::new(pool);
     /// })
     /// ```
-    pub fn new(client: RedisClient) -> Self {
+    pub fn new(client: C) -> Self {
         Self { client }
     }
 }
 
 #[async_trait]
-impl SessionStore for RedisStore {
+impl<C> SessionStore for RedisStore<C>
+where
+    C: KeysInterface + Send + Sync + Debug + 'static,
+{
     async fn save(&self, record: &Record) -> session_store::Result<()> {
         let expire = Some(Expiration::EXAT(OffsetDateTime::unix_timestamp(
             record.expiry_date,
