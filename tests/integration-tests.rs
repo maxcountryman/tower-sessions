@@ -144,7 +144,7 @@ mod dynamodb_store_tests {
     use tower_sessions::{
         aws_config,
         aws_sdk_dynamodb,
-        Expiry, DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreSortKey, Session, SessionManagerLayer
+        DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreSortKey, SessionManagerLayer
     };
     use crate::common::build_app;
 

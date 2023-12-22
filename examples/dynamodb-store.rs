@@ -109,12 +109,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn handler(session: Session) -> impl IntoResponse {
     let counter: Counter = session
         .get(COUNTER_KEY)
-        .expect("Could not deserialize.")
+        .await
+        .unwrap()
         .unwrap_or_default();
 
     session
         .insert(COUNTER_KEY, counter.0 + 1)
-        .expect("Could not serialize.");
+        .await
+        .unwrap();
 
     format!("Current count: {}", counter.0)
 }
