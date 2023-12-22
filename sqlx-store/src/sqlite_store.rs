@@ -1,7 +1,11 @@
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePool;
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, session_store::ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{Id, Record},
+    session_store::{self, ExpiredDeletion},
+    SessionStore,
+};
 
 use crate::SqlxStoreError;
 
@@ -67,7 +71,7 @@ impl SqliteStore {
 
 #[async_trait]
 impl ExpiredDeletion for SqliteStore {
-    async fn delete_expired(&self) -> Result<(), Self::Error> {
+    async fn delete_expired(&self) -> session_store::Result<()> {
         let query = format!(
             r#"
             delete from {table_name}
@@ -75,16 +79,17 @@ impl ExpiredDeletion for SqliteStore {
             "#,
             table_name = self.table_name
         );
-        sqlx::query(&query).execute(&self.pool).await?;
+        sqlx::query(&query)
+            .execute(&self.pool)
+            .await
+            .map_err(SqlxStoreError::Sqlx)?;
         Ok(())
     }
 }
 
 #[async_trait]
 impl SessionStore for SqliteStore {
-    type Error = SqlxStoreError;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
         let query = format!(
             r#"
             insert into {}
@@ -96,16 +101,17 @@ impl SessionStore for SqliteStore {
             self.table_name
         );
         sqlx::query(&query)
-            .bind(&session.id().to_string())
-            .bind(rmp_serde::to_vec(session)?)
-            .bind(session.expiry_date())
+            .bind(&record.id.to_string())
+            .bind(rmp_serde::to_vec(record).map_err(SqlxStoreError::Encode)?)
+            .bind(record.expiry_date)
             .execute(&self.pool)
-            .await?;
+            .await
+            .map_err(SqlxStoreError::Sqlx)?;
 
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let query = format!(
             r#"
             select data from {}
@@ -117,16 +123,19 @@ impl SessionStore for SqliteStore {
             .bind(session_id.to_string())
             .bind(OffsetDateTime::now_utc())
             .fetch_optional(&self.pool)
-            .await?;
+            .await
+            .map_err(SqlxStoreError::Sqlx)?;
 
         if let Some((data,)) = data {
-            Ok(Some(rmp_serde::from_slice(&data)?))
+            Ok(Some(
+                rmp_serde::from_slice(&data).map_err(SqlxStoreError::Decode)?,
+            ))
         } else {
             Ok(None)
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
         let query = format!(
             r#"
             delete from {} where id = ?
@@ -136,7 +145,8 @@ impl SessionStore for SqliteStore {
         sqlx::query(&query)
             .bind(&session_id.to_string())
             .execute(&self.pool)
-            .await?;
+            .await
+            .map_err(SqlxStoreError::Sqlx)?;
 
         Ok(())
     }

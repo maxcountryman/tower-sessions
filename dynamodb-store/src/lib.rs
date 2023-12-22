@@ -14,43 +14,61 @@ use aws_sdk_dynamodb::{
     },
 };
 use time::OffsetDateTime;
-use tower_sessions_core::{session::Id, ExpiredDeletion, Session, SessionStore};
+use tower_sessions_core::{
+    session::{ Id, Record },
+    session_store, ExpiredDeletion, SessionStore,
+};
 use std::collections::hash_map::HashMap;
 
 /// An error type for `DynamoDBStore`.
 #[derive(thiserror::Error, Debug)]
 pub enum DynamoDBStoreError {
     /// A variant to map `aws_sdk_dynamodb::error::BuildError` errors.
-    #[error("DynamoDb build error: {0}")]
+    #[error(transparent)]
     DynamoDbBuild(#[from] aws_sdk_dynamodb::error::BuildError),
 
     /// A variant to map `aws_sdk_dynamodb::error::SdkError<QueryError>` errors.
-    #[error("DynamoDb query error: {0}")]
+    #[error(transparent)]
     DynamoDbQuery(#[from] aws_sdk_dynamodb::error::SdkError<QueryError>),
 
     /// A variant to map `aws_sdk_dynamodb::error::SdkError<PutItemError>` errors.
-    #[error("DynamoDb PutItem error: {0}")]
+    #[error(transparent)]
     DynamoDbPutItem(#[from] aws_sdk_dynamodb::error::SdkError<PutItemError>),
 
     /// A variant to map `aws_sdk_dynamodb::error::SdkError<DeleteItemError>` errors.
-    #[error("DynamoDb DeleteItem error: {0}")]
+    #[error(transparent)]
     DynamoDbDeleteItem(#[from] aws_sdk_dynamodb::error::SdkError<DeleteItemError>),
  
     /// A variant to map `aws_sdk_dynamodb::error::SdkError<BatchWriteItemError>` errors.
-    #[error("DynamoDb batch write item error: {0}")]
+    #[error(transparent)]
     DynamoDbBatchWriteItem(#[from] aws_sdk_dynamodb::error::SdkError<BatchWriteItemError>),
 
     /// A variant to map `aws_sdk_dynamodb::error::SdkError<ScanError>` errors.
-    #[error("DynamoDb scan error: {0}")]
+    #[error(transparent)]
     DynamoDbScan(#[from] aws_sdk_dynamodb::error::SdkError<ScanError>),
 
     /// A variant to map `rmp_serde` encode errors.
-    #[error("Rust MsgPack encode error: {0}")]
-    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
+    #[error(transparent)]
+    Encode(#[from] rmp_serde::encode::Error),
 
     /// A variant to map `rmp_serde` decode errors.
-    #[error("Rust MsgPack decode error: {0}")]
-    RmpSerdeDecode(#[from] rmp_serde::decode::Error),
+    #[error(transparent)]
+    Decode(#[from] rmp_serde::decode::Error),
+}
+
+impl From<DynamoDBStoreError> for session_store::Error {
+    fn from(err: DynamoDBStoreError) -> Self {
+        match err {
+            DynamoDBStoreError::DynamoDbBuild(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::DynamoDbQuery(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::DynamoDbPutItem(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::DynamoDbDeleteItem(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::DynamoDbBatchWriteItem(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::DynamoDbScan(inner) => session_store::Error::Backend(inner.to_string()),
+            DynamoDBStoreError::Decode(inner) => session_store::Error::Decode(inner.to_string()),
+            DynamoDBStoreError::Encode(inner) => session_store::Error::Encode(inner.to_string()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -172,7 +190,7 @@ impl ExpiredDeletion for DynamoDBStore {
     // preventing the scan from returning larger results, taking longer, costing more, and increasing
     // the chance for a failure while batch processing.
     // see: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
-    async fn delete_expired(&self) -> Result<(), Self::Error> {
+    async fn delete_expired(&self) -> session_store::Result<()> {
         let now_sec = OffsetDateTime::now_utc().unix_timestamp();
         let now_av = AttributeValue::N(now_sec.to_string());
 
@@ -206,8 +224,14 @@ impl ExpiredDeletion for DynamoDBStore {
                 batches.push(batch);
                 batch = Vec::with_capacity(25);
             }
-            let delete_request = DeleteRequest::builder().set_key(Some(session?.clone())).build()?;
-            let write_request = WriteRequest::builder().delete_request(delete_request).build();
+            let delete_keys = session.map_err(DynamoDBStoreError::DynamoDbScan)?.clone();
+            let delete_request = DeleteRequest::builder()
+                .set_key(Some(delete_keys))
+                .build()
+                .map_err(DynamoDBStoreError::DynamoDbBuild)?;
+            let write_request = WriteRequest::builder()
+                .delete_request(delete_request)
+                .build();
             batch.push(write_request);
         }
         if batch.len() > 0 {
@@ -223,7 +247,8 @@ impl ExpiredDeletion for DynamoDBStore {
                     .batch_write_item()
                     .set_request_items(unprocessed)
                     .send()
-                    .await?
+                    .await
+                    .map_err(DynamoDBStoreError::DynamoDbBatchWriteItem)?
                     .unprocessed_items;
                 unprocessed_count = new_unprocessed_items
                     .as_ref()
@@ -239,35 +264,30 @@ impl ExpiredDeletion for DynamoDBStore {
 
 #[async_trait]
 impl SessionStore for DynamoDBStore {
-    type Error = DynamoDBStoreError;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
-//        println!("save invoked");
-        let exp_sec = session.expiry_date().unix_timestamp();
-        let data_bytes = rmp_serde::to_vec(session)?;
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
+        let exp_sec = record.expiry_date.unix_timestamp();
+        let data_bytes = rmp_serde::to_vec(record).map_err(DynamoDBStoreError::Encode)?;
 
         let mut item = HashMap::new();
-        item.insert(self.props.partition_key.name.clone(), AttributeValue::S(self.pk(session.id())));
+        item.insert(self.props.partition_key.name.clone(), AttributeValue::S(self.pk(record.id)));
         item.insert(self.props.data_name.clone(), AttributeValue::B(Blob::new(data_bytes)));
         item.insert(self.props.expirey_name.clone(), AttributeValue::N(exp_sec.to_string()));
         if let Some(sk) = &self.props.sort_key {
-            item.insert(sk.name.clone(), AttributeValue::S(self.sk(session.id())));
+            item.insert(sk.name.clone(), AttributeValue::S(self.sk(record.id)));
         }
 
-//        println!("save item={:?}", &item);
-
-        let mut save = self.client
+        self.client
             .put_item()
             .table_name(&self.props.table_name)
             .set_item(Some(item))
             .send()
-            .await?;
-        println!("save: {:?}", save);
+            .await
+            .map_err(DynamoDBStoreError::DynamoDbPutItem)?;
+
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
-//        println!("load invoked: session_id={}", &session_id);
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let now_sec = OffsetDateTime::now_utc().unix_timestamp();
 
         let mut attribute_names = HashMap::new();
@@ -294,7 +314,8 @@ impl SessionStore for DynamoDBStore {
             .key_condition_expression(key_condition)
             .filter_expression("#expire_at > :expire_at")
             .send()
-            .await?
+            .await
+            .map_err(DynamoDBStoreError::DynamoDbQuery)?
             .items
             .and_then(|list| list.into_iter().next())
             .and_then(|map| { 
@@ -302,17 +323,14 @@ impl SessionStore for DynamoDBStore {
                 else { None }
             });
 
-//        println!("load: {:?}", &item);
-
         if let Some(bytes) = item {
-            Ok(Some(rmp_serde::from_slice(&bytes)?))
+            Ok(Some(rmp_serde::from_slice(&bytes).map_err(DynamoDBStoreError::Decode)?))
         } else {
             Ok(None)
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
-//        println!("delete invoked");
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
         let _ = if let Some(sk) = &self.props.sort_key {
             self.client
                 .delete_item()
@@ -320,14 +338,16 @@ impl SessionStore for DynamoDBStore {
                 .key(&self.props.partition_key.name, AttributeValue::S(self.pk(session_id)))
                 .key(&sk.name, AttributeValue::S(self.sk(session_id)))
                 .send()
-                .await?;
+                .await
+                .map_err(DynamoDBStoreError::DynamoDbDeleteItem)?;
         } else {
             self.client
                 .delete_item()
                 .table_name(&self.props.table_name)
                 .key(&self.props.partition_key.name, AttributeValue::S(self.pk(session_id)))
                 .send()
-                .await?;
+                .await
+                .map_err(DynamoDBStoreError::DynamoDbDeleteItem)?;
         };
         Ok(())
     }

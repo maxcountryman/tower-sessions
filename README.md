@@ -31,15 +31,16 @@ It offers:
 - **Pluggable Storage Backends:** Bring your own backend simply by
   implementing the `SessionStore` trait, fully decoupling sessions from their
   storage.
+- **Minimal Overhead**: Sessions are only loaded from their backing stores
+  when they're actually used and only in e.g. the handler they're used in.
+  That means this middleware can be installed anywhere in your route
+  graph with minimal overhead.
 - **An `axum` Extractor for `Session`:** Applications built with `axum`
   can use `Session` as an extractor directly in their handlers. This makes
   using sessions as easy as including `Session` in your handler.
 - **Common Backends Out-of-the-Box:** `RedisStore`, SQLx
   (`SqliteStore`, `PostgresStore`, `MySqlStore`), and `MongoDBStore` stores
   are available via their respective feature flags.
-- **Layered Caching:** With `CachingSessionStore`, applications can leverage a
-  cache such as `MokaStore` to reduce roundtrips to the store when loading
-  sessions.
 - **Simple Key-Value Interface:** Sessions offer a key-value interface that
   supports native Rust types. So long as these types are `Serialize` and can
   be converted to JSON, it's straightforward to insert, get, and remove any
@@ -49,9 +50,9 @@ It offers:
 
 This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
 
-### User authentication
+### User session management
 
-For managing user authentication and authorization, please see [`axum-login`](https://github.com/maxcountryman/axum-login).
+To facilitate authentication and authorization, we've built [`axum-login`](https://github.com/maxcountryman/axum-login) on top of this crate. Please check it out if you're looking for a generalized auth solution.
 
 ## 📦 Install
 
@@ -59,7 +60,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.7.0"
+tower-sessions = "0.8.0"
 ```
 
 ## 🤸 Usage
@@ -108,15 +109,8 @@ async fn main() {
 }
 
 async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session
-        .get(COUNTER_KEY)
-        .expect("Could not deserialize.")
-        .unwrap_or_default();
-
-    session
-        .insert(COUNTER_KEY, counter.0 + 1)
-        .expect("Could not serialize.");
-
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
     format!("Current count: {}", counter.0)
 }
 ```

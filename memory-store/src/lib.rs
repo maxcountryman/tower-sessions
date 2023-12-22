@@ -1,11 +1,11 @@
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use parking_lot::Mutex;
 use time::OffsetDateTime;
+use tokio::sync::Mutex;
 use tower_sessions_core::{
-    session::{Id, Session},
-    SessionStore,
+    session::{Id, Record},
+    session_store, SessionStore,
 };
 
 /// A session store that lives only in memory.
@@ -19,31 +19,31 @@ use tower_sessions_core::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<Id, (Session, OffsetDateTime)>>>);
+pub struct MemoryStore(Arc<Mutex<HashMap<Id, (Record, OffsetDateTime)>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
-    type Error = Infallible;
-
-    async fn save(&self, session: &Session) -> Result<(), Self::Error> {
+    async fn save(&self, record: &Record) -> session_store::Result<()> {
         self.0
             .lock()
-            .insert(*session.id(), (session.clone(), session.expiry_date()));
+            .await
+            .insert(record.id, (record.clone(), record.expiry_date));
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Session>, Self::Error> {
+    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         Ok(self
             .0
             .lock()
+            .await
             .get(session_id)
             .filter(|(_, expiry_date)| is_active(*expiry_date))
             .map(|(session, _)| session)
             .cloned())
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<(), Self::Error> {
-        self.0.lock().remove(session_id);
+    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
+        self.0.lock().await.remove(session_id);
         Ok(())
     }
 }

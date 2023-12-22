@@ -37,7 +37,7 @@ struct Guest {
 }
 
 impl Guest {
-    const GUEST_DATA_KEY: &'static str = "guest_data";
+    const GUEST_DATA_KEY: &'static str = "guest.data";
 
     fn id(&self) -> Uuid {
         self.guest_data.id
@@ -55,15 +55,16 @@ impl Guest {
         self.guest_data.pageviews
     }
 
-    fn mark_pageview(&mut self) {
+    async fn mark_pageview(&mut self) {
         self.guest_data.pageviews += 1;
-        Self::update_session(&self.session, &self.guest_data)
+        Self::update_session(&self.session, &self.guest_data).await
     }
 
-    fn update_session(session: &Session, guest_data: &GuestData) {
+    async fn update_session(session: &Session, guest_data: &GuestData) {
         session
             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
-            .expect("infallible")
+            .await
+            .unwrap()
     }
 }
 
@@ -93,12 +94,13 @@ where
 
         let mut guest_data: GuestData = session
             .get(Self::GUEST_DATA_KEY)
-            .expect("infallible")
+            .await
+            .unwrap()
             .unwrap_or_default();
 
         guest_data.last_seen = OffsetDateTime::now_utc();
 
-        Self::update_session(&session, &guest_data);
+        Self::update_session(&session, &guest_data).await;
 
         Ok(Self {
             session,
@@ -137,6 +139,6 @@ async fn main() {
 // Use cases could include buckets for site preferences, analytics,
 // feature flags, etc.
 async fn handler(mut guest: Guest) -> impl IntoResponse {
-    guest.mark_pageview();
+    guest.mark_pageview().await;
     format!("{}", guest)
 }

@@ -1,5 +1,19 @@
 # Unreleased
 
+# 0.8.0
+
+**Breaking Changes**
+
+- Lazy sessions. #112
+
+Among other things, session methods are now entirely async, meaning applications must be updated to await these methods in order to migrate.
+
+Separately, `SessionStore` has been updated to use a `Record` intermediary. As such, `SessionStore` implementations must be updated accordingly.
+
+Session stores now use a concrete error type that must be used in implementations of `SessionStore`.
+
+The `secure` cookie attribute now defaults to `true`.
+
 # 0.7.0
 
 **Breaking Changes**
