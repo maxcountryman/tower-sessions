@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.8.1
+
+- Allow constructing `RedisStore` from `RedisPool`. #122
+
 # 0.8.0
 
 **Breaking Changes**

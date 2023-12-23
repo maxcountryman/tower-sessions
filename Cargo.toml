@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -60,15 +60,15 @@ postgres-store = ["sqlx-store", "tower-sessions-sqlx-store/postgres"]
 mysql-store = ["sqlx-store", "tower-sessions-sqlx-store/mysql"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.8.0", path = ".", default-features = false }
+tower-sessions = { version = "=0.8.1", path = ".", default-features = false }
 
-tower-sessions-core = { version = "=0.8.0", path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { version = "=0.8.0", path = "memory-store" }
-tower-sessions-moka-store = { version = "=0.8.0", path = "moka-store" }
-tower-sessions-redis-store = { version = "=0.8.0", path = "redis-store" }
-tower-sessions-mongodb-store = { version = "=0.8.0", path = "mongodb-store" }
-tower-sessions-dynamodb-store = { version = "=0.8.0", path = "dynamodb-store" }
-tower-sessions-sqlx-store = { version = "=0.8.0", path = "sqlx-store" }
+tower-sessions-core = { version = "=0.8.1", path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { version = "=0.8.1", path = "memory-store" }
+tower-sessions-moka-store = { version = "=0.8.1", path = "moka-store" }
+tower-sessions-redis-store = { version = "=0.8.1", path = "redis-store" }
+tower-sessions-mongodb-store = { version = "=0.8.1", path = "mongodb-store" }
+tower-sessions-dynamodb-store = { version = "=0.8.1", path = "dynamodb-store" }
+tower-sessions-sqlx-store = { version = "=0.8.1", path = "sqlx-store" }
 
 async-trait = "0.1.74"
 parking_lot = { version = "0.12.1", features = ["serde"] }
