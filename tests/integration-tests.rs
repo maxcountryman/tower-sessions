@@ -137,16 +137,14 @@ mod mongodb_store_tests {
     route_tests!(app);
 }
 
-
 #[cfg(all(test, feature = "axum-core", feature = "dynamodb-store"))]
 mod dynamodb_store_tests {
+    use crate::common::build_app;
     use axum::Router;
     use tower_sessions::{
-        aws_config,
-        aws_sdk_dynamodb,
-        DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreKey, SessionManagerLayer
+        aws_config, aws_sdk_dynamodb, DynamoDBStore, DynamoDBStoreKey, DynamoDBStoreProps,
+        SessionManagerLayer,
     };
-    use crate::common::build_app;
 
     async fn app(max_age: Option<Duration>) -> Router {
         std::env::set_var("AWS_REGION", "us-east-1");
@@ -173,37 +171,47 @@ mod dynamodb_store_tests {
             ..Default::default()
         };
 
-        let mut create_table_request = client.create_table()
+        let mut create_table_request = client
+            .create_table()
             .table_name(&store_props.table_name)
-            .attribute_definitions(aws_sdk_dynamodb::types::AttributeDefinition::builder()
-                .attribute_name(&store_props.partition_key.name)
-                .attribute_type(aws_sdk_dynamodb::types::ScalarAttributeType::S)
-                .build()
-                .unwrap())
-            .key_schema(aws_sdk_dynamodb::types::KeySchemaElement::builder()
-                .attribute_name(&store_props.partition_key.name)
-                .key_type(aws_sdk_dynamodb::types::KeyType::Hash)
-                .build()
-                .unwrap())
-            .provisioned_throughput(aws_sdk_dynamodb::types::ProvisionedThroughput::builder()
-                .read_capacity_units(10)
-                .write_capacity_units(5)
-                .build()
-                .unwrap());
+            .attribute_definitions(
+                aws_sdk_dynamodb::types::AttributeDefinition::builder()
+                    .attribute_name(&store_props.partition_key.name)
+                    .attribute_type(aws_sdk_dynamodb::types::ScalarAttributeType::S)
+                    .build()
+                    .unwrap(),
+            )
+            .key_schema(
+                aws_sdk_dynamodb::types::KeySchemaElement::builder()
+                    .attribute_name(&store_props.partition_key.name)
+                    .key_type(aws_sdk_dynamodb::types::KeyType::Hash)
+                    .build()
+                    .unwrap(),
+            )
+            .provisioned_throughput(
+                aws_sdk_dynamodb::types::ProvisionedThroughput::builder()
+                    .read_capacity_units(10)
+                    .write_capacity_units(5)
+                    .build()
+                    .unwrap(),
+            );
 
         if let Some(sk) = &store_props.sort_key {
             create_table_request = create_table_request
-                .attribute_definitions(aws_sdk_dynamodb::types::AttributeDefinition::builder()
+                .attribute_definitions(
+                    aws_sdk_dynamodb::types::AttributeDefinition::builder()
                         .attribute_name(&sk.name)
                         .attribute_type(aws_sdk_dynamodb::types::ScalarAttributeType::S)
                         .build()
-                        .unwrap())
+                        .unwrap(),
+                )
                 .key_schema(
                     aws_sdk_dynamodb::types::KeySchemaElement::builder()
                         .attribute_name(&sk.name)
                         .key_type(aws_sdk_dynamodb::types::KeyType::Range)
                         .build()
-                        .unwrap());
+                        .unwrap(),
+                );
         }
 
         let _create_table_response = create_table_request.send().await;

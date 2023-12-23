@@ -446,6 +446,22 @@ pub use tower_sessions_core::{
     session::{Expiry, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
+#[cfg(feature = "dynamodb-store")]
+pub use tower_sessions_dynamodb_store::aws_config;
+#[cfg(feature = "dynamodb-store")]
+pub use tower_sessions_dynamodb_store::aws_sdk_dynamodb;
+#[cfg(feature = "dynamodb-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
+#[doc(inline)]
+pub use tower_sessions_dynamodb_store::DynamoDBStore;
+#[cfg(feature = "dynamodb-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
+#[doc(inline)]
+pub use tower_sessions_dynamodb_store::DynamoDBStoreKey;
+#[cfg(feature = "dynamodb-store")]
+#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
+#[doc(inline)]
+pub use tower_sessions_dynamodb_store::DynamoDBStoreProps;
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
 #[doc(inline)]
@@ -460,22 +476,6 @@ pub use tower_sessions_mongodb_store::mongodb;
 #[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
 #[doc(inline)]
 pub use tower_sessions_mongodb_store::MongoDBStore;
-#[cfg(feature = "dynamodb-store")]
-pub use tower_sessions_dynamodb_store::aws_sdk_dynamodb;
-#[cfg(feature = "dynamodb-store")]
-pub use tower_sessions_dynamodb_store::aws_config;
-#[cfg(feature = "dynamodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
-#[doc(inline)]
-pub use tower_sessions_dynamodb_store::DynamoDBStore;
-#[cfg(feature = "dynamodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
-#[doc(inline)]
-pub use tower_sessions_dynamodb_store::DynamoDBStoreProps;
-#[cfg(feature = "dynamodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
-#[doc(inline)]
-pub use tower_sessions_dynamodb_store::DynamoDBStoreKey;
 #[cfg(feature = "redis-store")]
 pub use tower_sessions_redis_store::fred;
 #[cfg(feature = "redis-store")]
