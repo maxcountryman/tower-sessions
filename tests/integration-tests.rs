@@ -139,12 +139,13 @@ mod mongodb_store_tests {
 
 #[cfg(all(test, feature = "axum-core", feature = "dynamodb-store"))]
 mod dynamodb_store_tests {
-    use crate::common::build_app;
     use axum::Router;
     use tower_sessions::{
         aws_config, aws_sdk_dynamodb, DynamoDBStore, DynamoDBStoreKey, DynamoDBStoreProps,
         SessionManagerLayer,
     };
+
+    use crate::common::build_app;
 
     async fn app(max_age: Option<Duration>) -> Router {
         std::env::set_var("AWS_REGION", "us-east-1");

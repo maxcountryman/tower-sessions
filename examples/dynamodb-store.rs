@@ -1,9 +1,10 @@
+use std::net::SocketAddr;
+
 use axum::{
     error_handling::HandleErrorLayer, response::IntoResponse, routing::get, BoxError, Router,
 };
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use time::Duration;
 use tower::ServiceBuilder;
 use tower_sessions::{

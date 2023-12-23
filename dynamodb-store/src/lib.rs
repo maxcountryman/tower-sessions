@@ -1,3 +1,5 @@
+use std::collections::hash_map::HashMap;
+
 use async_trait::async_trait;
 pub use aws_config;
 pub use aws_sdk_dynamodb;
@@ -10,7 +12,6 @@ use aws_sdk_dynamodb::{
     types::{AttributeValue, DeleteRequest, WriteRequest},
     Client,
 };
-use std::collections::hash_map::HashMap;
 use time::OffsetDateTime;
 use tower_sessions_core::{
     session::{Id, Record},
@@ -20,23 +21,28 @@ use tower_sessions_core::{
 /// An error type for `DynamoDBStore`.
 #[derive(thiserror::Error, Debug)]
 pub enum DynamoDBStoreError {
-    /// A variant to map `aws_sdk_dynamodb::error::BuildError` errors.
+    /// A variant to map `aws_sdk_dynamodb::error::BuildError`
+    /// errors.
     #[error(transparent)]
     DynamoDbBuild(#[from] aws_sdk_dynamodb::error::BuildError),
 
-    /// A variant to map `aws_sdk_dynamodb::error::SdkError<QueryError>` errors.
+    /// A variant to map `aws_sdk_dynamodb::error::SdkError<QueryError>`
+    /// errors.
     #[error(transparent)]
     DynamoDbQuery(#[from] aws_sdk_dynamodb::error::SdkError<QueryError>),
 
-    /// A variant to map `aws_sdk_dynamodb::error::SdkError<PutItemError>` errors.
+    /// A variant to map `aws_sdk_dynamodb::error::SdkError<PutItemError>`
+    /// errors.
     #[error(transparent)]
     DynamoDbPutItem(#[from] aws_sdk_dynamodb::error::SdkError<PutItemError>),
 
-    /// A variant to map `aws_sdk_dynamodb::error::SdkError<DeleteItemError>` errors.
+    /// A variant to map `aws_sdk_dynamodb::error::SdkError<DeleteItemError>`
+    /// errors.
     #[error(transparent)]
     DynamoDbDeleteItem(#[from] aws_sdk_dynamodb::error::SdkError<DeleteItemError>),
 
-    /// A variant to map `aws_sdk_dynamodb::error::SdkError<BatchWriteItemError>` errors.
+    /// A variant to map
+    /// `aws_sdk_dynamodb::error::SdkError<BatchWriteItemError>` errors.
     #[error(transparent)]
     DynamoDbBatchWriteItem(#[from] aws_sdk_dynamodb::error::SdkError<BatchWriteItemError>),
 
@@ -80,15 +86,17 @@ impl From<DynamoDBStoreError> for session_store::Error {
     }
 }
 
-/// Holds the DynamoDB property name of a key, and optionaly a prefix/suffix to add to the session
-/// id before saving to DynamoDB.
+/// Holds the DynamoDB property name of a key, and optionaly a prefix/suffix to
+/// add to the session id before saving to DynamoDB.
 #[derive(Clone, Debug)]
 pub struct DynamoDBStoreKey {
     /// The property name of the key.
     pub name: String,
-    /// The optional prefix to add before the session id (useful for singletable designs).
+    /// The optional prefix to add before the session id (useful for singletable
+    /// designs).
     pub prefix: Option<String>,
-    /// The optional suffix to add after the session id (useful for singletable designs).
+    /// The optional suffix to add after the session id (useful for singletable
+    /// designs).
     pub suffix: Option<String>,
 }
 
@@ -111,10 +119,12 @@ pub struct DynamoDBStoreProps {
     /// The DynamoDB partition(hash) key to store the session_id at.
     pub partition_key: DynamoDBStoreKey,
 
-    /// The DynamoDB sort(search) key to store the session_id under (useful with singletable designs).
+    /// The DynamoDB sort(search) key to store the session_id under (useful with
+    /// singletable designs).
     pub sort_key: Option<DynamoDBStoreKey>,
 
-    /// The property name to hold the expiration time of the session, a unix timestamp in seconds.
+    /// The property name to hold the expiration time of the session, a unix
+    /// timestamp in seconds.
     pub expirey_name: String,
 
     /// The property name to hold the session data blob.
@@ -148,12 +158,8 @@ impl DynamoDBStore {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::{
-    ///     aws_config,
-    ///     aws_sdk_dynamodb,
-    ///     DynamoDBStore,
-    ///     DynamoDBStoreProps,
-    /// };
+    /// use tower_sessions::{aws_config, aws_sdk_dynamodb, DynamoDBStore, DynamoDBStoreProps};
+    ///
     /// let store_props = DynamoDBStoreProps::default();
     ///
     /// # tokio_test::block_on(async {
@@ -199,15 +205,18 @@ impl DynamoDBStore {
 
 #[async_trait]
 impl ExpiredDeletion for DynamoDBStore {
-    // scans are typically to be avoided in dynamodb; the ExpiredDeletion trait assumes a scan is
-    // available on the Store; it recommended to use this in conjunction with
-    // a dynamo Time to Live setting on the DynamoDB table.
-    // A TTL setting will let dynamodb cull expired sessions inbetween delete_expired runs,
-    // preventing the scan from returning larger results, taking longer, costing more, and increasing
-    // the chance for a failure while batch processing.
-    // NOTE: a DynamoDB TTL does not offer an SLA on deleting the columns below 48 hours. While
-    // typically items are removed within seconds of their TLL value, they can remain in the table
-    // for up to 2 days before AWS removes them.
+    // scans are typically to be avoided in dynamodb; the ExpiredDeletion trait
+    // assumes a scan is available on the Store; it recommended to use this in
+    // conjunction with a dynamo Time to Live setting on the DynamoDB table.
+    // A TTL setting will let dynamodb cull expired sessions inbetween
+    // delete_expired runs, preventing the scan from returning larger results,
+    // taking longer, costing more, and increasing the chance for a failure
+    // while batch processing.
+    // NOTE: a DynamoDB TTL does not offer an SLA on deleting the columns below 48
+    // hours. While typically items are removed within seconds of their TLL
+    // value, they can remain in the table for up to 2 days before AWS removes
+    // them.
+    //
     // see: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
     async fn delete_expired(&self) -> session_store::Result<()> {
         let now_sec = OffsetDateTime::now_utc().unix_timestamp();
