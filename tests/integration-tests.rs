@@ -144,7 +144,7 @@ mod dynamodb_store_tests {
     use tower_sessions::{
         aws_config,
         aws_sdk_dynamodb,
-        DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreSortKey, SessionManagerLayer
+        DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreKey, SessionManagerLayer
     };
     use crate::common::build_app;
 
@@ -165,7 +165,7 @@ mod dynamodb_store_tests {
         let client = aws_sdk_dynamodb::Client::from_conf(dynamodb_local_config);
         let store_props = DynamoDBStoreProps {
             table_name: "TowerSessions".to_string(),
-            sort_key: Some(DynamoDBStoreSortKey {
+            sort_key: Some(DynamoDBStoreKey {
                 name: "sort_key".to_string(),
                 prefix: Some("TOWER_SESSIONS::".to_string()),
                 suffix: None,

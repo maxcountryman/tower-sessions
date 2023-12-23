@@ -71,16 +71,21 @@ impl From<DynamoDBStoreError> for session_store::Error {
     }
 }
 
+/// Holds the DynamoDB property name of a key, and optionaly a prefix/suffix to add to the session
+/// id before saving to DynamoDB.
 #[derive(Clone, Debug)]
-pub struct DynamoDBStorePartitionKey {
+pub struct DynamoDBStoreKey {
+    /// The property name of the key.
     pub name: String,
+    /// The optional prefix to add before the session id (useful for singletable designs).
     pub prefix: Option<String>,
+    /// The optional suffix to add after the session id (useful for singletable designs).
     pub suffix: Option<String>,
 }
 
-impl Default for DynamoDBStorePartitionKey {
+impl Default for DynamoDBStoreKey {
     fn default() -> Self {
-        DynamoDBStorePartitionKey {
+        DynamoDBStoreKey {
             name: "session_id".to_string(),
             prefix: Some("SESSIONS::TOWER::".to_string()),
             suffix: None,
@@ -88,67 +93,64 @@ impl Default for DynamoDBStorePartitionKey {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct DynamoDBStoreSortKey {
-    pub name: String,
-    pub prefix: Option<String>,
-    pub suffix: Option<String>,
-}
-
-impl Default for DynamoDBStoreSortKey {
-    fn default() -> Self {
-        DynamoDBStoreSortKey {
-            name: "session_id".to_string(),
-            prefix: Some("SESSIONS::TOWER::".to_string()),
-            suffix: None,
-        }
-    }
-}
-
+/// Properties for configuring the session store.
 #[derive(Clone, Debug)]
 pub struct DynamoDBStoreProps {
+    /// DynamoDB table name to store sessions in.
     pub table_name: String,
-    pub partition_key: DynamoDBStorePartitionKey,
-    pub sort_key: Option<DynamoDBStoreSortKey>,
+
+    /// The DynamoDB partition(hash) key to store the session_id at.
+    pub partition_key: DynamoDBStoreKey,
+
+    /// The DynamoDB sort(search) key to store the session_id under (useful with singletable designs).
+    pub sort_key: Option<DynamoDBStoreKey>,
+
+    /// The property name to hold the expiration time of the session, a unix timestamp in seconds.
     pub expirey_name: String,
+
+    /// The property name to hold the session data blob.
     pub data_name: String,
-    pub session_prefix: String,
-    pub session_suffix: String,
 }
 
 impl Default for DynamoDBStoreProps {
     fn default() -> Self { 
         Self {
             table_name: "tower-sessions".to_string(),
-            partition_key: DynamoDBStorePartitionKey::default(),
+            partition_key: DynamoDBStoreKey::default(),
             sort_key: None,
             expirey_name: "expire_at".to_string(),
             data_name: "data".to_string(),
-            session_prefix: "SESSIONS::TOWER::".to_string(),
-            session_suffix: "".to_string(),
         }
     }
 }
 
-/// A DynamoDB session store.
+/// A DynamoDB backed session store.
 #[derive(Clone, Debug)]
 pub struct DynamoDBStore {
+    /// the aws-sdk DynamoDB client to use when managing towser-sessions.
     pub client: Client,
+    /// the DynamoDB backend configuration properties.
     pub props: DynamoDBStoreProps
 }
 
 impl DynamoDBStore {
-    /// Create a new MongoDBStore store with the provided connection pool.
+    /// Create a new DynamoDBStore store with the default store properties.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tower_sessions::{mongodb::Client, MongoDBStore};
+    /// use tower_sessions::{
+    ///     aws_config,
+    ///     aws_sdk_dynamodb,
+    ///     DynamoDBStore,
+    ///     DynamoDBStoreProps,
+    /// };
+    /// let store_props = DynamoDBStoreProps::default();
     ///
     /// # tokio_test::block_on(async {
-    /// let database_url = std::option_env!("DATABASE_URL").unwrap();
-    /// let client = Client::with_uri_str(database_url).await.unwrap();
-    /// let session_store = MongoDBStore::new(client, "database".to_string());
+    /// let config = aws_config::load_from_env().await;
+    /// let client = aws_sdk_dynamodb::Client::new(&config);
+    /// let session_store = DynamoDBStore::new(client, store_props);
     /// # })
     /// ```
     pub fn new(client: Client, props: DynamoDBStoreProps) -> Self {
@@ -158,7 +160,7 @@ impl DynamoDBStore {
         }
     }
 
-    pub fn pk<S: ToString>(&self, input: S) -> String {
+    fn pk<S: ToString>(&self, input: S) -> String {
         format!(
             "{}{}{}",
             self.props.partition_key.prefix.clone().unwrap_or("".to_string()),
@@ -167,7 +169,7 @@ impl DynamoDBStore {
         )
     }
 
-    pub fn sk<S: ToString>(&self, input: S) -> String {
+    fn sk<S: ToString>(&self, input: S) -> String {
         if let Some(sk) = &self.props.sort_key {
             format!(
                 "{}{}{}",
@@ -183,12 +185,15 @@ impl DynamoDBStore {
 
 #[async_trait]
 impl ExpiredDeletion for DynamoDBStore {
-    // scans are typically avoided in dynamodb, but the ExpiredDeletion trait assumes a scan is
-    // available on the Store, so it is recommended to use this in conjunction with
+    // scans are typically to be avoided in dynamodb; the ExpiredDeletion trait assumes a scan is
+    // available on the Store; it recommended to use this in conjunction with
     // a dynamo Time to Live setting on the DynamoDB table.
     // A TTL setting will let dynamodb cull expired sessions inbetween delete_expired runs,
     // preventing the scan from returning larger results, taking longer, costing more, and increasing
     // the chance for a failure while batch processing.
+    // NOTE: a DynamoDB TTL does not offer an SLA on deleting the columns below 48 hours. While
+    // typically items are removed within seconds of their TLL value, they can remain in the table
+    // for up to 2 days before AWS removes them.
     // see: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
     async fn delete_expired(&self) -> session_store::Result<()> {
         let now_sec = OffsetDateTime::now_utc().unix_timestamp();
@@ -208,8 +213,8 @@ impl ExpiredDeletion for DynamoDBStore {
             .scan()
             .table_name(&self.props.table_name)
             .set_expression_attribute_names(Some(attribute_names))
-            .expression_attribute_values(":expire_at", now_av)
-            .filter_expression("#expire_at < :expire_at")
+            .expression_attribute_values(":now", now_av)
+            .filter_expression("#expire_at < :now")
             .projection_expression(projection)
             .into_paginator()
             .page_size(25)

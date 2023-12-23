@@ -9,7 +9,8 @@ use tower::ServiceBuilder;
 use tower_sessions::{
     aws_config,
     aws_sdk_dynamodb,
-    Expiry, DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreSortKey, Session, SessionManagerLayer
+    Expiry, DynamoDBStore, DynamoDBStoreProps, DynamoDBStoreKey, Session, SessionManagerLayer,
+    ExpiredDeletion,
 };
 const COUNTER_KEY: &str = "counter";
 
@@ -38,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store_props = DynamoDBStoreProps { 
         table_name: "TowerSessions".to_string(),
-        sort_key: Some(DynamoDBStoreSortKey {
+        sort_key: Some(DynamoDBStoreKey {
             name: "sort_key".to_string(),
             prefix: Some("TOWER_SESSIONS::".to_string()),
             suffix: None,
@@ -84,6 +85,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let session_store = DynamoDBStore::new(client, store_props);
 
+    let deletion_task = tokio::task::spawn(
+        session_store
+            .clone()
+            .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    );
+
     let session_service = ServiceBuilder::new()
         .layer(HandleErrorLayer::new(|e: BoxError| async move {
             println!("error: {:?}",e);
@@ -102,6 +109,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
+
+    deletion_task.await??;
 
     Ok(())
 }

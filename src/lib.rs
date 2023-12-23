@@ -475,11 +475,7 @@ pub use tower_sessions_dynamodb_store::DynamoDBStoreProps;
 #[cfg(feature = "dynamodb-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
 #[doc(inline)]
-pub use tower_sessions_dynamodb_store::DynamoDBStoreSortKey;
-#[cfg(feature = "dynamodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "dynamodb-store")))]
-#[doc(inline)]
-pub use tower_sessions_dynamodb_store::DynamoDBStorePartitionKey;
+pub use tower_sessions_dynamodb_store::DynamoDBStoreKey;
 #[cfg(feature = "redis-store")]
 pub use tower_sessions_redis_store::fred;
 #[cfg(feature = "redis-store")]
