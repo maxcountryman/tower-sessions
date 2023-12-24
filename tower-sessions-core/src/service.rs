@@ -172,6 +172,7 @@ pub struct SessionManagerLayer<Store: SessionStore> {
 
 impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Configures the name of the cookie used for the session.
+    /// The default value is `"id"`.
     ///
     /// # Examples
     ///
@@ -210,6 +211,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 
     /// Configures the `"SameSite"` attribute of the cookie used for the
     /// session.
+    /// The default value is [`SameSite::Strict`].
     ///
     /// # Examples
     ///
@@ -225,6 +227,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Max-Age"` attribute of the cookie used for the session.
+    /// The default value is `None`.
     ///
     /// # Examples
     ///
@@ -242,6 +245,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Secure"` attribute of the cookie used for the session.
+    /// The default value is `true`.
     ///
     /// # Examples
     ///
@@ -257,6 +261,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Path"` attribute of the cookie used for the session.
+    /// The default value is `"/"`.
     ///
     /// # Examples
     ///
@@ -273,6 +278,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 
     /// Configures the `"Domain"` attribute of the cookie used for the session.
+    /// The default value is `None`.
     ///
     /// # Examples
     ///
