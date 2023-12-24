@@ -875,7 +875,7 @@ impl FromStr for Id {
 
 /// Record type that's appropriate for encoding and decoding sessions to and
 /// from session stores.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Record {
     pub id: Id,
     pub data: Data,
