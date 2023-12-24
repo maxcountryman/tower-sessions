@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.8.2
+
+- Derive `PartialEq` for `Record`. #125
+
 # 0.8.1
 
 - Allow constructing `RedisStore` from `RedisPool`. #122
