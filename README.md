@@ -120,6 +120,10 @@ You can find this [example][counter-example] as well as other example projects i
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
 
+## External `SessionStore` implementations
+
+- [SurrealDB](https://github.com/rynoV/tower-sessions-surrealdb-store)
+
 ## 🦺 Safety
 
 This crate uses `#![forbid(unsafe_code)]` to ensure everything is implemented in 100% safe Rust.
