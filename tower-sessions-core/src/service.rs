@@ -135,7 +135,7 @@ where
                 tracing::trace!(modified = modified, empty = empty, "session response state");
 
                 match session_cookie {
-                    Some(cookie) if empty => {
+                    Some(cookie) if empty && session.expiry().is_none() => {
                         tracing::debug!("removing session cookie");
                         cookies.remove(cookie)
                     }
