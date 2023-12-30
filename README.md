@@ -120,9 +120,14 @@ You can find this [example][counter-example] as well as other example projects i
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
 
-## External `SessionStore` implementations
+### Additional session stores
 
-- [SurrealDB](https://github.com/rynoV/tower-sessions-surrealdb-store)
+| Crate                                                                                          | Persistent | Description             |
+| ---------------------------------------------------------------------------------------------- | ---------- | ----------------------- |
+| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)    | Yes        | SurrealDB session store |
+| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store) | Yes        | DynamoDB session store  |
+
+Have a store to add? Please open a PR.
 
 ## 🦺 Safety
 
