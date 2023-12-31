@@ -84,18 +84,17 @@ impl<ReqBody, ResBody, S, Store: SessionStore> Service<Request<ReqBody>>
     for SessionManager<S, Store>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
-    S::Error: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
     S::Future: Send,
     ReqBody: Send + 'static,
-    ResBody: Send,
+    ResBody: Default + Send,
 {
     type Response = S::Response;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = S::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
@@ -114,7 +113,7 @@ where
         Box::pin(
             async move {
                 let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
-                    return Err(session::Error::MissingCookies.into());
+                    return Ok(Response::default());
                 };
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
@@ -127,7 +126,7 @@ where
 
                 req.extensions_mut().insert(session.clone());
 
-                let res = inner.call(req).await.map_err(Into::into)?;
+                let res = inner.call(req).await?;
 
                 let modified = session.is_modified();
                 let empty = session.is_empty().await;
@@ -143,9 +142,21 @@ where
                     // TODO: We can consider an "always save" configuration option:
                     _ if modified && !empty && !res.status().is_server_error() => {
                         tracing::debug!("saving session");
-                        session.save().await?;
+                        if let Err(err) = session.save().await {
+                            tracing::error!(err = %err, "failed to save session");
+                            let mut res = Response::default();
+                            *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+                            return Ok(res);
+                        }
 
-                        let session_id = session.id().ok_or(session::Error::MissingId)?;
+                        let Some(session_id) = session.id() else {
+                            tracing::error!("missing session id");
+
+                            let mut res = Response::default();
+                            *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+                            return Ok(res);
+                        };
+
                         let expiry_age = session.expiry_age();
                         let session_cookie = session_config.build_cookie(session_id, expiry_age);
 

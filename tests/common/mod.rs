@@ -1,9 +1,8 @@
-use axum::{error_handling::HandleErrorLayer, routing::get, Router};
-use axum_core::{body::Body, BoxError};
-use http::{header, HeaderMap, StatusCode};
+use axum::{routing::get, Router};
+use axum_core::body::Body;
+use http::{header, HeaderMap};
 use http_body_util::BodyExt;
 use time::Duration;
-use tower::ServiceBuilder;
 use tower_cookies::{cookie, Cookie};
 use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore};
 
@@ -62,13 +61,7 @@ pub fn build_app<Store: SessionStore + Clone>(
         session_manager = session_manager.with_expiry(Expiry::OnInactivity(max_age));
     }
 
-    let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|_: BoxError| async {
-            StatusCode::BAD_REQUEST
-        }))
-        .layer(session_manager);
-
-    routes().layer(session_service)
+    routes().layer(session_manager)
 }
 
 pub async fn body_string(body: Body) -> String {

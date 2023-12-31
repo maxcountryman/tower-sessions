@@ -1,12 +1,8 @@
 use std::net::SocketAddr;
 
-use axum::{
-    error_handling::HandleErrorLayer, response::IntoResponse, routing::get, BoxError, Router,
-};
-use http::StatusCode;
+use axum::{response::IntoResponse, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use tower::ServiceBuilder;
 use tower_sessions::{
     sqlx::PgPool, CachingSessionStore, Expiry, MokaStore, PostgresStore, Session,
     SessionManagerLayer,
@@ -28,19 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let moka_store = MokaStore::new(Some(2000));
     let caching_store = CachingSessionStore::new(moka_store, postgres_store);
 
-    let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|_: BoxError| async {
-            StatusCode::BAD_REQUEST
-        }))
-        .layer(
-            SessionManagerLayer::new(caching_store)
-                .with_secure(false)
-                .with_expiry(Expiry::OnInactivity(Duration::seconds(10))),
-        );
+    let session_layer = SessionManagerLayer::new(caching_store)
+        .with_secure(false)
+        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
 
-    let app = Router::new()
-        .route("/", get(handler))
-        .layer(session_service);
+    let app = Router::new().route("/", get(handler)).layer(session_layer);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(&addr).await?;

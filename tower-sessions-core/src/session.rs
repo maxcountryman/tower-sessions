@@ -34,14 +34,6 @@ pub enum Error {
 
     #[error(transparent)]
     Store(#[from] session_store::Error),
-
-    /// Missing session ID.
-    #[error("Missing session ID")]
-    MissingId,
-
-    /// Missing cookies.
-    #[error("Missing cookies; is tower-cookies set up?")]
-    MissingCookies,
 }
 
 /// A session which allows HTTP applications to associate key-value pairs with

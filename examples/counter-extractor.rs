@@ -1,14 +1,10 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use axum::{
-    error_handling::HandleErrorLayer, extract::FromRequestParts, response::IntoResponse,
-    routing::get, BoxError, Router,
-};
-use http::{request::Parts, StatusCode};
+use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
+use http::request::Parts;
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use tower::ServiceBuilder;
 use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
@@ -34,19 +30,11 @@ where
 #[tokio::main]
 async fn main() {
     let session_store = MemoryStore::default();
-    let session_service = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|_: BoxError| async {
-            StatusCode::BAD_REQUEST
-        }))
-        .layer(
-            SessionManagerLayer::new(session_store)
-                .with_secure(false)
-                .with_expiry(Expiry::OnInactivity(Duration::seconds(10))),
-        );
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
 
-    let app = Router::new()
-        .route("/", get(handler))
-        .layer(session_service);
+    let app = Router::new().route("/", get(handler)).layer(session_layer);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
