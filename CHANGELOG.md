@@ -1,5 +1,15 @@
 # Unreleased
 
+# 0.9.0
+
+**Breakiung Changes**
+
+- Make service infallible. #132
+
+This updates the service such that it always returns a response directly. In practice this means that e.g. `axum` applications no longer need the `HandleErrorLayer` and instead can use the layer directly. Note that if you use other fallible `tower` middleware, you will still need to use `HandleErrorLayer`.
+
+As such we've also remove the `MissingCookies` and `MissingId` variants from the session error enum.
+
 # 0.8.2
 
 - Derive `PartialEq` for `Record`. #125
