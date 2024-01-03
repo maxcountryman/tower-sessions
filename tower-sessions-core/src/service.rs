@@ -113,14 +113,25 @@ where
         Box::pin(
             async move {
                 let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
+                    // In practice this should never happen because we wrap `CookieManager`
+                    // directly.
+                    tracing::error!("missing cookies request extension");
                     return Ok(Response::default());
                 };
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
-                let session_id = session_cookie
-                    .clone()
-                    .map(|cookie| cookie.value().to_string())
-                    .and_then(|cookie_value| cookie_value.parse::<session::Id>().ok());
+                let session_id = session_cookie.clone().and_then(|cookie| {
+                    cookie
+                        .value()
+                        .parse::<session::Id>()
+                        .map_err(|err| {
+                            tracing::warn!(
+                                err = %err,
+                                "possibly suspicious activity: malformed session id"
+                            )
+                        })
+                        .ok()
+                });
 
                 let session = Session::new(session_id, session_store, session_config.expiry);
 
