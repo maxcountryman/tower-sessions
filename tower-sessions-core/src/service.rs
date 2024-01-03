@@ -113,6 +113,9 @@ where
         Box::pin(
             async move {
                 let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
+                    // In practice this should never happen because we wrap `CookieManager`
+                    // directly.
+                    tracing::error!("missing cookies request extension");
                     return Ok(Response::default());
                 };
 
