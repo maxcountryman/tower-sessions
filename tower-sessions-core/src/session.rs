@@ -371,22 +371,26 @@ impl Session {
     /// // Data is cleared...
     /// assert!(session.get::<usize>("foo").await.unwrap().is_none());
     ///
+    /// // ...data is cleared before loading from the backend...
+    /// let session = Session::new(session.id(), store.clone(), None);
+    /// session.clear().await;
+    /// assert!(session.get::<usize>("foo").await.unwrap().is_none());
+    ///
     /// let session = Session::new(session.id(), store, None);
-    /// // ...but not deleted from the store.
+    /// // ...but data is not deleted from the store.
     /// assert_eq!(session.get::<usize>("foo").await.unwrap(), Some(42));
     /// # });
     /// ```
-    #[tracing::instrument(skip(self))]
     pub async fn clear(&self) {
-        let mut record = self.record.lock().await;
-        if let Some(record) = record.as_mut() {
-            tracing::trace!("clearing record");
+        let mut record_guard = self.record.lock().await;
+        if let Some(record) = record_guard.as_mut() {
             record.data.clear();
-        } else {
-            tracing::trace!("record not loaded from store; creating a new one to clear");
-            *self.session_id.lock() = None;
-            *record = Some(self.create_record())
+        } else if let Some(session_id) = *self.session_id.lock() {
+            let mut new_record = self.create_record();
+            new_record.id = session_id;
+            *record_guard = Some(new_record);
         }
+
         self.is_modified.store(true, atomic::Ordering::Release);
     }
 
