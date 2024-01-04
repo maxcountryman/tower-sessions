@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.9.1
+
+- Ensure `clear` works before record loading. #134
+
 # 0.9.0
 
 **Breakiung Changes**
