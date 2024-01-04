@@ -376,10 +376,16 @@ impl Session {
     /// assert_eq!(session.get::<usize>("foo").await.unwrap(), Some(42));
     /// # });
     /// ```
+    #[tracing::instrument(skip(self))]
     pub async fn clear(&self) {
         let mut record = self.record.lock().await;
         if let Some(record) = record.as_mut() {
+            tracing::trace!("clearing record");
             record.data.clear();
+        } else {
+            tracing::trace!("record not loaded from store; creating a new one to clear");
+            *self.session_id.lock() = None;
+            *record = Some(self.create_record())
         }
         self.is_modified.store(true, atomic::Ordering::Release);
     }
