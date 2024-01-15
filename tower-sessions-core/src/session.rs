@@ -112,7 +112,12 @@ impl Session {
                         Some(loaded_record)
                     }
                     None => {
-                        tracing::trace!("record not found in store");
+                        // A well-behaved user agent should not send session cookies after
+                        // expiration. Even so it's possible for an expired session to be removed
+                        // from the store after a request was initiated. However, such a race should
+                        // be relatively uncommon and as such entering this branch could indicate
+                        // malicious behavior.
+                        tracing::warn!("possibly suspicious activity: record not found in store");
                         *self.session_id.lock() = None;
                         Some(self.create_record())
                     }
