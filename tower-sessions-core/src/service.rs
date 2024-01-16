@@ -120,7 +120,7 @@ where
                 };
 
                 let session_cookie = cookies.get(&session_config.name).map(Cookie::into_owned);
-                let session_id = session_cookie.clone().and_then(|cookie| {
+                let session_id = session_cookie.as_ref().and_then(|cookie| {
                     cookie
                         .value()
                         .parse::<session::Id>()
@@ -155,6 +155,7 @@ where
                         tracing::debug!("saving session");
                         if let Err(err) = session.save().await {
                             tracing::error!(err = %err, "failed to save session");
+
                             let mut res = Response::default();
                             *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
                             return Ok(res);
