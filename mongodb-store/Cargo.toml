@@ -10,7 +10,7 @@ repository.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-bson = { version = "2.7.0", features = ["time-0_3", "uuid-1"] }
+bson = { version = "2.7.0", features = ["time-0_3"] }
 mongodb = { version = "2.7.0" }
 rmp-serde = { workspace = true }
 serde = { workspace = true }

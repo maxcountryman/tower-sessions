@@ -6,11 +6,10 @@ use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
-use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct GuestData {
-    id: Uuid,
+    id: [u8; 22],
     pageviews: usize,
     first_seen: OffsetDateTime,
     last_seen: OffsetDateTime,
@@ -19,7 +18,7 @@ struct GuestData {
 impl Default for GuestData {
     fn default() -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: nanoid::nanoid!(22).as_bytes().try_into().unwrap(),
             pageviews: 0,
             first_seen: OffsetDateTime::now_utc(),
             last_seen: OffsetDateTime::now_utc(),
@@ -35,8 +34,8 @@ struct Guest {
 impl Guest {
     const GUEST_DATA_KEY: &'static str = "guest.data";
 
-    fn id(&self) -> Uuid {
-        self.guest_data.id
+    fn id(&self) -> &[u8] {
+        &self.guest_data.id
     }
 
     fn first_seen(&self) -> OffsetDateTime {
@@ -70,7 +69,7 @@ impl Display for Guest {
         write!(
             f,
             "Guest ID {}\n\nPageviews {}\n\nFirst seen {} ago\n\nLast seen {} ago\n\n",
-            self.id().as_hyphenated(),
+            std::str::from_utf8(self.id()).unwrap(),
             self.pageviews(),
             now - self.first_seen(),
             now - self.last_seen()
