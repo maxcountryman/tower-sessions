@@ -110,10 +110,11 @@ You can find this [example][counter-example] as well as other example projects i
 
 ### Additional session stores
 
-| Crate                                                                                          | Persistent | Description             |
-| ---------------------------------------------------------------------------------------------- | ---------- | ----------------------- |
-| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)    | Yes        | SurrealDB session store |
-| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store) | Yes        | DynamoDB session store  |
+| Crate                                                                                             | Persistent | Description             |
+| ------------------------------------------------------------------------------------------------- | ---------- | ----------------------- |
+| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)       | Yes        | SurrealDB session store |
+| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)    | Yes        | DynamoDB session store  |
+| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store) | Yes        | Firestore session store |
 
 Have a store to add? Please open a PR.
 
