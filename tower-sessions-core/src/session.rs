@@ -846,7 +846,7 @@ impl Session {
 
 /// ID type for sessions.
 ///
-/// Wraps an array of 22 bytes of URL-safe ASCII characters.
+/// Wraps an array of 16 bytes.
 ///
 /// # Examples
 ///
@@ -855,39 +855,47 @@ impl Session {
 ///
 /// Id::default();
 /// ```
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
-pub struct Id(pub [u8; 22]); // TODO: By this being public, it may be possible to override the
-                             // session ID, which is undesirable.
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
+pub struct Id(pub i128); // TODO: By this being public, it may be possible to override the
+                         // session ID, which is undesirable.
 
 impl Default for Id {
     fn default() -> Self {
-        let id = nanoid::nanoid!(22);
-        Self(id.as_bytes().try_into().unwrap())
+        use rand::prelude::*;
+
+        Self(rand::thread_rng().gen())
     }
 }
 
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let data = std::str::from_utf8(&self.0).unwrap();
-        f.write_str(data)
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let data = URL_SAFE_NO_PAD.encode(self.0.to_le_bytes());
+        f.write_str(&data)
     }
 }
 
 impl FromStr for Id {
-    type Err = std::array::TryFromSliceError;
+    type Err = IdError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self(s.as_bytes().try_into()?))
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+        let id_bytes = URL_SAFE_NO_PAD
+            .decode(s)?
+            .try_into()
+            .map_err(|_| Self::Err::LengthError)?;
+        let id = i128::from_le_bytes(id_bytes);
+        Ok(Self(id))
     }
 }
 
-impl Serialize for Id {
-    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_bytes(&self.0)
-    }
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum IdError {
+    #[error("Could not be decoded as URL-safe Base64 string without padding")]
+    DecodeError(#[from] base64::DecodeError),
+    #[error("Base64 string does not contain exactly 128 bytes worth")]
+    LengthError,
 }
 
 /// Record type that's appropriate for encoding and decoding sessions to and

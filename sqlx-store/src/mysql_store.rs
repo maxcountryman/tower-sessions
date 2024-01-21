@@ -65,7 +65,7 @@ impl MySqlStore {
             r#"
             create table if not exists `{schema_name}`.`{table_name}`
             (
-                id char(36) primary key not null,
+                id char(22) primary key not null,
                 data blob not null,
                 expiry_date timestamp(6) not null
             )

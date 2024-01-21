@@ -108,7 +108,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn bogus_session_cookie() {
-            let session_cookie = Cookie::new("id", "aaaaaaaaaaaaaaaaaaaaaa");
+            let session_cookie = Cookie::new("id", "AAAAAAAAAAAAAAAAAAAAAA");
             let req = Request::builder()
                 .uri("/insert")
                 .header(header::COOKIE, session_cookie.encoded().to_string())
@@ -122,7 +122,7 @@ macro_rules! route_tests {
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
             assert_eq!(res.status(), StatusCode::OK);
-            assert_ne!(session_cookie.value(), "aaaaaaaaaaaaaaaaaaaaaa");
+            assert_ne!(session_cookie.value(), "AAAAAAAAAAAAAAAAAAAAAA");
         }
 
         #[tokio::test]
