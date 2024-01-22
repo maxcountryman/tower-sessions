@@ -10,6 +10,12 @@ const COUNTER_KEY: &str = "counter";
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
 
+async fn handler(session: Session) -> impl IntoResponse {
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+    format!("Current count: {}", counter.0)
+}
+
 #[tokio::main]
 async fn main() {
     let session_store = MemoryStore::default();
@@ -24,10 +30,4 @@ async fn main() {
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
-}
-
-async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
-    format!("Current count: {}", counter.0)
 }
