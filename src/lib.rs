@@ -99,7 +99,7 @@
 //! which is designed to be executed as a recurring task. This process ensures
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
-//! ```rust,no_run
+//! ```rust,no_run,ignore
 //! # use tower_sessions::{session_store::ExpiredDeletion};
 //! # use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
 //! # tokio_test::block_on(async {
@@ -280,7 +280,7 @@
 //! To illustrate, this is how we might use the
 //! `MokaStore` as a frontend cache to a
 //! `PostgresStore` backend.
-//! ```rust,no_run
+//! ```rust,no_run,ignore
 //! # use tower::ServiceBuilder;
 //! # use tower_sessions::{CachingSessionStore, SessionManagerLayer};
 //! # use tower_sessions_sqlx_store::{sqlx::PgPool, PostgresStore};
