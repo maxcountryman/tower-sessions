@@ -10,7 +10,7 @@ repository.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-fred = { version = "7.0.0" }
+fred = { version = "8.0.0" }
 rmp-serde = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
