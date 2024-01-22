@@ -55,16 +55,6 @@ jobs:
       - name: Run doc tests
         run: |
           cargo test --workspace --all-features --doc
-      #- name: Generate code coverage
-      #  run: |
-      #    output_dir="./coverage/doc"
-      #    cargo tarpaulin -olcov --doc  --output-dir $output_dir
-      #    mkdir -p coverage-artifacts/doc
-      #    mv $output_dir coverage-artifacts/doc/
-      #- uses: actions/upload-artifact@v4
-      #  with:
-      #    name: coverage-artifacts-doc
-      #    path: coverage-artifacts/doc
 
   test-integration:
     needs: check
@@ -73,45 +63,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - store: redis_store
-            features: redis-store
-            docker: true
-
-          - store: mongodb_store
-            features: mongodb-store
-            docker: true
-
-          - store: postgres_store
-            features: postgres-store
-            docker: true
-
-          - store: mysql_store
-            features: mysql-store
-            docker: true
-
-          - store: sqlite_store
-            features: sqlite-store
-            docker: false
-
-          - store: moka_store
-            features: moka-store
-            docker: false
-
-          - store: caching_store
-            features: moka-store,sqlite-store
-            docker: false
-
-          #- store: postgres_store
-          #  features: diesel-postgres-store
-
-          #  docker: true
-          #- store: mysql_store
-          #  features: diesel-mysql-store
-          #  docker: true
-
-          #- store: diesel_store
-          #  features: diesel-sqlite-store
-          #  docker: false
+          - store: memory_store
 
     steps:
       - uses: actions/checkout@v4
@@ -121,16 +73,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - name: Start session store
-        if: matrix.docker
-        run: |
-          docker compose -f tests/docker-compose.yml up ${{ matrix.store }} -d
       - name: Run integration tests
         run: |
-          cargo nextest run ${{ matrix.store }}_test --test integration-tests --features ${{ matrix.features }}
+          cargo nextest run ${{ matrix.store }}_test --test integration-tests
       - name: Generate code coverage
         run: |
           output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
-          cargo tarpaulin -olcov --test integration-tests --features ${{ matrix.features }} --output-dir $output_dir
+          cargo tarpaulin -olcov --test integration-tests  --output-dir $output_dir
           mkdir -p coverage-artifacts/integration
           mv $output_dir coverage-artifacts/integration/
       - uses: actions/upload-artifact@v4
