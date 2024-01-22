@@ -95,12 +95,11 @@
 //! functionality, such as SQLx or MongoDB stores, it becomes essential to
 //! periodically clean up stale sessions. For instance, both SQLx and MongoDB
 //! stores offer
-//! [`continuously_delete_expired`](ExpiredDeletion::continuously_delete_expired)
+//! `continuously_delete_expired`
 //! which is designed to be executed as a recurring task. This process ensures
 //! the removal of expired sessions, maintaining your application's data
 //! integrity and performance.
 //! ```rust,no_run
-//! # #[cfg(all(feature = "sqlite-store", feature = "deletion-task"))] {
 //! # use tower_sessions::{session_store::ExpiredDeletion};
 //! # use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
 //! # tokio_test::block_on(async {
@@ -112,7 +111,7 @@
 //!         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
 //! );
 //! deletion_task.await.unwrap().unwrap();
-//! # })};
+//! # });
 //! ```
 //!
 //! Note that by default or when using browser session expiration, sessions are
@@ -279,8 +278,8 @@
 //! roundtrips to the store itself.
 //!
 //! To illustrate, this is how we might use the
-//! [`MokaStore`][tower_sessions_moka_store::MokaStore] as a frontend cache to a
-//! [`PostgresStore`][tower_sessions_sqlx_store::PostgresStore] backend.
+//! `MokaStore` as a frontend cache to a
+//! `PostgresStore` backend.
 //! ```rust,no_run
 //! # use tower::ServiceBuilder;
 //! # use tower_sessions::{CachingSessionStore, SessionManagerLayer};
@@ -303,8 +302,7 @@
 //! ```
 //!
 //! While this example uses Moka, any implementor of [`SessionStore`] may be
-//! used. For instance, we could use the
-//! [`RedisStore`][tower_sessions_redis_store::RedisStore] instead of Moka.
+//! used. For instance, we could use the `RedisStore` instead of Moka.
 //!
 //! A cache is most helpful with read-heavy workloads, where the cache hit rate
 //! will be high. This is because write-heavy workloads will require a roundtrip
