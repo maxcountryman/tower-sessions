@@ -433,10 +433,10 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub use tower_sessions_core::{cookie, service, session, session_store};
+pub use tower_cookies::cookie;
+pub use tower_sessions_core::{session, session_store};
 #[doc(inline)]
 pub use tower_sessions_core::{
-    service::{SessionManager, SessionManagerLayer},
     session::{Expiry, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
@@ -444,3 +444,7 @@ pub use tower_sessions_core::{
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
 #[doc(inline)]
 pub use tower_sessions_memory_store::MemoryStore;
+
+pub use crate::service::{SessionManager, SessionManagerLayer};
+
+pub mod service;
