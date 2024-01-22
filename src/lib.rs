@@ -149,10 +149,9 @@
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
 //! # use time::OffsetDateTime;
-//! # use tower_sessions::{session::Id, SessionStore, Session};
+//! # use tower_sessions::{SessionStore, Session};
 //! #[derive(Clone, Deserialize, Serialize)]
 //! struct GuestData {
-//!     id: Id,
 //!     pageviews: usize,
 //!     first_seen: OffsetDateTime,
 //!     last_seen: OffsetDateTime,
@@ -161,7 +160,6 @@
 //! impl Default for GuestData {
 //!     fn default() -> Self {
 //!         Self {
-//!             id: Id::default(),
 //!             pageviews: 0,
 //!             first_seen: OffsetDateTime::now_utc(),
 //!             last_seen: OffsetDateTime::now_utc(),
@@ -176,10 +174,6 @@
 //!
 //! impl Guest {
 //!     const GUEST_DATA_KEY: &'static str = "guest_data";
-//!
-//!     fn id(&self) -> &Id {
-//!         &self.guest_data.id
-//!     }
 //!
 //!     fn first_seen(&self) -> OffsetDateTime {
 //!         self.guest_data.first_seen
@@ -329,11 +323,12 @@
 //! ### Secure nature of cookies
 //!
 //! Session IDs are considered secure if sent over encrypted channels, and
-//! therefore are not signed or encrypted. Note that this assumption is predicated
-//! on the secure nature of the [`rand`](https://docs.rs/rand/latest/rand) crate
-//! and its ability to generate securely-random values using the ChaCha block cipher
-//! with 12 rounds. It's also important to note that session cookies **must never**
-//! be sent over a public, insecure channel. Doing so is **not** secure.
+//! therefore are not signed or encrypted. Note that this assumption is
+//! predicated on the secure nature of the [`rand`](https://docs.rs/rand/latest/rand) crate
+//! and its ability to generate securely-random values using the ChaCha block
+//! cipher with 12 rounds. It's also important to note that session cookies
+//! **must never** be sent over a public, insecure channel. Doing so is **not**
+//! secure.
 //!
 //! ## Key-value API
 //!

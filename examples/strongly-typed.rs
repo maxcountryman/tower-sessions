@@ -1,15 +1,14 @@
-use std::{fmt::Display, net::SocketAddr};
+use std::{fmt, net::SocketAddr};
 
 use async_trait::async_trait;
 use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
-use time::{Duration, OffsetDateTime};
-use tower_sessions::{session::Id, Expiry, MemoryStore, Session, SessionManagerLayer};
+use time::OffsetDateTime;
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
 #[derive(Clone, Deserialize, Serialize)]
 struct GuestData {
-    id: Id,
     pageviews: usize,
     first_seen: OffsetDateTime,
     last_seen: OffsetDateTime,
@@ -18,7 +17,6 @@ struct GuestData {
 impl Default for GuestData {
     fn default() -> Self {
         Self {
-            id: Id::default(),
             pageviews: 0,
             first_seen: OffsetDateTime::now_utc(),
             last_seen: OffsetDateTime::now_utc(),
@@ -33,10 +31,6 @@ struct Guest {
 
 impl Guest {
     const GUEST_DATA_KEY: &'static str = "guest.data";
-
-    fn id(&self) -> &Id {
-        &self.guest_data.id
-    }
 
     fn first_seen(&self) -> OffsetDateTime {
         self.guest_data.first_seen
@@ -63,17 +57,13 @@ impl Guest {
     }
 }
 
-impl Display for Guest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let now = OffsetDateTime::now_utc();
-        write!(
-            f,
-            "Guest ID {}\n\nPageviews {}\n\nFirst seen {} ago\n\nLast seen {} ago\n\n",
-            self.id(),
-            self.pageviews(),
-            now - self.first_seen(),
-            now - self.last_seen()
-        )
+impl fmt::Display for Guest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Guest")
+            .field("pageviews", &self.pageviews())
+            .field("first_seen", &self.first_seen())
+            .field("last_seen", &self.last_seen())
+            .finish()
     }
 }
 
@@ -104,22 +94,6 @@ where
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
-
-    let app = Router::new().route("/", get(handler)).layer(session_layer);
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app.into_make_service())
-        .await
-        .unwrap();
-}
-
 // This demonstrates a `Guest` extractor, but we could have any number of
 // namespaced, strongly-typed "buckets" like `Guest` in the same session.
 //
@@ -128,4 +102,18 @@ async fn main() {
 async fn handler(mut guest: Guest) -> impl IntoResponse {
     guest.mark_pageview().await;
     format!("{}", guest)
+}
+
+#[tokio::main]
+async fn main() {
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
+
+    let app = Router::new().route("/", get(handler)).layer(session_layer);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app.into_make_service())
+        .await
+        .unwrap();
 }
