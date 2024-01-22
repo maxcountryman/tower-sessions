@@ -87,17 +87,16 @@ pub trait SessionStore: Debug + Send + Sync + 'static {
 ///
 /// # Examples
 ///
-/// ```rust
-/// # #[cfg(all(feature = "moka_store", feature = "sqlite_store"))]
-/// # {
+/// ```rust,ignore
 /// # tokio_test::block_on(async {
-/// use tower_sessions::{CachingSessionStore, MokaStore, SqlitePool, SqliteStore};
-/// let pool = SqlitePool::connect("sqlite::memory:").await?;
+/// use tower_sessions::CachingSessionStore;
+/// use tower_sessions_moka_store::MokaStore;
+/// use tower_sessions_sqlx_store::{SqlitePool, SqliteStore};
+/// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 /// let sqlite_store = SqliteStore::new(pool);
 /// let moka_store = MokaStore::new(Some(2_000));
 /// let caching_store = CachingSessionStore::new(moka_store, sqlite_store);
 /// # })
-/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct CachingSessionStore<Cache: SessionStore, Store: SessionStore> {
@@ -183,10 +182,10 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
-    /// use tower_sessions::{session_store::ExpiredDeletion, sqlx::SqlitePool, SqliteStore};
+    /// ```rust,no_run,ignore
+    /// use tower_sessions::session_store::ExpiredDeletion;
+    /// use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
     ///
-    /// # #[cfg(all(feature = "sqlite-store", feature = "deletion-task"))]
     /// # {
     /// # tokio_test::block_on(async {
     /// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -198,7 +197,6 @@ where
     ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
     /// );
     /// # })
-    /// # }
     /// ```
     #[cfg(feature = "deletion-task")]
     #[cfg_attr(docsrs, doc(cfg(feature = "deletion-task")))]
