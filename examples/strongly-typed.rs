@@ -5,12 +5,11 @@ use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Rout
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
-use uuid::Uuid;
+use tower_sessions::{session::Id, Expiry, MemoryStore, Session, SessionManagerLayer};
 
 #[derive(Clone, Deserialize, Serialize)]
 struct GuestData {
-    id: Uuid,
+    id: Id,
     pageviews: usize,
     first_seen: OffsetDateTime,
     last_seen: OffsetDateTime,
@@ -19,7 +18,7 @@ struct GuestData {
 impl Default for GuestData {
     fn default() -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: Id::default(),
             pageviews: 0,
             first_seen: OffsetDateTime::now_utc(),
             last_seen: OffsetDateTime::now_utc(),
@@ -35,8 +34,8 @@ struct Guest {
 impl Guest {
     const GUEST_DATA_KEY: &'static str = "guest.data";
 
-    fn id(&self) -> Uuid {
-        self.guest_data.id
+    fn id(&self) -> &Id {
+        &self.guest_data.id
     }
 
     fn first_seen(&self) -> OffsetDateTime {
@@ -70,7 +69,7 @@ impl Display for Guest {
         write!(
             f,
             "Guest ID {}\n\nPageviews {}\n\nFirst seen {} ago\n\nLast seen {} ago\n\n",
-            self.id().as_hyphenated(),
+            self.id(),
             self.pageviews(),
             now - self.first_seen(),
             now - self.last_seen()

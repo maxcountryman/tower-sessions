@@ -15,7 +15,6 @@ use serde_json::Value;
 use time::Duration;
 use tokio::sync::{Mutex, MutexGuard};
 use tower_cookies::cookie::time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::{session_store, SessionStore};
 
@@ -847,7 +846,7 @@ impl Session {
 
 /// ID type for sessions.
 ///
-/// Wraps a UUIDv4.
+/// Wraps an array of 16 bytes.
 ///
 /// # Examples
 ///
@@ -857,27 +856,46 @@ impl Session {
 /// Id::default();
 /// ```
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub struct Id(pub Uuid); // TODO: By this being public, it may be possible to override UUIDv4,
-                         // which is undesirable.
+pub struct Id(pub i128); // TODO: By this being public, it may be possible to override the
+                         // session ID, which is undesirable.
 
 impl Default for Id {
     fn default() -> Self {
-        Self(Uuid::new_v4())
+        use rand::prelude::*;
+
+        Self(rand::thread_rng().gen())
     }
 }
 
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0.as_hyphenated().to_string())
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let data = URL_SAFE_NO_PAD.encode(self.0.to_le_bytes());
+        f.write_str(&data)
     }
 }
 
 impl FromStr for Id {
-    type Err = uuid::Error;
+    type Err = IdError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self(s.parse::<uuid::Uuid>()?))
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+        let id_bytes = URL_SAFE_NO_PAD
+            .decode(s)?
+            .try_into()
+            .map_err(|_| Self::Err::LengthError)?;
+        let id = i128::from_le_bytes(id_bytes);
+        Ok(Self(id))
     }
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum IdError {
+    #[error("Could not be decoded as URL-safe Base64 string without padding")]
+    DecodeError(#[from] base64::DecodeError),
+    #[error("Base64 string does not contain exactly 128 bytes worth")]
+    LengthError,
 }
 
 /// Record type that's appropriate for encoding and decoding sessions to and
