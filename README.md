@@ -108,15 +108,19 @@ You can find this [example][counter-example] as well as other example projects i
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
 
-### Additional session stores
+### Session stores
 
-| Crate                                                                                             | Persistent | Description             |
-| ------------------------------------------------------------------------------------------------- | ---------- | ----------------------- |
-| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)       | Yes        | SurrealDB session store |
-| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)    | Yes        | DynamoDB session store  |
-| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store) | Yes        | Firestore session store |
+| Crate                                                                                                            | Persistent | Description                                |
+| ---------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
+| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                     |
+| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                    |
+| [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                      |
+| [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                         |
+| [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store             |
+| [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores |
+| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                    |
 
-Have a store to add? Please open a PR.
+Have a store to add? Please open a PR adding it.
 
 ## 🦺 Safety
 
