@@ -38,9 +38,6 @@ It offers:
 - **An `axum` Extractor for `Session`:** Applications built with `axum`
   can use `Session` as an extractor directly in their handlers. This makes
   using sessions as easy as including `Session` in your handler.
-- **Common Backends Out-of-the-Box:** `RedisStore`, SQLx
-  (`SqliteStore`, `PostgresStore`, `MySqlStore`), and `MongoDBStore` stores
-  are available via their respective feature flags.
 - **Simple Key-Value Interface:** Sessions offer a key-value interface that
   supports native Rust types. So long as these types are `Serialize` and can
   be converted to JSON, it's straightforward to insert, get, and remove any
@@ -49,6 +46,27 @@ It offers:
   top of this foundational key-value interface.
 
 This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
+
+### Session stores
+
+Sessions are managed by user-provided types that implement `SessionStore`.
+What this means is that applications can and should implement session stores
+to fit their specific needs.
+
+That said, a number of session store implmentations already exist and may be
+useful starting points.
+
+| Crate                                                                                                            | Persistent | Description                                |
+| ---------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
+| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                     |
+| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                    |
+| [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                      |
+| [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                         |
+| [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store             |
+| [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores |
+| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                    |
+
+Have a store to add? Please open a PR adding it.
 
 ### User session management
 
@@ -107,20 +125,6 @@ You can find this [example][counter-example] as well as other example projects i
 
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
-
-### Session stores
-
-| Crate                                                                                                            | Persistent | Description                                |
-| ---------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
-| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                     |
-| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                    |
-| [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                      |
-| [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                         |
-| [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store             |
-| [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores |
-| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                    |
-
-Have a store to add? Please open a PR adding it.
 
 ## 🦺 Safety
 

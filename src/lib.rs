@@ -15,9 +15,6 @@
 //! - **An `axum` Extractor for [`Session`]:** Applications built with `axum`
 //!   can use `Session` as an extractor directly in their handlers. This makes
 //!   using sessions as easy as including `Session` in your handler.
-//! - **Common Backends Out-of-the-Box:** [`RedisStore`], SQLx ([`SqliteStore`],
-//!   [`PostgresStore`], [`MySqlStore`]), and [`MongoDBStore`] stores are
-//!   available via their respective feature flags.
 //! - **Simple Key-Value Interface:** Sessions offer a key-value interface that
 //!   supports native Rust types. So long as these types are `Serialize` and can
 //!   be converted to JSON, it's straightforward to insert, get, and remove any
@@ -26,6 +23,26 @@
 //!   top of this foundational key-value interface.
 //!
 //! This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
+//! ### Session stores
+//!
+//! Sessions are managed by user-provided types that implement [`SessionStore`].
+//! What this means is that applications can and should implement session stores
+//! to fit their specific needs.
+//!
+//! That said, a number of session store implmentations already exist and may be
+//! useful starting points.
+//!
+//! | Crate | Persistent | Description                                |
+//! | ---------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
+//! | [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                     |
+//! | [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                    |
+//! | [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                      |
+//! | [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                         |
+//! | [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store             |
+//! | [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores |
+//! | [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                    |
+//!
+//! Have a store to add? Please open a PR adding it.
 //!
 //! ### User session management
 //!
@@ -84,7 +101,8 @@
 //! integrity and performance.
 //! ```rust,no_run
 //! # #[cfg(all(feature = "sqlite-store", feature = "deletion-task"))] {
-//! # use tower_sessions::{sqlx::SqlitePool, SqliteStore, session_store::ExpiredDeletion};
+//! # use tower_sessions::{session_store::ExpiredDeletion};
+//! # use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
 //! # tokio_test::block_on(async {
 //! let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 //! let session_store = SqliteStore::new(pool);
@@ -260,14 +278,14 @@
 //! load from the store. By doing so, read-heavy workloads will incur far fewer
 //! roundtrips to the store itself.
 //!
-//! To illustrate, this is how we might use the [`MokaStore`] as a frontend
-//! cache to a [`PostgresStore`] backend.
+//! To illustrate, this is how we might use the
+//! [`MokaStore`][tower_sessions_moka_store::MokaStore] as a frontend cache to a
+//! [`PostgresStore`][tower_sessions_sqlx_store::PostgresStore] backend.
 //! ```rust,no_run
-//! # #[cfg(all(feature = "moka_store", feature = "postgres_store"))] {
 //! # use tower::ServiceBuilder;
-//! # use tower_sessions::{
-//! #    sqlx::PgPool, CachingSessionStore, MokaStore, PostgresStore, SessionManagerLayer,
-//! # };
+//! # use tower_sessions::{CachingSessionStore, SessionManagerLayer};
+//! # use tower_sessions_sqlx_store::{sqlx::PgPool, PostgresStore};
+//! # use tower_sessions_moka_store::MokaStore;
 //! # use time::Duration;
 //! # tokio_test::block_on(async {
 //! let database_url = std::option_env!("DATABASE_URL").unwrap();
@@ -281,11 +299,12 @@
 //!
 //! let session_service = ServiceBuilder::new()
 //!     .layer(SessionManagerLayer::new(caching_store).with_max_age(Duration::days(1)));
-//! # })}
+//! # })
 //! ```
 //!
 //! While this example uses Moka, any implementor of [`SessionStore`] may be
-//! used. For instance, we could use the [`RedisStore`] instead of Moka.
+//! used. For instance, we could use the
+//! [`RedisStore`][tower_sessions_redis_store::RedisStore] instead of Moka.
 //!
 //! A cache is most helpful with read-heavy workloads, where the cache hit rate
 //! will be high. This is because write-heavy workloads will require a roundtrip
@@ -427,33 +446,3 @@ pub use tower_sessions_core::{
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
 #[doc(inline)]
 pub use tower_sessions_memory_store::MemoryStore;
-#[cfg(feature = "moka-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "moka-store")))]
-#[doc(inline)]
-pub use tower_sessions_moka_store::MokaStore;
-#[cfg(feature = "mongodb-store")]
-pub use tower_sessions_mongodb_store::mongodb;
-#[cfg(feature = "mongodb-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mongodb-store")))]
-#[doc(inline)]
-pub use tower_sessions_mongodb_store::MongoDBStore;
-#[cfg(feature = "redis-store")]
-pub use tower_sessions_redis_store::fred;
-#[cfg(feature = "redis-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redis-store")))]
-#[doc(inline)]
-pub use tower_sessions_redis_store::RedisStore;
-#[cfg(feature = "sqlx-store")]
-pub use tower_sessions_sqlx_store::sqlx;
-#[cfg(feature = "mysql-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mysql-store")))]
-#[doc(inline)]
-pub use tower_sessions_sqlx_store::MySqlStore;
-#[cfg(feature = "postgres-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "postgres-store")))]
-#[doc(inline)]
-pub use tower_sessions_sqlx_store::PostgresStore;
-#[cfg(feature = "sqlite-store")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlite-store")))]
-#[doc(inline)]
-pub use tower_sessions_sqlx_store::SqliteStore;
