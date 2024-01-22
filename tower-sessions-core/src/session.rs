@@ -12,9 +12,8 @@ use std::{
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tokio::sync::{Mutex, MutexGuard};
-use tower_cookies::cookie::time::OffsetDateTime;
 
 use crate::{session_store, SessionStore};
 
