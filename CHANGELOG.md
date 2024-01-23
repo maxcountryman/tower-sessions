@@ -1,5 +1,78 @@
 # Unreleased
 
+# 0.10.0
+
+**Breakiung Changes**
+
+- Improve session ID #141
+- Relocate previously bundled stores #145
+- Move service out of core #146
+
+Session IDs now boast 66 bits of entropy and are shorter, saving network bandwidth and improving the secure nature of sessions.
+
+We no longer bundle session stores via feature flags and as such applications must be updated to require the stores directly. For example, applications that use the `tower-sessions-sqlx-store` should update their `Cargo.toml` like so:
+
+```toml
+tower-sessions = "0.10.0"
+tower-sessions-sqlx-store = { version = "0.10.0", features = ["sqlite"] }
+```
+
+Assuming a SQLite store, as an example.
+
+Furthermore, imports will also need to be updated accordingly. For example:
+
+```rust
+use std::net::SocketAddr;
+
+use axum::{response::IntoResponse, routing::get, Router};
+use serde::{Deserialize, Serialize};
+use time::Duration;
+use tower_sessions::{session_store::ExpiredDeletion, Expiry, Session, SessionManagerLayer};
+use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
+
+const COUNTER_KEY: &str = "counter";
+
+#[derive(Serialize, Deserialize, Default)]
+struct Counter(usize);
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let pool = SqlitePool::connect("sqlite::memory:").await?;
+    let session_store = SqliteStore::new(pool);
+    session_store.migrate().await?;
+
+    let deletion_task = tokio::task::spawn(
+        session_store
+            .clone()
+            .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    );
+
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
+
+    let app = Router::new().route("/", get(handler)).layer(session_layer);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app.into_make_service()).await?;
+
+    deletion_task.await??;
+
+    Ok(())
+}
+
+async fn handler(session: Session) -> impl IntoResponse {
+    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+    format!("Current count: {}", counter.0)
+}
+```
+
+Finally, the service itself has been moved out of the core crate, which makes this crate smaller as well as establishes better boundaries between code.
+
+Thank you for bearing with us: we are approaching longer term stability and aim to minimize churn going forward as we begin to move toward a 1.0 release.
+
 # 0.9.1
 
 - Ensure `clear` works before record loading. #134
