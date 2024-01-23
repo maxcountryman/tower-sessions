@@ -2,7 +2,7 @@
 
 # 0.10.0
 
-**Breakiung Changes**
+**Breaking Changes**
 
 - Improve session ID #141
 - Relocate previously bundled stores #145
