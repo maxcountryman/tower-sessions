@@ -30,6 +30,7 @@ pub enum Error {
     #[error(transparent)]
     SerdeJson(#[from] serde_json::Error),
 
+    /// Maps `session_store::Error` errors.
     #[error(transparent)]
     Store(#[from] session_store::Error),
 }
