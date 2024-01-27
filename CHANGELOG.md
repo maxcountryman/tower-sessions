@@ -2,7 +2,7 @@
 
 # 0.10.1
 
-# Ensure `Expires: Session` #149
+- Ensure `Expires: Session` #149
 
 # 0.10.0
 
