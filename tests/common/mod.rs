@@ -271,7 +271,6 @@ macro_rules! route_tests {
                 .header(header::COOKIE, second_session_cookie.encoded().to_string())
                 .body(Body::empty())
                 .unwrap();
-            dbg!("foo");
             let res = dbg!(app.oneshot(req).await).unwrap();
 
             assert_ne!(first_session_cookie.value(), second_session_cookie.value());
