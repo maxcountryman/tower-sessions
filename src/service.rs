@@ -37,7 +37,9 @@ impl SessionConfig {
             .secure(self.secure)
             .path(self.path.clone());
 
-        cookie_builder = cookie_builder.max_age(expiry_age);
+        if !matches!(self.expiry, Some(Expiry::OnSessionEnd) | None) {
+            cookie_builder = cookie_builder.max_age(expiry_age);
+        }
 
         if let Some(domain) = &self.domain {
             cookie_builder = cookie_builder.domain(domain.clone());
