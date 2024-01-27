@@ -179,9 +179,7 @@ macro_rules! route_tests {
             assert_eq!(session_cookie.name(), "id");
             assert_eq!(session_cookie.http_only(), Some(true));
             assert_eq!(session_cookie.same_site(), Some(SameSite::Strict));
-            assert!(session_cookie
-                .max_age()
-                .is_some_and(|d| d <= Duration::weeks(2)));
+            assert!(session_cookie.max_age().is_none());
             assert_eq!(session_cookie.secure(), Some(true));
             assert_eq!(session_cookie.path(), Some("/"));
         }
