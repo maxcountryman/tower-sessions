@@ -147,8 +147,18 @@ where
                 tracing::trace!(modified = modified, empty = empty, "session response state");
 
                 match session_cookie {
-                    Some(cookie) if empty => {
+                    Some(mut cookie) if empty => {
                         tracing::debug!("removing session cookie");
+
+                        // Path and domain must be manually set to ensure a proper removal cookie is
+                        // constructed.
+                        //
+                        // See: https://docs.rs/cookie/latest/cookie/struct.CookieJar.html#method.remove
+                        cookie.set_path(session_config.path);
+                        if let Some(domain) = session_config.domain {
+                            cookie.set_domain(domain);
+                        }
+
                         cookies.remove(cookie)
                     }
 

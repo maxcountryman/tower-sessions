@@ -56,9 +56,14 @@ fn routes() -> Router {
 pub fn build_app<Store: SessionStore + Clone>(
     mut session_manager: SessionManagerLayer<Store>,
     max_age: Option<Duration>,
+    domain: Option<String>,
 ) -> Router {
     if let Some(max_age) = max_age {
         session_manager = session_manager.with_expiry(Expiry::OnInactivity(max_age));
+    }
+
+    if let Some(domain) = domain {
+        session_manager = session_manager.with_domain(domain);
     }
 
     routes().layer(session_manager)
@@ -92,7 +97,7 @@ macro_rules! route_tests {
         #[tokio::test]
         async fn no_session_set() {
             let req = Request::builder().uri("/").body(Body::empty()).unwrap();
-            let res = $create_app(Some(Duration::hours(1)))
+            let res = $create_app(Some(Duration::hours(1)), None)
                 .await
                 .oneshot(req)
                 .await
@@ -114,7 +119,7 @@ macro_rules! route_tests {
                 .header(header::COOKIE, session_cookie.encoded().to_string())
                 .body(Body::empty())
                 .unwrap();
-            let res = $create_app(Some(Duration::hours(1)))
+            let res = $create_app(Some(Duration::hours(1)), None)
                 .await
                 .oneshot(req)
                 .await
@@ -133,7 +138,7 @@ macro_rules! route_tests {
                 .header(header::COOKIE, session_cookie.encoded().to_string())
                 .body(Body::empty())
                 .unwrap();
-            let res = $create_app(Some(Duration::hours(1)))
+            let res = $create_app(Some(Duration::hours(1)), None)
                 .await
                 .oneshot(req)
                 .await
@@ -150,7 +155,7 @@ macro_rules! route_tests {
                 .uri("/insert")
                 .body(Body::empty())
                 .unwrap();
-            let res = $create_app(Some(Duration::hours(1)))
+            let res = $create_app(Some(Duration::hours(1)), None)
                 .await
                 .oneshot(req)
                 .await
@@ -173,7 +178,7 @@ macro_rules! route_tests {
                 .uri("/insert")
                 .body(Body::empty())
                 .unwrap();
-            let res = $create_app(None).await.oneshot(req).await.unwrap();
+            let res = $create_app(None, None).await.oneshot(req).await.unwrap();
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
             assert_eq!(session_cookie.name(), "id");
@@ -186,7 +191,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn get_session() {
-            let app = $create_app(Some(Duration::hours(1))).await;
+            let app = $create_app(Some(Duration::hours(1)), None).await;
 
             let req = Request::builder()
                 .uri("/insert")
@@ -208,7 +213,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn get_no_value() {
-            let app = $create_app(Some(Duration::hours(1))).await;
+            let app = $create_app(Some(Duration::hours(1)), None).await;
 
             let req = Request::builder()
                 .uri("/get_value")
@@ -221,7 +226,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn remove_last_value() {
-            let app = $create_app(Some(Duration::hours(1))).await;
+            let app = $create_app(Some(Duration::hours(1)), None).await;
 
             let req = Request::builder()
                 .uri("/insert")
@@ -249,7 +254,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn cycle_session_id() {
-            let app = $create_app(Some(Duration::hours(1))).await;
+            let app = $create_app(Some(Duration::hours(1)), None).await;
 
             let req = Request::builder()
                 .uri("/insert")
@@ -279,7 +284,7 @@ macro_rules! route_tests {
 
         #[tokio::test]
         async fn flush_session() {
-            let app = $create_app(Some(Duration::hours(1))).await;
+            let app = $create_app(Some(Duration::hours(1)), None).await;
 
             let req = Request::builder()
                 .uri("/insert")
@@ -299,6 +304,33 @@ macro_rules! route_tests {
 
             assert_eq!(session_cookie.value(), "");
             assert_eq!(session_cookie.max_age(), Some(Duration::ZERO));
+            assert_eq!(session_cookie.path(), Some("/"));
+        }
+
+        #[tokio::test]
+        async fn flush_with_domain() {
+            let app = $create_app(Some(Duration::hours(1)), Some("localhost".to_string())).await;
+
+            let req = Request::builder()
+                .uri("/insert")
+                .body(Body::empty())
+                .unwrap();
+            let res = app.clone().oneshot(req).await.unwrap();
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let req = Request::builder()
+                .uri("/flush")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            let res = app.oneshot(req).await.unwrap();
+
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            assert_eq!(session_cookie.value(), "");
+            assert_eq!(session_cookie.max_age(), Some(Duration::ZERO));
+            assert_eq!(session_cookie.domain(), Some("localhost"));
+            assert_eq!(session_cookie.path(), Some("/"));
         }
     };
 }
