@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.10.2
+
+- Ensure "Path" and "Domain" are set on removal cookie #154
+
 # 0.10.1
 
 - Ensure `Expires: Session` #149
