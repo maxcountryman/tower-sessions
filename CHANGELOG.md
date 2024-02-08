@@ -16,7 +16,7 @@
 - Relocate previously bundled stores #145
 - Move service out of core #146
 
-Session IDs now boast 66 bits of entropy and are shorter, saving network bandwidth and improving the secure nature of sessions.
+Session IDs are now represetned as base64-encoded `i128`s, boast 128 bits of entropy, and are shorter, saving network bandwidth and improving the secure nature of sessions.
 
 We no longer bundle session stores via feature flags and as such applications must be updated to require the stores directly. For example, applications that use the `tower-sessions-sqlx-store` should update their `Cargo.toml` like so:
 
