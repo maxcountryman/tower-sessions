@@ -1,5 +1,6 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
+    borrow::Cow,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -19,45 +20,45 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-struct SessionConfig {
-    name: String,
+struct SessionConfig<'a> {
+    name: Cow<'a, str>,
     http_only: bool,
     same_site: SameSite,
     expiry: Option<Expiry>,
     secure: bool,
-    path: String,
-    domain: Option<String>,
+    path: Cow<'a, str>,
+    domain: Option<Cow<'a, str>>,
 }
 
-impl SessionConfig {
-    fn build_cookie<'c>(&self, session_id: session::Id, expiry_age: Duration) -> Cookie<'c> {
-        let mut cookie_builder = Cookie::build((self.name.clone(), session_id.to_string()))
+impl<'a> SessionConfig<'a> {
+    fn build_cookie(self, session_id: session::Id, expiry_age: Duration) -> Cookie<'a> {
+        let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
-            .path(self.path.clone());
+            .path(self.path);
 
         if !matches!(self.expiry, Some(Expiry::OnSessionEnd) | None) {
             cookie_builder = cookie_builder.max_age(expiry_age);
         }
 
-        if let Some(domain) = &self.domain {
-            cookie_builder = cookie_builder.domain(domain.clone());
+        if let Some(domain) = self.domain {
+            cookie_builder = cookie_builder.domain(domain);
         }
 
         cookie_builder.build()
     }
 }
 
-impl Default for SessionConfig {
+impl<'a> Default for SessionConfig<'a> {
     fn default() -> Self {
         Self {
-            name: String::from("id"), /* See: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-id-name-fingerprinting */
+            name: "id".into(), /* See: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-id-name-fingerprinting */
             http_only: true,
             same_site: SameSite::Strict,
             expiry: None, // TODO: Is `Max-Age: "Session"` the right default?
             secure: true,
-            path: String::from("/"),
+            path: "/".into(),
             domain: None,
         }
     }
@@ -65,13 +66,13 @@ impl Default for SessionConfig {
 
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManager<S, Store: SessionStore> {
+pub struct SessionManager<'a, S, Store: SessionStore> {
     inner: S,
     session_store: Arc<Store>,
-    session_config: SessionConfig,
+    session_config: SessionConfig<'a>,
 }
 
-impl<S, Store: SessionStore> SessionManager<S, Store> {
+impl<'a, S, Store: SessionStore> SessionManager<'a, S, Store> {
     /// Create a new [`SessionManager`].
     pub fn new(inner: S, session_store: Store) -> Self {
         Self {
@@ -83,7 +84,7 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
 }
 
 impl<ReqBody, ResBody, S, Store: SessionStore> Service<Request<ReqBody>>
-    for SessionManager<S, Store>
+    for SessionManager<'static, S, Store>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
@@ -202,7 +203,7 @@ where
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store: SessionStore> {
     session_store: Arc<Store>,
-    session_config: SessionConfig,
+    session_config: SessionConfig<'static>,
 }
 
 impl<Store: SessionStore> SessionManagerLayer<Store> {
@@ -217,8 +218,8 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
     /// ```
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.session_config.name = name.to_string();
+    pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: N) -> Self {
+        self.session_config.name = name.into();
         self
     }
 
@@ -304,11 +305,10 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// use tower_sessions::{MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
-    /// let session_service =
-    ///     SessionManagerLayer::new(session_store).with_path("/some/path".to_string());
+    /// let session_service = SessionManagerLayer::new(session_store).with_path("/some/path");
     /// ```
-    pub fn with_path(mut self, path: String) -> Self {
-        self.session_config.path = path;
+    pub fn with_path<P: Into<Cow<'static, str>>>(mut self, path: P) -> Self {
+        self.session_config.path = path.into();
         self
     }
 
@@ -321,11 +321,10 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// use tower_sessions::{MemoryStore, SessionManagerLayer};
     ///
     /// let session_store = MemoryStore::default();
-    /// let session_service =
-    ///     SessionManagerLayer::new(session_store).with_domain("localhost".to_string());
+    /// let session_service = SessionManagerLayer::new(session_store).with_domain("localhost");
     /// ```
-    pub fn with_domain(mut self, domain: String) -> Self {
-        self.session_config.domain = Some(domain);
+    pub fn with_domain<D: Into<Cow<'static, str>>>(mut self, domain: D) -> Self {
+        self.session_config.domain = Some(domain.into());
         self
     }
 }
@@ -353,7 +352,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 }
 
 impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
-    type Service = CookieManager<SessionManager<S, Store>>;
+    type Service = CookieManager<SessionManager<'static, S, Store>>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let session_manager = SessionManager {
