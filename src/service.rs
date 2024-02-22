@@ -201,12 +201,12 @@ where
 
 /// A layer for providing [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManagerLayer<'a, Store: SessionStore> {
+pub struct SessionManagerLayer<Store: SessionStore> {
     session_store: Arc<Store>,
-    session_config: SessionConfig<'a>,
+    session_config: SessionConfig<'static>,
 }
 
-impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
+impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Configures the name of the cookie used for the session.
     /// The default value is `"id"`.
     ///
@@ -218,7 +218,7 @@ impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
     /// ```
-    pub fn with_name<N: Into<Cow<'a, str>>>(mut self, name: N) -> Self {
+    pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: N) -> Self {
         self.session_config.name = name.into();
         self
     }
@@ -307,7 +307,7 @@ impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_path("/some/path");
     /// ```
-    pub fn with_path<P: Into<Cow<'a, str>>>(mut self, path: P) -> Self {
+    pub fn with_path<P: Into<Cow<'static, str>>>(mut self, path: P) -> Self {
         self.session_config.path = path.into();
         self
     }
@@ -323,13 +323,13 @@ impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_domain("localhost");
     /// ```
-    pub fn with_domain<D: Into<Cow<'a, str>>>(mut self, domain: D) -> Self {
+    pub fn with_domain<D: Into<Cow<'static, str>>>(mut self, domain: D) -> Self {
         self.session_config.domain = Some(domain.into());
         self
     }
 }
 
-impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
+impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// Create a new [`SessionManagerLayer`] with the provided session store
     /// and default cookie configuration.
     ///
@@ -351,8 +351,8 @@ impl<'a, Store: SessionStore> SessionManagerLayer<'a, Store> {
     }
 }
 
-impl<'a, S, Store: SessionStore> Layer<S> for SessionManagerLayer<'a, Store> {
-    type Service = CookieManager<SessionManager<'a, S, Store>>;
+impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
+    type Service = CookieManager<SessionManager<'static, S, Store>>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let session_manager = SessionManager {
