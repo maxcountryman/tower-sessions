@@ -31,19 +31,19 @@ struct SessionConfig<'a> {
 }
 
 impl<'a> SessionConfig<'a> {
-    fn build_cookie(&self, session_id: session::Id, expiry_age: Duration) -> Cookie<'a> {
-        let mut cookie_builder = Cookie::build((self.name.clone(), session_id.to_string()))
+    fn build_cookie(self, session_id: session::Id, expiry_age: Duration) -> Cookie<'a> {
+        let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
-            .path(self.path.clone());
+            .path(self.path);
 
         if !matches!(self.expiry, Some(Expiry::OnSessionEnd) | None) {
             cookie_builder = cookie_builder.max_age(expiry_age);
         }
 
-        if let Some(domain) = &self.domain {
-            cookie_builder = cookie_builder.domain(domain.clone());
+        if let Some(domain) = self.domain {
+            cookie_builder = cookie_builder.domain(domain);
         }
 
         cookie_builder.build()
