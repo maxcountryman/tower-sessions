@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.10.3
+
+- Improve session config allocation footprint #158
+
 # 0.10.2
 
 - Ensure "Path" and "Domain" are set on removal cookie #154
