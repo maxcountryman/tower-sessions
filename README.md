@@ -49,9 +49,9 @@ This crate's session implementation is inspired by the [Django sessions middlewa
 
 ### Session stores
 
-Sessions are managed by user-provided types that implement `SessionStore`.
-What this means is that applications can and should implement session stores
-to fit their specific needs.
+Session data persistence is managed by user-provided types that implement
+`SessionStore`. What this means is that applications can and should
+implement session stores to fit their specific needs.
 
 That said, a number of session store implmentations already exist and may be
 useful starting points.
@@ -63,9 +63,9 @@ useful starting points.
 | [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                      |
 | [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                         |
 | [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store             |
+| [`tower-sessions-rusqlite-store`](https://github.com/patte/tower-sessions-rusqlite-store)                        | Yes        | Rusqlite session store                     |
 | [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores |
 | [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                    |
-| [`tower-sessions-rusqlite-store`](https://github.com/patte/tower-sessions-rusqlite-store)                        | Yes        | Rusqlite session store                     |
 
 Have a store to add? Please open a PR adding it.
 
