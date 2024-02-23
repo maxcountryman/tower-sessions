@@ -1,8 +1,9 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
     collections::HashMap,
-    fmt::Display,
+    fmt::{self, Display},
     hash::Hash,
+    result,
     str::FromStr,
     sync::{
         atomic::{self, AtomicBool},
@@ -19,7 +20,7 @@ use crate::{session_store, SessionStore};
 
 const DEFAULT_DURATION: Duration = Duration::weeks(2);
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = result::Result<T, Error>;
 
 type Data = HashMap<String, Value>;
 
@@ -868,34 +869,41 @@ impl Default for Id {
 }
 
 impl Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-        let data = URL_SAFE_NO_PAD.encode(self.0.to_le_bytes());
-        f.write_str(&data)
+
+        let mut encoded = [0u8; 22];
+        URL_SAFE_NO_PAD
+            .encode_slice(self.0.to_le_bytes(), &mut encoded)
+            .expect("Encoded ID must be exactly 22 bytes");
+        let encoded = std::str::from_utf8(&encoded).expect("Encoded ID must be valid UTF-8");
+
+        f.write_str(encoded)
     }
 }
 
 impl FromStr for Id {
     type Err = IdError;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> result::Result<Self, Self::Err> {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-        let id_bytes = URL_SAFE_NO_PAD
-            .decode(s)?
-            .try_into()
-            .map_err(|_| Self::Err::LengthError)?;
-        let id = i128::from_le_bytes(id_bytes);
-        Ok(Self(id))
+        let mut decoded = [0u8; 22];
+        URL_SAFE_NO_PAD.decode_slice(s.as_bytes(), &mut decoded)?;
+        // N.B. The last six bytes will be zeroes.
+        let id_bytes: [u8; 16] = decoded[..16].try_into().map_err(|_| Self::Err::Length)?;
+
+        Ok(Self(i128::from_le_bytes(id_bytes)))
     }
 }
 
-#[derive(thiserror::Error, Debug, Clone)]
+#[derive(Debug, thiserror::Error)]
 pub enum IdError {
-    #[error("Could not be decoded as URL-safe Base64 string without padding")]
-    DecodeError(#[from] base64::DecodeError),
-    #[error("Base64 string does not contain exactly 128 bytes worth")]
-    LengthError,
+    #[error(transparent)]
+    DecodeSlice(#[from] base64::DecodeSliceError),
+
+    #[error("Provided base64 string is not composed of exactly 128-bytes")]
+    Length,
 }
 
 /// Record type that's appropriate for encoding and decoding sessions to and
