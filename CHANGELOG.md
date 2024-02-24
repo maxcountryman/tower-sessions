@@ -1,5 +1,13 @@
 # Unreleased
 
+# 0.10.4
+
+- Revert introduction of lifetime parameter; use static life directly
+
+This ensures that the changes introduced in `0.10.3` no not break SemVer.
+
+Please note that `0.10.3` has been yanked in accordance with cargo guidelines.
+
 # 0.10.3
 
 - Improve session config allocation footprint #158

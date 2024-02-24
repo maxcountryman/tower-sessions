@@ -66,13 +66,13 @@ impl<'a> Default for SessionConfig<'a> {
 
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManager<'a, S, Store: SessionStore> {
+pub struct SessionManager<S, Store: SessionStore> {
     inner: S,
     session_store: Arc<Store>,
-    session_config: SessionConfig<'a>,
+    session_config: SessionConfig<'static>,
 }
 
-impl<'a, S, Store: SessionStore> SessionManager<'a, S, Store> {
+impl<S, Store: SessionStore> SessionManager<S, Store> {
     /// Create a new [`SessionManager`].
     pub fn new(inner: S, session_store: Store) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl<'a, S, Store: SessionStore> SessionManager<'a, S, Store> {
 }
 
 impl<ReqBody, ResBody, S, Store: SessionStore> Service<Request<ReqBody>>
-    for SessionManager<'static, S, Store>
+    for SessionManager<S, Store>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
@@ -352,7 +352,7 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
 }
 
 impl<S, Store: SessionStore> Layer<S> for SessionManagerLayer<Store> {
-    type Service = CookieManager<SessionManager<'static, S, Store>>;
+    type Service = CookieManager<SessionManager<S, Store>>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let session_manager = SessionManager {
