@@ -2,9 +2,9 @@
 
 # 0.10.4
 
-- Revert introduction of lifetime parameter; use static life directly
+- Revert introduction of lifetime parameter; use static lifetime directly
 
-This ensures that the changes introduced in `0.10.3` no not break SemVer.
+This ensures that the changes introduced in `0.10.3` do not break SemVer.
 
 Please note that `0.10.3` has been yanked in accordance with cargo guidelines.
 
