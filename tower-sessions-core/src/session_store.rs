@@ -118,10 +118,10 @@ where
     Store: SessionStore,
 {
     async fn save(&self, record: &Record) -> Result<()> {
-        let cache_save_fut = self.store.save(record);
-        let store_save_fut = self.cache.save(record);
+        let store_save_fut = self.store.save(record);
+        let cache_save_fut = self.cache.save(record);
 
-        futures::try_join!(cache_save_fut, store_save_fut)?;
+        futures::try_join!(store_save_fut, cache_save_fut)?;
 
         Ok(())
     }
