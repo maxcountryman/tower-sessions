@@ -1,6 +1,16 @@
 # Unreleased
 
-# 0.10.4
+# 0.11.0
+
+- Uses slices when encoding and decoding `Id`. #159
+
+**Breaking Changes**
+
+- Removes `IdError` type in favor of using `base64::DecodeSliceError`. #159
+- Provides the same changes as 0.10.4, without breaking SemVer.
+- Updates `base64` to `0.22.0`.
+
+# ~0.10.4~ **Yanked:** SemVer breaking
 
 - Revert introduction of lifetime parameter; use static lifetime directly
 
@@ -8,7 +18,7 @@ This ensures that the changes introduced in `0.10.3` do not break SemVer.
 
 Please note that `0.10.3` has been yanked in accordance with cargo guidelines.
 
-# 0.10.3
+# ~0.10.3~ **Yanked:** SemVer breaking
 
 - Improve session config allocation footprint #158
 
