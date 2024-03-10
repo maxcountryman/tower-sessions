@@ -31,5 +31,6 @@ tokio = { workspace = true }
 tracing = { version = "0.1.40", features = ["log"] }
 
 [dev-dependencies]
-tower-sessions = { workspace = true }
+tower-sessions = { workspace = true, features = ["memory-store"] }
 tokio-test = "0.4.3"
+tokio = { workspace = true, features = ["rt", "macros"] }
