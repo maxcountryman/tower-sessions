@@ -493,3 +493,353 @@ impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLay
         CookieManager::new(session_manager)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::anyhow;
+    use axum::body::Body;
+    use tower::{ServiceBuilder, ServiceExt};
+    use tower_sessions_memory_store::MemoryStore;
+
+    use super::*;
+
+    async fn handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+        let session = req
+            .extensions()
+            .get::<Session>()
+            .ok_or(anyhow!("Missing session"))?;
+
+        session.insert("foo", 42).await?;
+
+        Ok(Response::new(Body::empty()))
+    }
+
+    async fn noop_handler(_: Request<Body>) -> anyhow::Result<Response<Body>> {
+        Ok(Response::new(Body::empty()))
+    }
+
+    #[tokio::test]
+    async fn basic_service_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn no_set_cookie_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(noop_handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn name_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_name("my.sid");
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.starts_with("my.sid="))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn http_only_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.contains("HttpOnly"))));
+
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_http_only(false);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("HttpOnly"))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn same_site_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer =
+            SessionManagerLayer::new(session_store).with_same_site(SameSite::Strict);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie
+                .to_str()
+                .is_ok_and(|s| s.contains("SameSite=Strict"))));
+
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie
+                .to_str()
+                .is_ok_and(|s| s.contains("SameSite=Lax"))));
+
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::None);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie
+                .to_str()
+                .is_ok_and(|s| s.contains("SameSite=None"))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer =
+            SessionManagerLayer::new(session_store).with_expiry(Expiry::OnSessionEnd);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("Max-Age"))));
+
+        let session_store = MemoryStore::default();
+        let inactivity_duration = time::Duration::hours(2);
+        let session_layer = SessionManagerLayer::new(session_store)
+            .with_expiry(Expiry::OnInactivity(inactivity_duration));
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        let expected_max_age = inactivity_duration.whole_seconds();
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| {
+                let max_age_value = s
+                    .split("Max-Age=")
+                    .nth(1)
+                    .unwrap_or_default()
+                    .split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .parse::<i64>()
+                    .unwrap_or_default();
+                (max_age_value - expected_max_age).abs() <= 1
+            })));
+
+        let session_store = MemoryStore::default();
+        let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
+        let session_layer =
+            SessionManagerLayer::new(session_store).with_expiry(Expiry::AtDateTime(expiry_time));
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        let expected_max_age = (expiry_time - time::OffsetDateTime::now_utc()).whole_seconds();
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| {
+                let max_age_value = s
+                    .split("Max-Age=")
+                    .nth(1)
+                    .unwrap_or_default()
+                    .split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .parse::<i64>()
+                    .unwrap_or_default();
+                (max_age_value - expected_max_age).abs() <= 1
+            })));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn secure_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_secure(true);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.contains("Secure"))));
+
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("Secure"))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn path_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_path("/foo/bar");
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie
+                .to_str()
+                .is_ok_and(|s| s.contains("Path=/foo/bar"))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn domain_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_domain("example.com");
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie
+                .to_str()
+                .is_ok_and(|s| s.contains("Domain=example.com"))));
+
+        Ok(())
+    }
+
+    #[cfg(feature = "signed")]
+    #[tokio::test]
+    async fn signed_test() -> anyhow::Result<()> {
+        let key = Key::generate();
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_signed(key);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
+
+        Ok(())
+    }
+
+    #[cfg(feature = "private")]
+    #[tokio::test]
+    async fn private_test() -> anyhow::Result<()> {
+        let key = Key::generate();
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_private(key);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
+
+        Ok(())
+    }
+}
