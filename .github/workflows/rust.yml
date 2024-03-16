@@ -46,10 +46,18 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           rustup toolchain install nightly --profile minimal
+          cargo install cargo-tarpaulin
       - uses: Swatinem/rust-cache@v2
       - name: Run doc tests
         run: |
           cargo test --workspace --all-features --doc
+          cargo tarpaulin --workspace --all-features --doc -olcov
+      - name: Upload coverage data to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-lib:
     needs: check
