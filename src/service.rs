@@ -189,7 +189,7 @@ where
 
         Box::pin(
             async move {
-                let Some(cookies) = req.extensions().get::<Cookies>().cloned() else {
+                let Some(cookies) = req.extensions().get::<_>().cloned() else {
                     // In practice this should never happen because we wrap `CookieManager`
                     // directly.
                     tracing::error!("missing cookies request extension");
@@ -527,6 +527,37 @@ mod tests {
             .service_fn(handler);
 
         let req = Request::builder().body(Body::empty())?;
+        let res = svc.clone().oneshot(req).await?;
+
+        let session = res.headers().get(http::header::SET_COOKIE);
+        assert!(session.is_some());
+
+        let req = Request::builder()
+            .header(http::header::COOKIE, session.unwrap())
+            .body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bogus_cookie_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.clone().oneshot(req).await?;
+
+        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
+
+        let req = Request::builder()
+            .header(http::header::COOKIE, "id=bogus")
+            .body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
         assert!(res.headers().get(http::header::SET_COOKIE).is_some());
