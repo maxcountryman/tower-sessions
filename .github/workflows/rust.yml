@@ -9,10 +9,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   MSRV: 1.67.1
-  REDIS_URL: redis://localhost:6379/1
-  MONGODB_URL: mongodb://localhost:27017
-  POSTGRES_URL: postgres://postgres:postgres@localhost:5432
-  MYSQL_URL: mysql://root@127.0.0.1:3306/public
 
 jobs:
   check:
@@ -55,6 +51,13 @@ jobs:
       - name: Run doc tests
         run: |
           cargo test --workspace --all-features --doc
+          cargo tarpaulin --workspace --all-features --doc -olcov
+      - name: Upload coverage data to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-lib:
     needs: check
@@ -68,15 +71,17 @@ jobs:
       - name: Run lib tests
         run: |
           cargo test --workspace --all-features --lib
+          cargo tarpaulin --workspace --all-features --lib -olcov
+      - name: Upload coverage data to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-integration:
     needs: check
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        include:
-          - store: memory_store
 
     steps:
       - uses: actions/checkout@v4
@@ -87,44 +92,11 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - name: Run integration tests
         run: |
-          cargo nextest run ${{ matrix.store }}_test --test integration-tests
-      - name: Generate code coverage
-        run: |
-          output_dir="./coverage/${{ matrix.store }}_${{ matrix.features }}"
-          cargo tarpaulin -olcov --test integration-tests  --output-dir $output_dir
-          mkdir -p coverage-artifacts/integration
-          mv $output_dir coverage-artifacts/integration/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage-artifacts-integration-${{ matrix.store }}
-          path: coverage-artifacts/integration
-
-  upload-coverage:
-    needs:
-      #- test-docs
-      - test-integration
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      #- name: Download Docs Coverage
-      #  uses: actions/download-artifact@v4
-      #  with:
-      #    name: coverage-artifacts-doc
-      #    path: coverage-artifacts-doc
-      - name: Download Integration Coverage
-        uses: actions/download-artifact@v4
-        with:
-          path: coverage-artifacts-integration
-      - name: Combine Coverage Data
-        run: |
-          mkdir -p ./coverage
-          #mv coverage-artifacts-doc/* ./coverage/
-          mv coverage-artifacts-integration/* ./coverage/
-          ls -la ./coverage
-      - name: Upload all coverage data to Codecov
+          cargo nextest run --test integration-tests
+          cargo tarpaulin --test integration-tests -olcov
+      - name: Upload coverage data to Codecov
         uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        with:
-          directory: ./coverage
-          fail_ci_if_error: true
