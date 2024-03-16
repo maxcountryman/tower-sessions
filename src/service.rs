@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[doc(hidden)]
-pub trait CookieController: Clone + Send + Sync + 'static {
+pub trait CookieController: Clone + Send + 'static {
     fn get(&self, cookies: &Cookies, name: &str) -> Option<Cookie<'static>>;
     fn add(&self, cookies: &Cookies, cookie: Cookie<'static>);
     fn remove(&self, cookies: &Cookies, cookie: Cookie<'static>);
@@ -415,7 +415,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # */
     /// # let key: &Vec<u8> = &(0..64).collect();
     /// # let key: &[u8] = &key[..];
-    /// let key = Key::try_from(key).unwrap();
+    /// # let key = Key::try_from(key).unwrap();
     ///
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_signed(key);
@@ -441,7 +441,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # */
     /// # let key: &Vec<u8> = &(0..64).collect();
     /// # let key: &[u8] = &key[..];
-    /// let key = Key::try_from(key).unwrap();
+    /// # let key = Key::try_from(key).unwrap();
     ///
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_private(key);
