@@ -341,13 +341,22 @@
 //!
 //! ### Secure nature of cookies
 //!
-//! Session IDs are considered secure if sent over encrypted channels, and
-//! therefore are not signed or encrypted. Note that this assumption is
-//! predicated on the secure nature of the [`rand`](https://docs.rs/rand/latest/rand) crate
+//! Session IDs are considered secure if sent over encrypted channels. Note that
+//! this assumption is predicated on the secure nature of the [`rand`](https://docs.rs/rand/latest/rand) crate
 //! and its ability to generate securely-random values using the ChaCha block
 //! cipher with 12 rounds. It's also important to note that session cookies
 //! **must never** be sent over a public, insecure channel. Doing so is **not**
-//! secure.
+//! secure and will lead to compromised sessions!
+//!
+//! Additionally, sessions may be optionally signed or encrypted by enabling the
+//! `signed` and `private` feature flags, respectively. When enabled, the
+//! [`with_signed`](SessionManagerLayer::with_signed) and
+//! [`with_private`](SessionManagerLayer::with_private) methods become
+//! available. These methods take a cryptographic key which allows the session
+//! manager to leverage ciphertext as opposed to the default of plaintext. Note
+//! that no data is stored in the session ID beyond the session identifier
+//! itself and so this measure should be considered primarily effective as a
+//! defense in depth tactic.
 //!
 //! ## Key-value API
 //!

@@ -36,6 +36,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["axum-core", "memory-store"]
 axum-core = ["tower-sessions-core/axum-core"]
 memory-store = ["tower-sessions-memory-store"]
+signed = ["tower-cookies/signed"]
+private = ["tower-cookies/private"]
 
 [workspace.dependencies]
 tower-sessions = { version = "=0.11.0", path = ".", default-features = false }
@@ -65,6 +67,7 @@ time = { version = "0.3.29", features = ["serde"] }
 
 [dev-dependencies]
 async-trait = "0.1.74"
+anyhow = "1"
 axum = "0.7.1"
 axum-core = "0.4.0"
 futures = { version = "0.3.28", default-features = false, features = [
@@ -95,3 +98,7 @@ required-features = ["axum-core", "memory-store"]
 [[example]]
 name = "strongly-typed"
 required-features = ["axum-core"]
+
+[[example]]
+name = "signed"
+required-features = ["signed", "memory-store"]
