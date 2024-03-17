@@ -66,6 +66,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
+    /// A method for creating a session in a store.
+    async fn create(&self, session_record: &mut Record) -> Result<()> {
+        default_create(self, session_record).await
+    }
+
     /// A method for saving a session in a store.
     async fn save(&self, session_record: &Record) -> Result<()>;
 
@@ -74,6 +79,18 @@ pub trait SessionStore: Debug + Send + Sync + 'static {
 
     /// A method for deleting a session from a store.
     async fn delete(&self, session_id: &Id) -> Result<()>;
+}
+
+#[deprecated(
+    note = "In order to prevent ID collisions, `SessionStore::create` must be implemented \
+            directly. This default method will be removed in future releases."
+)]
+async fn default_create<S: SessionStore + ?Sized>(
+    store: &S,
+    session_record: &mut Record,
+) -> Result<()> {
+    store.save(session_record).await?;
+    Ok(())
 }
 
 /// A session store for layered caching.
@@ -117,6 +134,12 @@ where
     Cache: SessionStore,
     Store: SessionStore,
 {
+    async fn create(&self, record: &mut Record) -> Result<()> {
+        self.store.create(record).await?;
+        self.cache.save(record).await?;
+        Ok(())
+    }
+
     async fn save(&self, record: &Record) -> Result<()> {
         let store_save_fut = self.store.save(record);
         let cache_save_fut = self.cache.save(record);

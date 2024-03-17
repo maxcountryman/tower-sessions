@@ -19,15 +19,21 @@ use tower_sessions_core::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<Id, (Record, OffsetDateTime)>>>);
+pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
 
 #[async_trait]
 impl SessionStore for MemoryStore {
+    async fn create(&self, record: &mut Record) -> session_store::Result<()> {
+        let mut store_guard = self.0.lock().await;
+        while store_guard.contains_key(&record.id) {
+            record.id = Id::default();
+        }
+        store_guard.insert(record.id, record.clone());
+        Ok(())
+    }
+
     async fn save(&self, record: &Record) -> session_store::Result<()> {
-        self.0
-            .lock()
-            .await
-            .insert(record.id, (record.clone(), record.expiry_date));
+        self.0.lock().await.insert(record.id, record.clone());
         Ok(())
     }
 
@@ -37,8 +43,7 @@ impl SessionStore for MemoryStore {
             .lock()
             .await
             .get(session_id)
-            .filter(|(_, expiry_date)| is_active(*expiry_date))
-            .map(|(session, _)| session)
+            .filter(|Record { expiry_date, .. }| is_active(*expiry_date))
             .cloned())
     }
 
