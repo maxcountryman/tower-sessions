@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.11.1
+
+- Ensure `session.set_expiry` updates record. #175
+- Provide `signed` and `private` features, enabling signing and encryption respectively. #157
+
 # 0.11.0
 
 - Uses slices when encoding and decoding `Id`. #159
