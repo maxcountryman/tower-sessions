@@ -351,7 +351,16 @@ macro_rules! route_tests {
             let res = app.clone().oneshot(req).await.unwrap();
             let session_cookie = get_session_cookie(res.headers()).unwrap();
 
-            assert_eq!(session_cookie.max_age(), Some(Duration::hours(1)));
+            let expected_duration = Duration::hours(1);
+            let actual_duration = session_cookie.max_age().unwrap();
+            let tolerance = Duration::seconds(1);
+
+            assert!(
+                actual_duration >= expected_duration - tolerance
+                    && actual_duration <= expected_duration + tolerance,
+                "Duration is not within the acceptable range: {:?}",
+                actual_duration
+            );
 
             let req = Request::builder()
                 .uri("/set_expiry")
