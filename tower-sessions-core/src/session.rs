@@ -521,7 +521,7 @@ impl Session {
     /// use tower_sessions::{session::Expiry, MemoryStore, Session};
     ///
     /// let store = Arc::new(MemoryStore::default());
-    /// let session = Session::new(None, store.clone(), None);
+    /// let session = Session::new(None, store, None);
     ///
     /// let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc());
     /// session.set_expiry(Some(expiry));
