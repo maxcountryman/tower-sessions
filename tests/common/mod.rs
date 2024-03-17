@@ -2,7 +2,7 @@ use axum::{routing::get, Router};
 use axum_core::body::Body;
 use http::{header, HeaderMap};
 use http_body_util::BodyExt;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tower_cookies::{cookie, Cookie};
 use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore};
 
@@ -49,6 +49,13 @@ fn routes() -> Router {
             "/flush",
             get(|session: Session| async move {
                 session.flush().await.unwrap();
+            }),
+        )
+        .route(
+            "/set_expiry",
+            get(|session: Session| async move {
+                let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc() + Duration::days(1));
+                session.set_expiry(Some(expiry));
             }),
         )
 }
@@ -331,6 +338,49 @@ macro_rules! route_tests {
             assert_eq!(session_cookie.max_age(), Some(Duration::ZERO));
             assert_eq!(session_cookie.domain(), Some("localhost"));
             assert_eq!(session_cookie.path(), Some("/"));
+        }
+
+        #[tokio::test]
+        async fn set_expiry() {
+            let app = $create_app(Some(Duration::hours(1)), Some("localhost".to_string())).await;
+
+            let req = Request::builder()
+                .uri("/insert")
+                .body(Body::empty())
+                .unwrap();
+            let res = app.clone().oneshot(req).await.unwrap();
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = Duration::hours(1);
+            let actual_duration = session_cookie.max_age().unwrap();
+            let tolerance = Duration::seconds(1);
+
+            assert!(
+                actual_duration >= expected_duration - tolerance
+                    && actual_duration <= expected_duration + tolerance,
+                "Duration is not within the acceptable range: {:?}",
+                actual_duration
+            );
+
+            let req = Request::builder()
+                .uri("/set_expiry")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            let res = app.oneshot(req).await.unwrap();
+
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = Duration::days(1);
+            let actual_duration = session_cookie.max_age().unwrap();
+            let tolerance = Duration::seconds(1);
+
+            assert!(
+                actual_duration >= expected_duration - tolerance
+                    && actual_duration <= expected_duration + tolerance,
+                "Duration is not within the acceptable range: {:?}",
+                actual_duration
+            );
         }
     };
 }

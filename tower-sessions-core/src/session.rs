@@ -507,7 +507,7 @@ impl Session {
         *self.expiry.lock()
     }
 
-    /// Set `expiry` give the given value.
+    /// Set `expiry` to the given value.
     ///
     /// This may be used within applications directly to alter the session's
     /// time to live.
@@ -529,8 +529,8 @@ impl Session {
     /// assert_eq!(session.expiry(), Some(expiry));
     /// ```
     pub fn set_expiry(&self, expiry: Option<Expiry>) {
-        let mut current_expiry = self.expiry.lock();
-        *current_expiry = expiry;
+        *self.expiry.lock() = expiry;
+        self.is_modified.store(true, atomic::Ordering::Release);
     }
 
     /// Get session expiry as `OffsetDateTime`.
@@ -651,6 +651,8 @@ impl Session {
     pub async fn save(&self) -> Result<()> {
         // N.B.: `get_record` will create a new record if one isn't found in the store.
         if let Some(record) = self.get_record().await?.as_mut() {
+            record.expiry_date = self.expiry_date();
+
             {
                 let mut session_id_guard = self.session_id.lock();
                 if session_id_guard.is_none() {
