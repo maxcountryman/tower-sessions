@@ -6,6 +6,9 @@ use async_trait::async_trait;
 
 use crate::session::{Id, Record};
 
+#[cfg(test)]
+use mockall::automock;
+
 /// Stores must map any errors that might occur during their use to this type.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -64,6 +67,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     }
 /// }
 /// ```
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
     /// A method for saving a session in a store.
