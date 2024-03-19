@@ -66,29 +66,44 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
-    /// A method for creating a session in a store.
+    /// Creates a new session in the store with the provided record.
+    ///
+    /// Implementers must decide how to handle potential ID collisions. For
+    /// example, they might generate a new unique ID or return `Error::Backend`.
+    ///
+    /// The record is given as an exclusive reference to allow modifications,
+    /// such as assigning a new ID, during the creation process.
     async fn create(&self, session_record: &mut Record) -> Result<()> {
         default_create(self, session_record).await
     }
 
-    /// A method for saving a session in a store.
+    /// Saves the provided session record to the store.
+    ///
+    /// This method is intended for updating the state of an existing session.
     async fn save(&self, session_record: &Record) -> Result<()>;
 
-    /// A method for loading a session from a store.
+    /// Loads an existing session from the store using the provided ID.
+    ///
+    /// If a session with the given ID exists, it is returned. If the session
+    /// does not exist or has been invalidated (e.g., expired), `None` is
+    /// returned.
     async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
 
-    /// A method for deleting a session from a store.
+    /// Deletes a session from the store using the provided ID.
+    ///
+    /// If the session exists, it is removed from the store.
     async fn delete(&self, session_id: &Id) -> Result<()>;
 }
 
-#[deprecated(
-    note = "In order to prevent ID collisions, `SessionStore::create` must be implemented \
-            directly. This default method will be removed in future releases."
-)]
 async fn default_create<S: SessionStore + ?Sized>(
     store: &S,
     session_record: &mut Record,
 ) -> Result<()> {
+    tracing::warn!(
+        "In order to mitigate potential ID collisions, stores must implement \
+         `SessionStore::create` directly. This warning indicates that `SessionStore::save` is \
+         being used instead."
+    );
     store.save(session_record).await?;
     Ok(())
 }
