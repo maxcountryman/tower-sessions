@@ -192,7 +192,7 @@ where
 {
     async fn create(&self, record: &mut Record) -> Result<()> {
         self.store.create(record).await?;
-        self.cache.save(record).await?;
+        self.cache.create(record).await?;
         Ok(())
     }
 
