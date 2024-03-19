@@ -287,3 +287,217 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use mockall::{
+        mock,
+        predicate::{self, *},
+    };
+    use time::{Duration, OffsetDateTime};
+
+    use super::*;
+
+    mock! {
+        #[derive(Debug)]
+        pub Cache {}
+
+        #[async_trait]
+        impl SessionStore for Cache {
+            async fn create(&self, record: &mut Record) -> Result<()>;
+            async fn save(&self, record: &Record) -> Result<()>;
+            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
+            async fn delete(&self, session_id: &Id) -> Result<()>;
+        }
+    }
+
+    mock! {
+        #[derive(Debug)]
+        pub Store {}
+
+        #[async_trait]
+        impl SessionStore for Store {
+            async fn create(&self, record: &mut Record) -> Result<()>;
+            async fn save(&self, record: &Record) -> Result<()>;
+            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
+            async fn delete(&self, session_id: &Id) -> Result<()>;
+        }
+    }
+
+    mock! {
+        #[derive(Debug)]
+        pub CollidingStore {}
+
+        #[async_trait]
+        impl SessionStore for CollidingStore {
+            async fn save(&self, record: &Record) -> Result<()>;
+            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
+            async fn delete(&self, session_id: &Id) -> Result<()>;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create() {
+        let mut store = MockCollidingStore::new();
+        let mut record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+
+        store
+            .expect_save()
+            .with(predicate::eq(record.clone()))
+            .times(1)
+            .returning(|_| Ok(()));
+        let result = store.create(&mut record).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_save() {
+        let mut store = MockStore::new();
+        let record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+        store
+            .expect_save()
+            .with(predicate::eq(record.clone()))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let result = store.save(&record).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_load() {
+        let mut store = MockStore::new();
+        let session_id = Id::default();
+        let record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+        let expected_record = record.clone();
+
+        store
+            .expect_load()
+            .with(predicate::eq(session_id))
+            .times(1)
+            .returning(move |_| Ok(Some(record.clone())));
+
+        let result = store.load(&session_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(expected_record));
+    }
+
+    #[tokio::test]
+    async fn test_delete() {
+        let mut store = MockStore::new();
+        let session_id = Id::default();
+
+        store
+            .expect_delete()
+            .with(predicate::eq(session_id))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let result = store.delete(&session_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_caching_store_create() {
+        let mut cache = MockCache::new();
+        let mut store = MockStore::new();
+        let mut record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+
+        cache.expect_create().times(1).returning(|_| Ok(()));
+        store.expect_create().times(1).returning(|_| Ok(()));
+
+        let caching_store = CachingSessionStore::new(cache, store);
+        let result = caching_store.create(&mut record).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_caching_store_save() {
+        let mut cache = MockCache::new();
+        let mut store = MockStore::new();
+        let record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+
+        cache
+            .expect_save()
+            .with(predicate::eq(record.clone()))
+            .times(1)
+            .returning(|_| Ok(()));
+        store
+            .expect_save()
+            .with(predicate::eq(record.clone()))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let caching_store = CachingSessionStore::new(cache, store);
+        let result = caching_store.save(&record).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_caching_store_load() {
+        let mut cache = MockCache::new();
+        let mut store = MockStore::new();
+        let session_id = Id::default();
+        let record = Record {
+            id: Default::default(),
+            data: Default::default(),
+            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+        let expected_record = record.clone();
+
+        cache
+            .expect_load()
+            .with(predicate::eq(session_id))
+            .times(1)
+            .returning(move |_| Ok(Some(record.clone())));
+        // Store load should not be called since cache returns a record
+        store.expect_load().times(0);
+
+        let caching_store = CachingSessionStore::new(cache, store);
+        let result = caching_store.load(&session_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(expected_record));
+    }
+
+    #[tokio::test]
+    async fn test_caching_store_delete() {
+        let mut cache = MockCache::new();
+        let mut store = MockStore::new();
+        let session_id = Id::default();
+
+        cache
+            .expect_delete()
+            .with(predicate::eq(session_id))
+            .times(1)
+            .returning(|_| Ok(()));
+        store
+            .expect_delete()
+            .with(predicate::eq(session_id))
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let caching_store = CachingSessionStore::new(cache, store);
+        let result = caching_store.delete(&session_id).await;
+        assert!(result.is_ok());
+    }
+}
