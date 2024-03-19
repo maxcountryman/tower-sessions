@@ -1,5 +1,85 @@
-//! An arbitrary store which houses the session data.
-
+//! A session backend for managing session state.
+//!
+//! This crate provides the ability to use custom backends for session
+//! management by implementing the [`SessionStore`] trait. This trait defines
+//! the necessary operations for creating, saving, loading, and deleting session
+//! records.
+//!
+//! # Implementing a Custom Store
+//!
+//! Below is an example of implementing a custom session store using an
+//! in-memory [`HashMap`]. This example is for illustration purposes only; you
+//! can use the provided [`MemoryStore`] directly without implementing it
+//! yourself.
+//!
+//! ```rust
+//! use std::{collections::HashMap, sync::Arc};
+//!
+//! use async_trait::async_trait;
+//! use time::OffsetDateTime;
+//! use tokio::sync::Mutex;
+//! use tower_sessions_core::{
+//!     session::{Id, Record},
+//!     session_store, SessionStore,
+//! };
+//!
+//! #[derive(Clone, Debug, Default)]
+//! pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
+//!
+//! #[async_trait]
+//! impl SessionStore for MemoryStore {
+//!     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
+//!         let mut store_guard = self.0.lock().await;
+//!         while store_guard.contains_key(&record.id) {
+//!             record.id = Id::default();
+//!         }
+//!         store_guard.insert(record.id, record.clone());
+//!         Ok(())
+//!     }
+//!
+//!     async fn save(&self, record: &Record) -> session_store::Result<()> {
+//!         self.0.lock().await.insert(record.id, record.clone());
+//!         Ok(())
+//!     }
+//!
+//!     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
+//!         Ok(self
+//!             .0
+//!             .lock()
+//!             .await
+//!             .get(session_id)
+//!             .filter(|Record { expiry_date, .. }| is_active(*expiry_date))
+//!             .cloned())
+//!     }
+//!
+//!     async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
+//!         self.0.lock().await.remove(session_id);
+//!         Ok(())
+//!     }
+//! }
+//!
+//! fn is_active(expiry_date: OffsetDateTime) -> bool {
+//!     expiry_date > OffsetDateTime::now_utc()
+//! }
+//! ```
+//!
+//! # Session Store Trait
+//!
+//! The [`SessionStore`] trait defines the interface for session management.
+//! Implementations must handle session creation, saving, loading, and deletion.
+//!
+//! # CachingSessionStore
+//!
+//! The [`CachingSessionStore`] provides a layered caching mechanism with a
+//! cache as the frontend and a store as the backend. This can improve read
+//! performance by reducing the need to access the backend store for frequently
+//! accessed sessions.
+//!
+//! # ExpiredDeletion
+//!
+//! The [`ExpiredDeletion`] trait provides a method for deleting expired
+//! sessions. Implementations can optionally provide a method for continuously
+//! deleting expired sessions at a specified interval.
 use std::fmt::Debug;
 
 use async_trait::async_trait;
@@ -21,49 +101,9 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// An arbitrary store which houses the session data.
+/// Defines the interface for session management.
 ///
-/// # Implementing your own store
-///
-/// This crate is designed such that any arbirary session storage backend can be
-/// supported simply by implemeting the `SessionStore` trait. While a set of
-/// common stores are provided, should those not meet your needs or otherwise we
-/// lacking, it is encouraged to implement your own store.
-///
-/// For example, we might construct a session store for testing purposes that
-/// wraps `HashMap`. To do so, we can write a struct that houses this hash map
-/// and then implement `SessionStore`.
-///
-/// ```rust
-/// use std::{collections::HashMap, sync::Arc};
-///
-/// use async_trait::async_trait;
-/// use parking_lot::Mutex;
-/// use tower_sessions::{
-///     session::{Id, Record},
-///     session_store, Session, SessionStore,
-/// };
-///
-/// #[derive(Debug, Clone)]
-/// pub struct TestingStore(Arc<Mutex<HashMap<Id, Record>>>);
-///
-/// #[async_trait]
-/// impl SessionStore for TestingStore {
-///     async fn save(&self, record: &Record) -> session_store::Result<()> {
-///         self.0.lock().insert(record.id, record.clone());
-///         Ok(())
-///     }
-///
-///     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
-///         Ok(self.0.lock().get(session_id).cloned())
-///     }
-///
-///     async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
-///         self.0.lock().remove(session_id);
-///         Ok(())
-///     }
-/// }
-/// ```
+/// See [`session_store`](crate::session_store) for more details.
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
     /// Creates a new session in the store with the provided session record.
@@ -108,7 +148,8 @@ async fn default_create<S: SessionStore + ?Sized>(
     Ok(())
 }
 
-/// A session store for layered caching.
+/// Provides a layered caching mechanism with a cache as the frontend and a
+/// store as the backend..
 ///
 /// Contains both a cache, which acts as a frontend, and a store which acts as a
 /// backend. Both cache and store implement `SessionStore`.
@@ -197,8 +238,7 @@ where
     }
 }
 
-/// A trait providing a deletion method for expired methods and optionally a
-/// method that runs indefinitely, deleting expired sessions.
+/// Provides a method for deleting expired sessions.
 #[async_trait]
 pub trait ExpiredDeletion: SessionStore
 where
