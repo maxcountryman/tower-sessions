@@ -66,7 +66,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
-    /// Creates a new session in the store with the provided record.
+    /// Creates a new session in the store with the provided session record.
     ///
     /// Implementers must decide how to handle potential ID collisions. For
     /// example, they might generate a new unique ID or return `Error::Backend`.
@@ -82,14 +82,14 @@ pub trait SessionStore: Debug + Send + Sync + 'static {
     /// This method is intended for updating the state of an existing session.
     async fn save(&self, session_record: &Record) -> Result<()>;
 
-    /// Loads an existing session from the store using the provided ID.
+    /// Loads an existing session record from the store using the provided ID.
     ///
     /// If a session with the given ID exists, it is returned. If the session
     /// does not exist or has been invalidated (e.g., expired), `None` is
     /// returned.
     async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
 
-    /// Deletes a session from the store using the provided ID.
+    /// Deletes a session record from the store using the provided ID.
     ///
     /// If the session exists, it is removed from the store.
     async fn delete(&self, session_id: &Id) -> Result<()>;
