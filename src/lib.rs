@@ -394,33 +394,25 @@
 //!
 //! Cookies hold a pointer to the session, rather than the session's data, and
 //! because of this, the `tower` middleware is focused on managing the process
-//! of hydrating a session from the store and managing its life cycle.
+//! of initializing a session which can later be used in code to transparently
+//! interact with the store.
 //!
-//! We load a session by looking for a cookie that matches our configured
-//! session cookie name. If no such cookie is found or a cookie is found but the
-//! store has no such session or the session is no longer active, we create a
-//! new session.
-//!
-//! It's important to note that creating a session **does not** save the session
-//! to the store. In fact, the session store is not used at all unless the
-//! session is read from or written to. In other words, the middleware only
-//! introduces session store overhead when the session is actually used.
+//! A session is initialized by looking for a cookie that matches the configured
+//! session cookie name. If no such cookie is found or a cookie is found but is
+//! malformed, an empty session is initialized.
 //!  
-//! Modified sessions will invoke the session store's
-//! [`save`](SessionStore::save) method as well as send a `Set-Cookie` header.
-//! While deleted sessions will either be:
+//! Modified sessions will invoke the session's [`save`](Session::save) method
+//! as well as append to the `Set-Cookie` header of the response.
 //!
-//! 1. Deleted, invoking the [`delete`](SessionStore::delete) method and setting
-//!    a removal cookie or,
-//! 2. Cycled, invoking the `delete` method but setting a new ID on the session;
-//!    the session will have been marked as modified and so this will also set a
-//!    `Set-Cookie` header on the response.
+//! Empty sessions are considered deleted and will set a removal cookie
+//! on the response but are not removed from the store directly.
 //!
-//! Empty sessions are considered to be deleted and are removed from the session
-//! store as well as the user agent.
-//!
-//! Sessions also carry with them a configurable expiry and will be deleted in
+//! Sessions also carry with them a configurable expiry and will be removed in
 //! accordance with this.
+//!
+//! Notably, the session life cycle minimizes overhead with the store. All
+//! session store methods are deferred until the point [`Session`] is used in
+//! code and more specifically one of its methods requiring the store is called.
 //!
 //! [^json]: Using JSON allows us to translate arbitrary types to virtually
 //! any backend and gives us a nice interface with which to interact with the

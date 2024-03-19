@@ -649,19 +649,21 @@ impl Session {
     pub async fn save(&self) -> Result<()> {
         let mut record_guard = self.get_record().await?;
         record_guard.expiry_date = self.expiry_date();
-        {
-            let mut session_id_guard = self.session_id.lock();
-            if session_id_guard.is_none() {
-                // Generate a new ID here since e.g. flush may have been called, which will
-                // not directly update the record ID.
-                let id = Id::default();
-                *session_id_guard = Some(id);
-                record_guard.id = id;
-            }
+
+        // Session ID is `None` if:
+        //
+        //  1. No valid cookie was found on the request or,
+        //  2. No valid session was found in the store.
+        //
+        // In either case, we must create a new session via the store interface.
+        //
+        // Potential ID collisions must be handled by session store implementers.
+        if self.session_id.lock().is_none() {
+            self.store.create(&mut record_guard).await?;
+            *self.session_id.lock() = Some(record_guard.id);
+        } else {
+            self.store.save(&record_guard).await?;
         }
-
-        self.store.save(&record_guard).await.map_err(Error::Store)?;
-
         Ok(())
     }
 
