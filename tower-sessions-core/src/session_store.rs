@@ -31,6 +31,7 @@
 //!     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
 //!         let mut store_guard = self.0.lock().await;
 //!         while store_guard.contains_key(&record.id) {
+//!             // Session ID collision mitigation.
 //!             record.id = Id::default();
 //!         }
 //!         store_guard.insert(record.id, record.clone());
