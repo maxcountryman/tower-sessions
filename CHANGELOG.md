@@ -1,5 +1,19 @@
 # Unreleased
 
+# 0.12.0
+
+**Important Security Update**
+
+- Id collision mitigation. #181
+
+This release introduces a new method, `create`, to the `SessionStore` trait to distinguish between creating a new session and updating an existing one. **This distinction is crucial for mitigating the potential for session ID collisions.**
+
+Although the probability of session ID collisions is statistically low, given that IDs are composed of securely-random `i128` values, such collisions pose a significant security risk. A store that does not differentiate between session creation and updates could inadvertently allow an existing session to be accessed, leading to potential session takeovers.
+
+Session store authors are strongly encouraged to update and implement `create` such that potential ID collisions are handled, either by generating a new ID or returning an error.
+
+As a transitional measure, we have provided a default implementation of `create` that wraps the existing `save` method. However, this default is not immune to the original issue. Therefore, it is imperative that stores override the `create` method with an implementation that adheres to the required uniqueness semantics, thereby effectively mitigating the risk of session ID collisions.
+
 # 0.11.1
 
 - Ensure `session.set_expiry` updates record. #175
