@@ -100,9 +100,9 @@ async fn default_create<S: SessionStore + ?Sized>(
     session_record: &mut Record,
 ) -> Result<()> {
     tracing::warn!(
-        "In order to mitigate potential ID collisions, stores must implement \
-         `SessionStore::create` directly. This warning indicates that `SessionStore::save` is \
-         being used instead."
+        "The default implementation of `SessionStore::create` is being used, which relies on \
+         `SessionStore::save`. To properly handle potential ID collisions, it is recommended that \
+         stores implement their own version of `SessionStore::create`."
     );
     store.save(session_record).await?;
     Ok(())
