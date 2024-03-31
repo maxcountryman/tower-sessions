@@ -1,5 +1,13 @@
 # Unreleased
 
+# 0.12.1
+
+**Important Security Update**
+
+- Ensure ID cycling invokes `create`. #188
+
+Because cycling the session ID involves creating a new ID, this must follow the same semantics as normal session creation. Therefore prior to this fix session ID collision could occur through this vector.
+
 # 0.12.0
 
 **Important Security Update**

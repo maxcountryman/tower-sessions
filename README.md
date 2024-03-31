@@ -57,7 +57,7 @@ That said, a number of session store implmentations already exist and may be
 useful starting points.
 
 | Crate                                                                                                            | Persistent | Description                                                 |
-|------------------------------------------------------------------------------------------------------------------|------------|-------------------------------------------------------------|
+| ---------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------- |
 | [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                                      |
 | [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                                     |
 | [`tower-sessions-libsql-store`](https://github.com/daybowbow-dev/tower-sessions-libsql-store)                    | Yes        | libSQL session store                                        |
@@ -82,7 +82,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.12.0"
+tower-sessions = "0.12.1"
 ```
 
 ## 🤸 Usage
