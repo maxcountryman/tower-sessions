@@ -8,7 +8,7 @@ use std::{
 };
 
 use http::{Request, Response};
-use time::Duration;
+use time::OffsetDateTime;
 #[cfg(any(feature = "signed", feature = "private"))]
 use tower_cookies::Key;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
@@ -102,16 +102,20 @@ struct SessionConfig<'a> {
 }
 
 impl<'a> SessionConfig<'a> {
-    fn build_cookie(self, session_id: session::Id, expiry_age: Duration) -> Cookie<'a> {
+    fn build_cookie(self, session_id: session::Id, expiry: Option<Expiry>) -> Cookie<'a> {
         let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
             .secure(self.secure)
             .path(self.path);
 
-        if !matches!(self.expiry, Some(Expiry::OnSessionEnd) | None) {
-            cookie_builder = cookie_builder.max_age(expiry_age);
-        }
+        cookie_builder = match expiry {
+            Some(Expiry::OnInactivity(duration)) => cookie_builder.max_age(duration),
+            Some(Expiry::AtDateTime(datetime)) => {
+                cookie_builder.max_age(datetime - OffsetDateTime::now_utc())
+            }
+            Some(Expiry::OnSessionEnd) | None => cookie_builder,
+        };
 
         if let Some(domain) = self.domain {
             cookie_builder = cookie_builder.domain(domain);
@@ -256,8 +260,8 @@ where
                             return Ok(res);
                         };
 
-                        let expiry_age = session.expiry_age();
-                        let session_cookie = session_config.build_cookie(session_id, expiry_age);
+                        let expiry = session.expiry();
+                        let session_cookie = session_config.build_cookie(session_id, expiry);
 
                         tracing::debug!("adding session cookie");
                         cookie_controller.add(&cookies, session_cookie);
