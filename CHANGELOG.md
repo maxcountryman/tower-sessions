@@ -1,5 +1,11 @@
 # Unreleased
 
+# 0.12.2
+
+- Ensure `set_expiry` mutates `Max-Age`. #191
+
+This addresses a bug where using `set_expiry` on a session with no initial expiry time would not add the Max-age attribute to the cookie leading to an inconsitency between the cookie and the database.
+
 # 0.12.1
 
 **Important Security Update**
