@@ -58,6 +58,12 @@ fn routes() -> Router {
                 session.set_expiry(Some(expiry));
             }),
         )
+        .route(
+            "/remove_expiry",
+            get(|session: Session| async move {
+                session.set_expiry(Some(Expiry::OnSessionEnd));
+            }),
+        )
 }
 
 pub fn build_app<Store: SessionStore + Clone>(
@@ -381,6 +387,78 @@ macro_rules! route_tests {
                 "Duration is not within the acceptable range: {:?}",
                 actual_duration
             );
+        }
+
+        #[tokio::test]
+        async fn change_expiry_type() {
+            let app = $create_app(None, Some("localhost".to_string())).await;
+
+            let req = Request::builder()
+                .uri("/insert")
+                .body(Body::empty())
+                .unwrap();
+            let res = app.clone().oneshot(req).await.unwrap();
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = None;
+            let actual_duration = session_cookie.max_age();
+
+            assert_eq!(actual_duration, expected_duration, "Duration is not None");
+
+            let req = Request::builder()
+                .uri("/set_expiry")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            let res = app.oneshot(req).await.unwrap();
+
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = Duration::days(1);
+            assert!(session_cookie.max_age().is_some(), "Duration is None");
+            let actual_duration = session_cookie.max_age().unwrap();
+            let tolerance = Duration::seconds(1);
+
+            assert!(
+                actual_duration >= expected_duration - tolerance
+                    && actual_duration <= expected_duration + tolerance,
+                "Duration is not within the acceptable range: {:?}",
+                actual_duration
+            );
+
+            let app2 = $create_app(Some(Duration::hours(1)), Some("localhost".to_string())).await;
+
+            let req = Request::builder()
+                .uri("/insert")
+                .body(Body::empty())
+                .unwrap();
+            let res = app2.clone().oneshot(req).await.unwrap();
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = Duration::hours(1);
+            let actual_duration = session_cookie.max_age().unwrap();
+            let tolerance = Duration::seconds(1);
+
+            assert!(
+                actual_duration >= expected_duration - tolerance
+                    && actual_duration <= expected_duration + tolerance,
+                "Duration is not within the acceptable range: {:?}",
+                actual_duration
+            );
+
+            let req = Request::builder()
+                .uri("/remove_expiry")
+                .header(header::COOKIE, session_cookie.encoded().to_string())
+                .body(Body::empty())
+                .unwrap();
+            let res = app2.oneshot(req).await.unwrap();
+
+            let session_cookie = get_session_cookie(res.headers()).unwrap();
+
+            let expected_duration = None;
+            let actual_duration = session_cookie.max_age();
+
+            assert_eq!(actual_duration, expected_duration, "Duration is not None");
         }
     };
 }
