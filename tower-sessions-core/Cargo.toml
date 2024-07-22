@@ -34,4 +34,4 @@ tracing = { version = "0.1.40", features = ["log"] }
 tower-sessions = { workspace = true, features = ["memory-store"] }
 tokio-test = "0.4.3"
 tokio = { workspace = true, features = ["rt", "macros"] }
-mockall = "0.12.1"
+mockall = "0.13.0"
