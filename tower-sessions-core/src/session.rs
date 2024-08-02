@@ -117,6 +117,12 @@ impl Session {
                 match self.store.load(&session_id).await? {
                     Some(loaded_record) => {
                         tracing::trace!("record found in store");
+                        let mut expiry_guard = self.inner.expiry.lock();
+                        // No expiry is set if expiry_gyard is `None`. Use the
+                        // value from the loaded record.
+                        if expiry_guard.is_none() {
+                            *expiry_guard = Some(Expiry::AtDateTime(loaded_record.expiry_date))
+                        }
                         loaded_record
                     }
 
@@ -722,6 +728,14 @@ impl Session {
         };
         let loaded_record = self.store.load(id).await.map_err(Error::Store)?;
         let mut record_guard = self.inner.record.lock().await;
+        if let Some(loaded_record) = loaded_record.as_ref() {
+            let mut expiry_guard = self.inner.expiry.lock();
+            if expiry_guard.is_none() {
+                // No expiry is set if expiry_guard is `None`. Use the value
+                // from the loaded record.
+                *expiry_guard = Some(Expiry::AtDateTime(loaded_record.expiry_date))
+            }
+        }
         *record_guard = loaded_record;
         Ok(())
     }
