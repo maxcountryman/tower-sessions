@@ -281,9 +281,10 @@ where
     #[cfg_attr(docsrs, doc(cfg(feature = "deletion-task")))]
     async fn continuously_delete_expired(self, period: tokio::time::Duration) -> Result<()> {
         let mut interval = tokio::time::interval(period);
+        interval.tick().await; // The first tick completes immediately; skip.
         loop {
-            self.delete_expired().await?;
             interval.tick().await;
+            self.delete_expired().await?;
         }
     }
 }
