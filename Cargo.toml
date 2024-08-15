@@ -3,7 +3,7 @@ members = [".", "memory-store", "tower-sessions-core"]
 resolver = "2"
 
 [workspace.package]
-version = "0.12.2"
+version = "0.12.3"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -40,10 +40,10 @@ signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.12.2", path = ".", default-features = false }
+tower-sessions = { version = "=0.12.3", path = ".", default-features = false }
 
-tower-sessions-core = { version = "=0.12.2", path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { version = "=0.12.2", path = "memory-store" }
+tower-sessions-core = { version = "=0.12.3", path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { version = "=0.12.3", path = "memory-store" }
 
 async-trait = "0.1.74"
 parking_lot = { version = "0.12.1", features = ["serde"] }

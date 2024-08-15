@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.12.3
+
+- Ensure `continuously_delete_expired` waits for initial run. #208
+
 # 0.12.2
 
 - Ensure `set_expiry` mutates `Max-Age`. #191
