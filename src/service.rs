@@ -214,7 +214,21 @@ where
                         .ok()
                 });
 
-                let session = Session::new(session_id, session_store, session_config.expiry);
+                let session_expiry = if let Some(session_id) = session_id {
+                    match session_store.load(&session_id).await {
+                        Ok(Some(s)) => Some(Expiry::AtDateTime(s.expiry_date)),
+                        Ok(None) => session_config.expiry,
+                        Err(err) => {
+                            tracing::error!(err = %err, "failed to load session");
+                            let mut res = Response::default();
+                            *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+                            return Ok(res);
+                        }
+                    }
+                } else {
+                    session_config.expiry
+                };
+                let session = Session::new(session_id, session_store, session_expiry);
 
                 req.extensions_mut().insert(session.clone());
 
@@ -502,6 +516,7 @@ impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLay
 mod tests {
     use anyhow::anyhow;
     use axum::body::Body;
+    use time::Duration;
     use tower::{ServiceBuilder, ServiceExt};
     use tower_sessions_memory_store::MemoryStore;
 
@@ -764,6 +779,67 @@ mod tests {
                 (max_age_value - expected_max_age).abs() <= 1
             })));
 
+        Ok(())
+    }
+
+    async fn handler_modify_expiry(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+        let session = req
+            .extensions()
+            .get::<Session>()
+            .ok_or(anyhow!("Missing session"))?;
+
+        session.insert("foo", 42).await?;
+        session.set_expiry(Some(Expiry::AtDateTime(
+            OffsetDateTime::now_utc() + Duration::seconds(10),
+        )));
+
+        Ok(Response::new(Body::empty()))
+    }
+    async fn handler_assert_expiry(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+        let session = req
+            .extensions()
+            .get::<Session>()
+            .ok_or(anyhow!("Missing session"))?;
+
+        assert!(session.expiry_age().whole_seconds() <= 10);
+        Ok(Response::new(Body::empty()))
+    }
+
+    #[tokio::test]
+    async fn expiry_modify_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store).with_expiry(
+            Expiry::AtDateTime(OffsetDateTime::now_utc() + Duration::seconds(10000)),
+        );
+        let svc = ServiceBuilder::new()
+            .layer(session_layer.clone())
+            .service_fn(handler_modify_expiry);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        let set_cookie = res.headers().get(http::header::SET_COOKIE).unwrap();
+        let max_age: i64 = set_cookie
+            .to_str()
+            .unwrap()
+            .split("Max-Age=")
+            .nth(1)
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(max_age <= 10);
+
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler_assert_expiry);
+
+        let req = Request::builder()
+            .header(http::header::COOKIE, set_cookie)
+            .body(Body::empty())?;
+        let _ = svc.oneshot(req).await?;
         Ok(())
     }
 
