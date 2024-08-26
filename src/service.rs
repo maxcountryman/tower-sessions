@@ -673,7 +673,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn same_site_test() -> anyhow::Result<()> {
+    async fn same_site_strict_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_same_site(SameSite::Strict);
@@ -686,6 +686,11 @@ mod tests {
 
         assert!(cookie_value_matches(&res, |s| s.contains("SameSite=Strict")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn same_site_lax_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
         let svc = ServiceBuilder::new()
@@ -697,6 +702,11 @@ mod tests {
 
         assert!(cookie_value_matches(&res, |s| s.contains("SameSite=Lax")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn same_site_none_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::None);
         let svc = ServiceBuilder::new()
@@ -712,7 +722,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expiry_test() -> anyhow::Result<()> {
+    async fn expiry_on_session_end_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_expiry(Expiry::OnSessionEnd);
@@ -725,6 +735,11 @@ mod tests {
 
         assert!(cookie_value_matches(&res, |s| !s.contains("Max-Age")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_on_inactivity_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store)
@@ -739,6 +754,11 @@ mod tests {
         let expected_max_age = inactivity_duration.whole_seconds();
         assert!(cookie_has_expected_max_age(&res, expected_max_age));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_at_date_time_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer =
@@ -757,9 +777,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn always_save_test() -> anyhow::Result<()> {
-        // on-session-end expiry
-
+    async fn expiry_on_session_end_always_save_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store.clone())
             .with_expiry(Expiry::OnSessionEnd)
@@ -783,8 +801,11 @@ mod tests {
         assert!(sid1 == sid2);
         assert!(rec1.expiry_date < rec2.expiry_date);
 
-        // on-inactivity expiry
+        Ok(())
+    }
 
+    #[tokio::test]
+    async fn expiry_on_inactivity_always_save_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store.clone())
@@ -810,8 +831,11 @@ mod tests {
         assert!(sid1 == sid2);
         assert!(rec1.expiry_date < rec2.expiry_date);
 
-        // at-date-time expiry
+        Ok(())
+    }
 
+    #[tokio::test]
+    async fn expiry_at_date_time_always_save_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer = SessionManagerLayer::new(session_store.clone())
