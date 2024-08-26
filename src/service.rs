@@ -99,6 +99,7 @@ struct SessionConfig<'a> {
     secure: bool,
     path: Cow<'a, str>,
     domain: Option<Cow<'a, str>>,
+    always_save: bool,
 }
 
 impl<'a> SessionConfig<'a> {
@@ -135,6 +136,7 @@ impl<'a> Default for SessionConfig<'a> {
             secure: true,
             path: "/".into(),
             domain: None,
+            always_save: false,
         }
     }
 }
@@ -223,7 +225,12 @@ where
                 let modified = session.is_modified();
                 let empty = session.is_empty().await;
 
-                tracing::trace!(modified = modified, empty = empty, "session response state");
+                tracing::trace!(
+                    modified = modified,
+                    empty = empty,
+                    always_save = session_config.always_save,
+                    "session response state",
+                );
 
                 match session_cookie {
                     Some(mut cookie) if empty => {
@@ -241,8 +248,10 @@ where
                         cookie_controller.remove(&cookies, cookie);
                     }
 
-                    // TODO: We can consider an "always save" configuration option:
-                    _ if modified && !empty && !res.status().is_server_error() => {
+                    _ if (modified || session_config.always_save)
+                        && !empty
+                        && !res.status().is_server_error() =>
+                    {
                         tracing::debug!("saving session");
                         if let Err(err) = session.save().await {
                             tracing::error!(err = %err, "failed to save session");
@@ -407,6 +416,37 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
         self
     }
 
+    /// Configures whether unmodified session should be saved on read or not.
+    /// When the value is `true`, the session will be saved even if it was not
+    /// changed.
+    ///
+    /// This is useful when you want to reset [`Session`] expiration time
+    /// on any valid request at the cost of higher [`SessionStore`] write
+    /// activity and transmitting `set-cookie` header with each response.
+    ///
+    /// It makes sense to use this setting with relative session expiration
+    /// values, such as `Expiry::OnInactivity(Duration)`. This setting will
+    /// _not_ cause session id to be cycled on save.
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use time::Duration;
+    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
+    /// let session_service = SessionManagerLayer::new(session_store)
+    ///     .with_expiry(session_expiry)
+    ///     .with_always_save(true);
+    /// ```
+    pub fn with_always_save(mut self, always_save: bool) -> Self {
+        self.session_config.always_save = always_save;
+        self
+    }
+
     /// Manages the session cookie via a signed interface.
     ///
     /// See [`SignedCookies`](tower_cookies::SignedCookies).
@@ -500,10 +540,14 @@ impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLay
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use anyhow::anyhow;
     use axum::body::Body;
     use tower::{ServiceBuilder, ServiceExt};
     use tower_sessions_memory_store::MemoryStore;
+
+    use crate::session::{Id, Record};
 
     use super::*;
 
@@ -596,10 +640,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.starts_with("my.sid="))));
+        assert!(cookie_value_matches(&res, |s| s.starts_with("my.sid=")));
 
         Ok(())
     }
@@ -615,10 +656,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.contains("HttpOnly"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("HttpOnly")));
 
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_http_only(false);
@@ -629,16 +667,13 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("HttpOnly"))));
+        assert!(cookie_value_matches(&res, |s| !s.contains("HttpOnly")));
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn same_site_test() -> anyhow::Result<()> {
+    async fn same_site_strict_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_same_site(SameSite::Strict);
@@ -649,13 +684,13 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie
-                .to_str()
-                .is_ok_and(|s| s.contains("SameSite=Strict"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("SameSite=Strict")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn same_site_lax_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
         let svc = ServiceBuilder::new()
@@ -665,13 +700,13 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie
-                .to_str()
-                .is_ok_and(|s| s.contains("SameSite=Lax"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("SameSite=Lax")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn same_site_none_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::None);
         let svc = ServiceBuilder::new()
@@ -681,18 +716,13 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie
-                .to_str()
-                .is_ok_and(|s| s.contains("SameSite=None"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("SameSite=None")));
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn expiry_test() -> anyhow::Result<()> {
+    async fn expiry_on_session_end_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_expiry(Expiry::OnSessionEnd);
@@ -703,11 +733,13 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("Max-Age"))));
+        assert!(cookie_value_matches(&res, |s| !s.contains("Max-Age")));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_on_inactivity_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store)
@@ -720,22 +752,13 @@ mod tests {
         let res = svc.oneshot(req).await?;
 
         let expected_max_age = inactivity_duration.whole_seconds();
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| {
-                let max_age_value = s
-                    .split("Max-Age=")
-                    .nth(1)
-                    .unwrap_or_default()
-                    .split(';')
-                    .next()
-                    .unwrap_or_default()
-                    .parse::<i64>()
-                    .unwrap_or_default();
-                (max_age_value - expected_max_age).abs() <= 1
-            })));
+        assert!(cookie_has_expected_max_age(&res, expected_max_age));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_at_date_time_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer =
@@ -748,21 +771,95 @@ mod tests {
         let res = svc.oneshot(req).await?;
 
         let expected_max_age = (expiry_time - time::OffsetDateTime::now_utc()).whole_seconds();
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| {
-                let max_age_value = s
-                    .split("Max-Age=")
-                    .nth(1)
-                    .unwrap_or_default()
-                    .split(';')
-                    .next()
-                    .unwrap_or_default()
-                    .parse::<i64>()
-                    .unwrap_or_default();
-                (max_age_value - expected_max_age).abs() <= 1
-            })));
+        assert!(cookie_has_expected_max_age(&res, expected_max_age));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_on_session_end_always_save_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store.clone())
+            .with_expiry(Expiry::OnSessionEnd)
+            .with_always_save(true);
+        let mut svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req1 = Request::builder().body(Body::empty())?;
+        let res1 = svc.call(req1).await?;
+        let sid1 = get_session_id(&res1);
+        let rec1 = get_record(&session_store, &sid1).await;
+        let req2 = Request::builder()
+            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .body(Body::empty())?;
+        let res2 = svc.call(req2).await?;
+        let sid2 = get_session_id(&res2);
+        let rec2 = get_record(&session_store, &sid2).await;
+
+        assert!(cookie_value_matches(&res2, |s| !s.contains("Max-Age")));
+        assert!(sid1 == sid2);
+        assert!(rec1.expiry_date < rec2.expiry_date);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_on_inactivity_always_save_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let inactivity_duration = time::Duration::hours(2);
+        let session_layer = SessionManagerLayer::new(session_store.clone())
+            .with_expiry(Expiry::OnInactivity(inactivity_duration))
+            .with_always_save(true);
+        let mut svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req1 = Request::builder().body(Body::empty())?;
+        let res1 = svc.call(req1).await?;
+        let sid1 = get_session_id(&res1);
+        let rec1 = get_record(&session_store, &sid1).await;
+        let req2 = Request::builder()
+            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .body(Body::empty())?;
+        let res2 = svc.call(req2).await?;
+        let sid2 = get_session_id(&res2);
+        let rec2 = get_record(&session_store, &sid2).await;
+
+        let expected_max_age = inactivity_duration.whole_seconds();
+        assert!(cookie_has_expected_max_age(&res2, expected_max_age));
+        assert!(sid1 == sid2);
+        assert!(rec1.expiry_date < rec2.expiry_date);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_at_date_time_always_save_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
+        let session_layer = SessionManagerLayer::new(session_store.clone())
+            .with_expiry(Expiry::AtDateTime(expiry_time))
+            .with_always_save(true);
+        let mut svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req1 = Request::builder().body(Body::empty())?;
+        let res1 = svc.call(req1).await?;
+        let sid1 = get_session_id(&res1);
+        let rec1 = get_record(&session_store, &sid1).await;
+        let req2 = Request::builder()
+            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .body(Body::empty())?;
+        let res2 = svc.call(req2).await?;
+        let sid2 = get_session_id(&res2);
+        let rec2 = get_record(&session_store, &sid2).await;
+
+        let expected_max_age = (expiry_time - time::OffsetDateTime::now_utc()).whole_seconds();
+        assert!(cookie_has_expected_max_age(&res2, expected_max_age));
+        assert!(sid1 == sid2);
+        assert!(rec1.expiry_date == rec2.expiry_date);
 
         Ok(())
     }
@@ -778,10 +875,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| s.contains("Secure"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("Secure")));
 
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
@@ -792,10 +886,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(|s| !s.contains("Secure"))));
+        assert!(cookie_value_matches(&res, |s| !s.contains("Secure")));
 
         Ok(())
     }
@@ -811,12 +902,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie
-                .to_str()
-                .is_ok_and(|s| s.contains("Path=/foo/bar"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("Path=/foo/bar")));
 
         Ok(())
     }
@@ -832,12 +918,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        assert!(res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .is_some_and(|set_cookie| set_cookie
-                .to_str()
-                .is_ok_and(|s| s.contains("Domain=example.com"))));
+        assert!(cookie_value_matches(&res, |s| s.contains("Domain=example.com")));
 
         Ok(())
     }
@@ -876,5 +957,56 @@ mod tests {
         assert!(res.headers().get(http::header::SET_COOKIE).is_some());
 
         Ok(())
+    }
+
+    fn cookie_value_matches<F>(res: &Response<Body>, matcher: F) -> bool
+    where
+        F: FnOnce(&str) -> bool,
+    {
+        res.headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| set_cookie.to_str().is_ok_and(matcher))
+    }
+
+    fn cookie_has_expected_max_age(res: &Response<Body>, expected_value: i64) -> bool {
+        res.headers()
+            .get(http::header::SET_COOKIE)
+            .is_some_and(|set_cookie| {
+                set_cookie.to_str().is_ok_and(|s| {
+                    let max_age_value = s
+                        .split("Max-Age=")
+                        .nth(1)
+                        .unwrap_or_default()
+                        .split(';')
+                        .next()
+                        .unwrap_or_default()
+                        .parse::<i64>()
+                        .unwrap_or_default();
+                    (max_age_value - expected_value).abs() <= 1
+                })
+            })
+    }
+
+    fn get_session_id(res: &Response<Body>) -> String {
+        res.headers()
+            .get(http::header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .split("id=")
+            .nth(1)
+            .unwrap()
+            .split(";")
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    async fn get_record(store: &impl SessionStore, id: &str) -> Record {
+        store
+            .load(&Id::from_str(id).unwrap())
+            .await
+            .unwrap()
+            .unwrap()
     }
 }

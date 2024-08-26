@@ -953,7 +953,7 @@ pub enum Expiry {
     /// Expire on [current session end][current-session-end], as defined by the
     /// browser.
     ///
-    /// [current-session-end]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
+    /// [current-session-end]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#removal_defining_the_lifetime_of_a_cookie
     OnSessionEnd,
 
     /// Expire on inactivity.
