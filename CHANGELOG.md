@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.13.0
+
+- Add option to always save session. #216
+
 # 0.12.3
 
 - Ensure `continuously_delete_expired` waits for initial run. #208
