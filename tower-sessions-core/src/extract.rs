@@ -1,20 +1,26 @@
-use async_trait::async_trait;
-use axum_core::extract::FromRequestParts;
-use http::{request::Parts, StatusCode};
+use std::convert::Infallible;
 
-use crate::session::Session;
+use axum_core::extract::{FromRef, FromRequestParts};
+use http::request::Parts;
 
-#[async_trait]
-impl<S> FromRequestParts<S> for Session
+use crate::{session::Session, SessionStore};
+
+#[async_trait::async_trait]
+impl<State, Record, Store> FromRequestParts<State> for Session<Record, Store>
 where
-    S: Sync + Send,
+    State: Send + Sync,
+    Record: Send + Sync,
+    Store: SessionStore<Record> + FromRef<State>,
 {
-    type Rejection = (http::StatusCode, &'static str);
+    // TODO: use the never type `!` when it becomes stable
+    type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts.extensions.get::<Session>().cloned().ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Can't extract session. Is `SessionManagerLayer` enabled?",
-        ))
+    async fn from_request_parts(_parts: &mut Parts, state: &State) -> Result<Self, Self::Rejection> {
+        let store = Store::from_ref(state);
+        // TODO: extract the session from the request? or should a middleware do this? Because in
+        // the end we also need to set the session cookie in the response, which is not possible
+        // with an extractor.
+        
+        Ok(Session::new(store, None))
     }
 }

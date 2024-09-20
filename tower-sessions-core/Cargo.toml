@@ -29,6 +29,7 @@ thiserror = { workspace = true }
 time = { version = "0.3.29", features = ["serde"] }
 tokio = { workspace = true }
 tracing = { version = "0.1.40", features = ["log"] }
+either = "1.13"
 
 [dev-dependencies]
 tower-sessions = { workspace = true, features = ["memory-store"] }
