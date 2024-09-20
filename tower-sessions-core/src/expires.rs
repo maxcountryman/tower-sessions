@@ -1,10 +1,8 @@
 // Not sure how this should look like, Maybe only the `expires` method is enough.
 pub trait Expires {
-    type Expiry;
+    type Expiry/*: What type of trait should this be bounded by? */;
 
     fn expires(&self) -> Self::Expiry;
-
-    fn set_expires(&mut self, expiry: Self::Expiry);
 
     fn expired(&self) -> bool;
 }
@@ -15,8 +13,6 @@ impl Expires for NoExpiry<()> {
     type Expiry = ();
 
     fn expires(&self) {}
-
-    fn set_expires(&mut self, _: ()) {}
 
     fn expired(&self) -> bool {
         false
