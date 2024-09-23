@@ -12,6 +12,7 @@ repository.workspace = true
 default = []
 axum-core = ["dep:axum-core", "dep:http"]
 deletion-task = ["dep:tokio", "tokio/time"]
+id-access = []
 
 [dependencies]
 async-trait = { workspace = true }

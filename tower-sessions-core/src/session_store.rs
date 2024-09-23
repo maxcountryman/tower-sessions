@@ -131,8 +131,7 @@ pub trait SessionStore<R: Send + Sync>: Debug + Send + Sync {
     /// 
     /// This can also accidently increase the lifetime of a session. Suppose a session is loaded
     /// successfully from the store, but then expires before changes are saved. Using this method
-    /// will reinstate the session with the same ID, prolonging its
-    /// lifetime.
+    /// will reinstate the session with the same ID, prolonging its lifetime.
     fn save_or_create(
         &mut self,
         id: &Id,

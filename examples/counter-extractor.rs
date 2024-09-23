@@ -5,7 +5,7 @@ use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Rout
 use http::request::Parts;
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, LazySession, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
@@ -20,7 +20,7 @@ where
     type Rejection = (http::StatusCode, &'static str);
 
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let session = Session::from_request_parts(req, state).await?;
+        let session = LazySession::from_request_parts(req, state).await?;
         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
         session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
         Ok(counter)

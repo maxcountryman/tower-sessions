@@ -18,7 +18,7 @@ use tracing::Instrument;
 
 use crate::{
     session::{self, Expiry},
-    Session, SessionStore,
+    LazySession, SessionStore,
 };
 
 #[doc(hidden)]
@@ -216,7 +216,7 @@ where
                         .ok()
                 });
 
-                let session = Session::new(session_id, session_store, session_config.expiry);
+                let session = LazySession::new(session_id, session_store, session_config.expiry);
 
                 req.extensions_mut().insert(session.clone());
 
@@ -554,7 +554,7 @@ mod tests {
     async fn handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
         let session = req
             .extensions()
-            .get::<Session>()
+            .get::<LazySession>()
             .ok_or(anyhow!("Missing session"))?;
 
         session.insert("foo", 42).await?;

@@ -4,63 +4,63 @@ use http::{header, HeaderMap};
 use http_body_util::BodyExt;
 use time::{Duration, OffsetDateTime};
 use tower_cookies::{cookie, Cookie};
-use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore};
+use tower_sessions::{Expiry, LazySession, SessionManagerLayer, SessionStore};
 
 fn routes() -> Router {
     Router::new()
-        .route("/", get(|_: Session| async move { "Hello, world!" }))
+        .route("/", get(|_: LazySession| async move { "Hello, world!" }))
         .route(
             "/insert",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.insert("foo", 42).await.unwrap();
             }),
         )
         .route(
             "/get",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 format!("{}", session.get::<usize>("foo").await.unwrap().unwrap())
             }),
         )
         .route(
             "/get_value",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 format!("{:?}", session.get_value("foo").await.unwrap())
             }),
         )
         .route(
             "/remove",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.remove::<usize>("foo").await.unwrap();
             }),
         )
         .route(
             "/remove_value",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.remove_value("foo").await.unwrap();
             }),
         )
         .route(
             "/cycle_id",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.cycle_id().await.unwrap();
             }),
         )
         .route(
             "/flush",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.flush().await.unwrap();
             }),
         )
         .route(
             "/set_expiry",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 let expiry = Expiry::AtDateTime(OffsetDateTime::now_utc() + Duration::days(1));
                 session.set_expiry(Some(expiry));
             }),
         )
         .route(
             "/remove_expiry",
-            get(|session: Session| async move {
+            get(|session: LazySession| async move {
                 session.set_expiry(Some(Expiry::OnSessionEnd));
             }),
         )

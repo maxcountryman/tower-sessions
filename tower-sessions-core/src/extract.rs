@@ -3,10 +3,10 @@ use std::convert::Infallible;
 use axum_core::extract::{FromRef, FromRequestParts};
 use http::request::Parts;
 
-use crate::{session::Session, SessionStore};
+use crate::{session::LazySession, SessionStore};
 
 #[async_trait::async_trait]
-impl<State, Record, Store> FromRequestParts<State> for Session<Record, Store>
+impl<State, Record, Store> FromRequestParts<State> for LazySession<Record, Store>
 where
     State: Send + Sync,
     Record: Send + Sync,
@@ -21,6 +21,6 @@ where
         // the end we also need to set the session cookie in the response, which is not possible
         // with an extractor.
         
-        Ok(Session::new(store, None))
+        Ok(LazySession::new(store, None))
     }
 }
