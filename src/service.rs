@@ -17,7 +17,7 @@ use tower_service::Service;
 use tracing::Instrument;
 
 use crate::{
-    session::{self, Expiry},
+    session::{self},
     LazySession, SessionStore,
 };
 
@@ -90,15 +90,15 @@ impl CookieController for PrivateCookie {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SessionConfig<'a> {
-    name: Cow<'a, str>,
+#[derive(Debug, Copy, Clone)]
+pub struct SessionConfig<'a> {
+    name: &'a str,
     http_only: bool,
     same_site: SameSite,
     expiry: Option<Expiry>,
     secure: bool,
-    path: Cow<'a, str>,
-    domain: Option<Cow<'a, str>>,
+    path: &'a str,
+    domain: Option<&'a str>,
     always_save: bool,
 }
 
@@ -172,7 +172,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = ResponseFuture<S::Future>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -180,111 +180,127 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let span = tracing::info_span!("call");
-
-        let session_store = self.session_store.clone();
-        let session_config = self.session_config.clone();
-        let cookie_controller = self.cookie_controller.clone();
-
-        // Because the inner service can panic until ready, we need to ensure we only
-        // use the ready service.
-        //
-        // See: https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
-        let clone = self.inner.clone();
-        let mut inner = std::mem::replace(&mut self.inner, clone);
-
-        Box::pin(
-            async move {
-                let Some(cookies) = req.extensions().get::<_>().cloned() else {
-                    // In practice this should never happen because we wrap `CookieManager`
-                    // directly.
-                    tracing::error!("missing cookies request extension");
-                    return Ok(Response::default());
-                };
-
-                let session_cookie = cookie_controller.get(&cookies, &session_config.name);
-                let session_id = session_cookie.as_ref().and_then(|cookie| {
-                    cookie
-                        .value()
-                        .parse::<session::Id>()
-                        .map_err(|err| {
-                            tracing::warn!(
-                                err = %err,
-                                "possibly suspicious activity: malformed session id"
-                            )
-                        })
-                        .ok()
-                });
-
-                let session = LazySession::new(session_id, session_store, session_config.expiry);
-
-                req.extensions_mut().insert(session.clone());
-
-                let res = inner.call(req).await?;
-
-                let modified = session.is_modified();
-                let empty = session.is_empty().await;
-
-                tracing::trace!(
-                    modified = modified,
-                    empty = empty,
-                    always_save = session_config.always_save,
-                    "session response state",
-                );
-
-                match session_cookie {
-                    Some(mut cookie) if empty => {
-                        tracing::debug!("removing session cookie");
-
-                        // Path and domain must be manually set to ensure a proper removal cookie is
-                        // constructed.
-                        //
-                        // See: https://docs.rs/cookie/latest/cookie/struct.CookieJar.html#method.remove
-                        cookie.set_path(session_config.path);
-                        if let Some(domain) = session_config.domain {
-                            cookie.set_domain(domain);
-                        }
-
-                        cookie_controller.remove(&cookies, cookie);
-                    }
-
-                    _ if (modified || session_config.always_save)
-                        && !empty
-                        && !res.status().is_server_error() =>
-                    {
-                        tracing::debug!("saving session");
-                        if let Err(err) = session.save().await {
-                            tracing::error!(err = %err, "failed to save session");
-
-                            let mut res = Response::default();
-                            *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
-                            return Ok(res);
-                        }
-
-                        let Some(session_id) = session.id() else {
-                            tracing::error!("missing session id");
-
-                            let mut res = Response::default();
-                            *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
-                            return Ok(res);
-                        };
-
-                        let expiry = session.expiry();
-                        let session_cookie = session_config.build_cookie(session_id, expiry);
-
-                        tracing::debug!("adding session cookie");
-                        cookie_controller.add(&cookies, session_cookie);
-                    }
-
-                    _ => (),
-                };
-
-                Ok(res)
-            }
-            .instrument(span),
-        )
+        self.inner.call(req)
     }
 }
+
+#[derive(Debug, Clone)]
+struct ResponseFuture<F> {
+    inner: F,
+}
+
+impl<F: Future> Future for ResponseFuture<F> {
+    type Output = Result<F::Output, F::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.inner.poll_unpin(cx)
+    }
+}
+
+// let span = tracing::info_span!("call");
+
+// let session_store = self.session_store.clone();
+// let session_config = self.session_config.clone();
+// let cookie_controller = self.cookie_controller.clone();
+
+// // Because the inner service can panic until ready, we need to ensure we only
+// // use the ready service.
+// //
+// // See: https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+// let clone = self.inner.clone();
+// let mut inner = std::mem::replace(&mut self.inner, clone);
+
+// Box::pin(
+//     async move {
+//         let Some(cookies) = req.extensions().get::<_>().cloned() else {
+//             // In practice this should never happen because we wrap `CookieManager`
+//             // directly.
+//             tracing::error!("missing cookies request extension");
+//             return Ok(Response::default());
+//         };
+
+//         let session_cookie = cookie_controller.get(&cookies, &session_config.name);
+//         let session_id = session_cookie.as_ref().and_then(|cookie| {
+//             cookie
+//                 .value()
+//                 .parse::<session::Id>()
+//                 .map_err(|err| {
+//                     tracing::warn!(
+//                         err = %err,
+//                         "possibly suspicious activity: malformed session id"
+//                     )
+//                 })
+//                 .ok()
+//         });
+
+//         let session = LazySession::new(session_id, session_store, session_config.expiry);
+
+//         req.extensions_mut().insert(session.clone());
+
+//         let res = inner.call(req).await?;
+
+//         let modified = session.is_modified();
+//         let empty = session.is_empty().await;
+
+//         tracing::trace!(
+//             modified = modified,
+//             empty = empty,
+//             always_save = session_config.always_save,
+//             "session response state",
+//         );
+
+//         match session_cookie {
+//             Some(mut cookie) if empty => {
+//                 tracing::debug!("removing session cookie");
+
+//                 // Path and domain must be manually set to ensure a proper removal cookie is
+//                 // constructed.
+//                 //
+//                 // See: https://docs.rs/cookie/latest/cookie/struct.CookieJar.html#method.remove
+//                 cookie.set_path(session_config.path);
+//                 if let Some(domain) = session_config.domain {
+//                     cookie.set_domain(domain);
+//                 }
+
+//                 cookie_controller.remove(&cookies, cookie);
+//             }
+
+//             _ if (modified || session_config.always_save)
+//                 && !empty
+//                 && !res.status().is_server_error() =>
+//             {
+//                 tracing::debug!("saving session");
+//                 if let Err(err) = session.save().await {
+//                     tracing::error!(err = %err, "failed to save session");
+
+//                     let mut res = Response::default();
+//                     *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+//                     return Ok(res);
+//                 }
+
+//                 let Some(session_id) = session.id() else {
+//                     tracing::error!("missing session id");
+
+//                     let mut res = Response::default();
+//                     *res.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+//                     return Ok(res);
+//                 };
+
+//                 let expiry = session.expiry();
+//                 let session_cookie = session_config.build_cookie(session_id, expiry);
+
+//                 tracing::debug!("adding session cookie");
+//                 cookie_controller.add(&cookies, session_cookie);
+//             }
+
+//             _ => (),
+//         };
+
+//         Ok(res)
+//     }
+//     .instrument(span),
+// )
+
 
 /// A layer for providing [`Session`] as a request extension.
 #[derive(Debug, Clone)]
@@ -306,7 +322,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
     /// ```
-    pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: N) -> Self {
+    pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: &'static str) -> Self {
         self.session_config.name = name.into();
         self
     }

@@ -1,27 +1,41 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     marker::PhantomData,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
-    str,
     sync::{Arc, Mutex},
 };
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use serde::{Deserialize, Serialize};
+use crate::{id::Id, SessionStore};
 
-use crate::SessionStore;
+enum SessionUpdate {
+    Delete,
+    Set(Id),
+}
 
-/// A session which allows HTTP applications to associate key-value pairs with
-/// visitors.
+type Updater = Arc<Mutex<Option<SessionUpdate>>>;
+
+/// A session that is lazily loaded, and that can be extracted from a request.
+///
+/// This struct has a somewhat convoluted API, but it is designed to be nearly impossible to
+/// misuse. Luckily, it only has a handful of methods, and each of them document how they work.
+///
+/// When this struct refers to the "underlying store error", it is referring to the fact that the
+/// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
+/// a timeout, etc. A counterexample would be the session not being found in the store, which is
+/// not considered an error by the `SessionStore` trait.
+///
+/// ## Cloning
+/// 
+/// If the `Store` type implements `Clone`, then `LazySession` is as cheap to clone as cloning the
+/// `Store` itself.
 pub struct LazySession<R, Store> {
-    /// This will be `None` if the endpoint has not received a session cookie or if the it could
+    /// This will be `None` if the handler has not received a session cookie or if the it could
     /// not be parsed.
     id: Option<Id>,
     store: Store,
-    /// Data associated with the session, it is `None` if the session was not loaded yet.
     data: PhantomData<R>,
     updater: Updater,
 }
@@ -48,22 +62,7 @@ impl<R, Store: Debug> Debug for LazySession<R, Store> {
 }
 
 impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
-    /// Creates a new session with the session ID, store, and expiry.
-    ///
-    /// This method is lazy and does not invoke the overhead of talking to the
-    /// backing store.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use std::sync::Arc;
-    ///
-    /// use tower_sessions::{MemoryStore, Session};
-    ///
-    /// let store = Arc::new(MemoryStore::default());
-    /// Session::new(None, store, None);
-    /// ```
-    pub fn new(store: Store, id: Option<Id>, updater: Updater) -> Self {
+    pub(crate) fn new(store: Store, id: Option<Id>, updater: Updater) -> Self {
         Self {
             store,
             id,
@@ -72,10 +71,16 @@ impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
         }
     }
 
+    /// Try to load the session from the store.
+    ///
+    /// The return type of this method looks convoluted, so let's break it down:
+    /// - The outer `Result` will return `Err(...)` if the underlying session store errors.
+    /// - Otherwise, it will return `Ok(...)`, where `...` is an `Option`.
+    /// - The inner `Option` will be `None` if the session was not found in the store.
+    /// - Otherwise, it will be `Some(...)`, where `...` is the loaded session.
     pub async fn load(mut self) -> Result<Option<Session<R, Store>>, Store::Error> {
         Ok(if let Some(id) = self.id {
-            let data = self.store.load(&id).await?;
-            data.map(|data| Session {
+            self.store.load(&id).await?.map(|data| Session {
                 store: self.store,
                 id,
                 data,
@@ -85,12 +90,36 @@ impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
             None
         })
     }
+
+    /// Create a new session with the given data.
+    ///
+    /// # Error
+    ///
+    /// Errors if the underlying store errors.
+    pub async fn create(mut self, data: R) -> Result<Session<R, Store>, Store::Error> {
+        let id = self.store.create(&data).await?;
+        self.updater
+            .lock()
+            .expect("lock should not be poisoned")
+            .replace(SessionUpdate::Set(id));
+        Ok(Session {
+            store: self.store,
+            id,
+            data,
+            updater: self.updater,
+        })
+    }
 }
 
 /// A loaded session.
 ///
 /// This struct has a somewhat convoluted API, but it is designed to be nearly impossible to
 /// misuse. Luckily, it only has a handful of methods, and each of them document how they work.
+///
+/// When this struct refers to the "underlying store error", it is referring to the fact that the
+/// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
+/// a timeout, etc. A counterexample would be the session not being found in the store, which is
+/// not considered an error by the `SessionStore` trait.
 pub struct Session<R: Send + Sync, Store: SessionStore<R>> {
     store: Store,
     id: Id,
@@ -228,52 +257,3 @@ where
             .save(&self.session.id, &self.session.data);
     }
 }
-
-/// ID type for sessions.
-///
-/// Wraps an array of 16 bytes.
-///
-/// # Examples
-///
-/// ```rust
-/// use tower_sessions::session::Id;
-///
-/// Id::default();
-/// ```
-#[cfg(feature = "id-access")]
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub struct Id(pub i128);
-
-/// ID type for sessions.
-///
-/// Wraps an array of 16 bytes.
-///
-/// # Examples
-///
-/// ```rust
-/// use tower_sessions::session::Id;
-///
-/// Id::default();
-/// ```
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-#[cfg(not(feature = "id-access"))]
-pub struct Id(i128);
-
-impl Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut encoded = [0; 22];
-        URL_SAFE_NO_PAD
-            .encode_slice(self.0.to_le_bytes(), &mut encoded)
-            .expect("Encoded ID must be exactly 22 bytes");
-        let encoded = str::from_utf8(&encoded).expect("Encoded ID must be valid UTF-8");
-
-        f.write_str(encoded)
-    }
-}
-
-enum SessionUpdate {
-    Delete,
-    Set(Id),
-}
-
-type Updater = Arc<Mutex<Option<SessionUpdate>>>;

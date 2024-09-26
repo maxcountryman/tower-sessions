@@ -441,7 +441,9 @@ pub use tower_cookies::cookie;
 pub use tower_sessions_core::{session, session_store};
 #[doc(inline)]
 pub use tower_sessions_core::{
-    session::{Expiry, LazySession},
+    id::Id,
+    expires::Expires,
+    session::{LazySession, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
 #[cfg(feature = "memory-store")]

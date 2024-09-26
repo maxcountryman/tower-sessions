@@ -85,7 +85,7 @@ use std::{fmt::Debug, future::Future};
 use either::Either::{self, Left, Right};
 use futures::TryFutureExt;
 
-use crate::{expires::Expires, session::Id};
+use crate::{expires::Expires, id::Id};
 
 /// Defines the interface for session management.
 ///
