@@ -204,18 +204,18 @@ pin_project! {
     }
 }
 
-impl<F, Response, Error> Future for ResponseFuture<F>
+impl<F, ResBody, Error> Future for ResponseFuture<F>
 where
-    F: Future<Output = Result<Response, Error>>,
+    F: Future<Output = Result<Response<ResBody>, Error>>,
 {
-    type Output = Result<Response, Error>;
+    type Output = Result<Response<ResBody>, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let mut resp = match this.inner.poll(cx) {
             Poll::Ready(r) => r,
             Poll::Pending => return Poll::Pending,
-        };
+        }?;
 
         let update = this
             .updater
@@ -234,7 +234,7 @@ where
             None => {}
         };
 
-        Poll::Ready(resp)
+        Poll::Ready(Ok(resp))
     }
 }
 
