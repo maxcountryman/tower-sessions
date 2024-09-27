@@ -1,14 +1,20 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
-    fmt::{self, Debug},
+    error::Error,
+    fmt::{self, Debug, Display},
     marker::PhantomData,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
+
+use axum_core::extract::{FromRef, FromRequestParts};
+use http::request::Parts;
+use std::convert::Infallible;
+
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
-use crate::{id::Id, SessionStore};
+use tower_sessions_core::{id::Id, SessionStore};
 
 enum SessionUpdate {
     Delete,
@@ -26,29 +32,13 @@ type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
 /// a timeout, etc. A counterexample would be the session not being found in the store, which is
 /// not considered an error by the `SessionStore` trait.
-///
-/// ## Cloning
-/// 
-/// If the `Store` type implements `Clone`, then `LazySession` is as cheap to clone as cloning the
-/// `Store` itself.
 pub struct LazySession<R, Store> {
     /// This will be `None` if the handler has not received a session cookie or if the it could
     /// not be parsed.
-    id: Option<Id>,
-    store: Store,
-    data: PhantomData<R>,
-    updater: Updater,
-}
-
-impl<R, Store: Clone> Clone for LazySession<R, Store> {
-    fn clone(&self) -> Self {
-        Self {
-            store: self.store.clone(),
-            id: self.id,
-            data: PhantomData,
-            updater: self.updater.clone(),
-        }
-    }
+    pub(crate) id: Option<Id>,
+    pub(crate) store: Store,
+    pub(crate) data: PhantomData<R>,
+    pub(crate) updater: Updater,
 }
 
 impl<R, Store: Debug> Debug for LazySession<R, Store> {
@@ -62,15 +52,6 @@ impl<R, Store: Debug> Debug for LazySession<R, Store> {
 }
 
 impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
-    pub(crate) fn new(store: Store, id: Option<Id>, updater: Updater) -> Self {
-        Self {
-            store,
-            id,
-            data: Default::default(),
-            updater,
-        }
-    }
-
     /// Try to load the session from the store.
     ///
     /// The return type of this method looks convoluted, so let's break it down:
@@ -108,6 +89,36 @@ impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
             data,
             updater: self.updater,
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NoMiddleware;
+
+impl Display for NoMiddleware {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Missing session middleware. Is it added to the app?")
+    }
+}
+
+impl Error for NoMiddleware {}
+
+#[async_trait::async_trait]
+impl<State, Record, Store> FromRequestParts<State> for LazySession<Record, Store>
+where
+    State: Send + Sync,
+    Record: Send + Sync,
+    Store: SessionStore<Record> + FromRef<State>,
+{
+    type Rejection = NoMiddleware;
+
+    async fn from_request_parts(parts: &mut Parts, state: &State) -> Result<Self, Self::Rejection> {
+        let session = parts
+            .extensions
+            .remove::<LazySession<Record, Store>>()
+            .ok_or(NoMiddleware)?;
+
+        Ok(session)
     }
 }
 

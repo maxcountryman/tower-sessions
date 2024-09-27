@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "memory-store", "tower-sessions-core"]
+members = ["tower-sessions-core"]
 resolver = "2"
 
 [workspace.package]
@@ -33,37 +33,37 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["axum-core", "memory-store"]
+default = ["axum-core"]
 axum-core = ["tower-sessions-core/axum-core"]
-memory-store = ["tower-sessions-memory-store"]
+# memory-store = ["tower-sessions-memory-store"]
 signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
 
 [workspace.dependencies]
 tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
 
-tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
+tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access"] }
+# tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
 
-async-trait = "0.1.74"
-parking_lot = { version = "0.12.1", features = ["serde"] }
 rmp-serde = { version = "1.1.2" }
 serde = "1.0.192"
 thiserror = "1.0.50"
 time = "0.3.30"
 tokio = { version = "1.32.0", default-features = false, features = ["sync"] }
+async-trait = "0.1.74"
 
 [dependencies]
 async-trait = { workspace = true }
 http = "1.0"
+pin-project-lite = "0.2.14"
 tokio = { version = "1.32.0", features = ["sync"] }
 tower-layer = "0.3.2"
 tower-service = "0.3.2"
 tower-sessions-core = { workspace = true }
-tower-sessions-memory-store = { workspace = true, optional = true }
+# tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
-tower-cookies = "0.10.0"
 time = { version = "0.3.29", features = ["serde"] }
+cookie = "0.18.1"
 
 [dev-dependencies]
 async-trait = "0.1.74"

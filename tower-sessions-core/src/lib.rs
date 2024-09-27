@@ -1,13 +1,10 @@
 #[doc(inline)]
-pub use self::{
-    session::LazySession,
-    session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
-};
+pub use self::session_store::SessionStore;
+pub use self::id::Id;
+pub use self::expires::Expiry;
 
 #[cfg(feature = "axum-core")]
 #[cfg_attr(docsrs, doc(cfg(feature = "axum-core")))]
-pub mod extract;
-pub mod session;
 pub mod session_store;
 pub mod expires;
 pub mod id;
