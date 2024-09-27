@@ -8,20 +8,25 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum_core::extract::{FromRef, FromRequestParts};
+use axum_core::{
+    body::Body,
+    extract::FromRequestParts,
+    response::{IntoResponse, Response},
+};
+
 use http::request::Parts;
-use std::convert::Infallible;
 
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
 use tower_sessions_core::{id::Id, SessionStore};
 
-enum SessionUpdate {
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SessionUpdate {
     Delete,
     Set(Id),
 }
 
-type Updater = Arc<Mutex<Option<SessionUpdate>>>;
+pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 
 /// A session that is lazily loaded, and that can be extracted from a request.
 ///
@@ -39,6 +44,20 @@ pub struct LazySession<R, Store> {
     pub(crate) store: Store,
     pub(crate) data: PhantomData<R>,
     pub(crate) updater: Updater,
+}
+
+impl<R, Store> Clone for LazySession<R, Store>
+where
+    Store: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            store: self.store.clone(),
+            data: self.data.clone(),
+            updater: self.updater.clone(),
+        }
+    }
 }
 
 impl<R, Store: Debug> Debug for LazySession<R, Store> {
@@ -103,16 +122,27 @@ impl Display for NoMiddleware {
 
 impl Error for NoMiddleware {}
 
+impl IntoResponse for NoMiddleware {
+    fn into_response(self) -> Response {
+        let mut resp = Response::new(Body::from(self.to_string()));
+        *resp.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+        resp
+    }
+}
+
 #[async_trait::async_trait]
 impl<State, Record, Store> FromRequestParts<State> for LazySession<Record, Store>
 where
     State: Send + Sync,
-    Record: Send + Sync,
-    Store: SessionStore<Record> + FromRef<State>,
+    Record: Send + Sync + 'static,
+    Store: SessionStore<Record> + 'static,
 {
     type Rejection = NoMiddleware;
 
-    async fn from_request_parts(parts: &mut Parts, state: &State) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &State,
+    ) -> Result<Self, Self::Rejection> {
         let session = parts
             .extensions
             .remove::<LazySession<Record, Store>>()
@@ -234,6 +264,8 @@ impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
             let self_ = ManuallyDrop::new(self);
             // Safety: https://internals.rust-lang.org/t/destructuring-droppable-structs/20993/16,
             // we need to destructure the struct but it implements `Drop`.
+            // This is safe because the ptr comes from a reference: the pointer is valid for reads
+            // and the value is properly initialized.
             Ok(Some(unsafe { std::ptr::read(&self_.session as *const _) }))
         } else {
             let _ = ManuallyDrop::new(self);

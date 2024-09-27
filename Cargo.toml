@@ -34,7 +34,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["axum-core"]
-axum-core = ["tower-sessions-core/axum-core"]
 # memory-store = ["tower-sessions-memory-store"]
 signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
@@ -54,6 +53,7 @@ async-trait = "0.1.74"
 
 [dependencies]
 async-trait = { workspace = true }
+axum-core = { version = "0.4", optional = true }
 http = "1.0"
 pin-project-lite = "0.2.14"
 tokio = { version = "1.32.0", features = ["sync"] }
@@ -63,7 +63,7 @@ tower-sessions-core = { workspace = true }
 # tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
 time = { version = "0.3.29", features = ["serde"] }
-cookie = "0.18.1"
+cookie = { version = "0.18.1", features = ["percent-encode"] }
 
 [dev-dependencies]
 async-trait = "0.1.74"

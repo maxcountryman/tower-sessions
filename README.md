@@ -130,10 +130,6 @@ You can find this [example][counter-example] as well as other example projects i
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
 
-## 🦺 Safety
-
-This crate uses `#![forbid(unsafe_code)]` to ensure everything is implemented in 100% safe Rust.
-
 ## 🛟 Getting Help
 
 We've put together a number of [examples][examples] to help get you started. You're also welcome to [open a discussion](https://github.com/maxcountryman/tower-sessions/discussions/new?category=q-a) and ask additional questions you might have.

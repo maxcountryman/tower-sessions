@@ -1,7 +1,7 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
-    borrow::Cow,
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -15,18 +15,62 @@ use tower_layer::Layer;
 use tower_service::Service;
 use tower_sessions_core::{expires::Expiry, id::Id};
 
-use crate::{LazySession, SessionStore};
+use crate::{
+    session::{SessionUpdate, Updater},
+    LazySession, SessionStore,
+};
 
 #[derive(Debug, Copy, Clone)]
+/// the configuration options for the [`SessionManagerLayer`].
+///
+/// ## Default
+/// ```
+/// # use tower_sessions::SessionConfig;
+/// # use tokwer_sessions::expires::Expiry;
+/// # use cookie::SameSite;
+/// let default = SessionConfig {
+///    name: "id",
+///    http_only: true,
+///    same_site: SameSite::Strict,
+///    expiry: Expiry::OnSessionEnd,
+///    secure: true,
+///    path: "/",
+///    domain: None,
+///    always_save: false,
+/// };
+///
+/// assert_eq!(default, SessionConfig::default());
+/// ```
 pub struct SessionConfig<'a> {
-    name: &'a str,
-    http_only: bool,
-    same_site: SameSite,
-    expiry: Expiry,
-    secure: bool,
-    path: &'a str,
-    domain: Option<&'a str>,
-    always_save: bool,
+    /// The name of the cookie.
+    pub name: &'a str,
+    /// Whether the cookie is [HTTP only](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#httponly).
+    pub http_only: bool,
+    /// The
+    /// [SameSite](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#samesitesamesite-value)
+    /// policy.
+    pub same_site: SameSite,
+    /// When the cookie should expire.
+    ///
+    /// This manages the
+    /// [`Max-Age`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#max-agenumber)
+    /// and the
+    /// [`Expires`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#expiresdate)
+    /// attributes.
+    pub expiry: Expiry,
+    /// Whether the cookie should be
+    /// [secure](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#secure).
+    pub secure: bool,
+    /// The [path](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#pathpath-value)
+    /// attribute of the cookie.
+    pub path: &'a str,
+    /// The
+    /// [domain](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#domaindomain-value)
+    /// attribute of the cookie.
+    pub domain: Option<&'a str>,
+    /// Whether the session should always be saved once extracted, even if its value did not
+    /// change.
+    pub always_save: bool,
 }
 
 impl<'a> SessionConfig<'a> {
@@ -70,34 +114,34 @@ impl Default for SessionConfig<'static> {
 
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManager<S, Store> {
+pub struct SessionManager<Record, Store, S> {
     inner: S,
     store: Store,
     config: SessionConfig<'static>,
+    _record: PhantomData<Record>,
 }
 
-impl<S, Store> SessionManager<S, Store>
-where
-    S: Service,
-    Store: SessionStore<Record> + Clone,
-{
+impl<Record, Store, S> SessionManager<Record, Store, S> {
     /// Create a new [`SessionManager`].
-    pub fn new(inner: S, session_store: Store) -> Self {
+    pub fn new(inner: S, store: Store, config: SessionConfig<'static>) -> Self {
         Self {
             inner,
-            store: Arc::new(session_store),
-            config: Default::default(),
+            store,
+            config,
+            _record: PhantomData,
         }
     }
 }
 
-impl<ReqBody, ResBody, S, R, Store: SessionStore<R> + Clone> Service<Request<ReqBody>>
-    for SessionManager<S, Store>
+impl<ReqBody, ResBody, S, Record, Store> Service<Request<ReqBody>>
+    for SessionManager<Record, Store, S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
     ReqBody: Send + 'static,
     ResBody: Default + Send,
+    Store: SessionStore<Record> + Clone + 'static,
+    Record: Send + Sync + 'static,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -109,11 +153,6 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        // 1. Get the session cookie
-        // 2. Get the session id from the cookie
-        // 3. Set the session to the extensions
-        // 4. Call the inner service
-        // 5. Set/Delete the cookie based on the config and what was returned.
         let session_cookie = req
             .headers()
             .get_all(COOKIE)
@@ -123,42 +162,45 @@ where
             .filter_map(|cookie| Cookie::parse_encoded(cookie).ok())
             .find(|cookie| cookie.name() == self.config.name);
 
-        let id = session_cookie
-            .map(|cookie| {
-                cookie
-                    .value()
-                    .parse::<Id>()
-                    .map_err(|err| {
-                        tracing::warn!(
-                            err = %err,
-                            "possibly suspicious activity: malformed session id"
-                        )
-                    })
-                    .ok()
-            })
-            .flatten();
+        let id = session_cookie.and_then(|cookie| {
+            cookie
+                .value()
+                .parse::<Id>()
+                .map_err(|err| {
+                    tracing::warn!(
+                        err = %err,
+                        "possibly suspicious activity: malformed session id"
+                    )
+                })
+                .ok()
+        });
         let updater = Arc::new(Mutex::new(None));
         let session = LazySession {
             id,
             store: self.store.clone(),
-            data: std::marker::PhantomData,
-            updater,
+            data: std::marker::PhantomData::<Record>,
+            updater: Arc::clone(&updater),
         };
         req.extensions_mut().insert(session);
 
         ResponseFuture {
             inner: self.inner.call(req),
             updater,
+            config: self.config,
+            old_id: id,
         }
     }
 }
 
 pin_project! {
     #[derive(Debug, Clone)]
-    struct ResponseFuture<F> {
+    /// The future returned by [`SessionManager`].
+    pub struct ResponseFuture<F> {
         #[pin]
         inner: F,
         updater: Updater,
+        config: SessionConfig<'static>,
+        old_id: Option<Id>,
     }
 }
 
@@ -170,12 +212,29 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let resp = match this.inner.poll(cx) {
+        let mut resp = match this.inner.poll(cx) {
             Poll::Ready(r) => r,
             Poll::Pending => return Poll::Pending,
         };
 
-        let that = this.updater.lock().unwrap();
+        let update = this
+            .updater
+            .lock()
+            .expect("updater should not be poisoned")
+            .or_else(|| {
+                if this.config.always_save {
+                    this.old_id.map(SessionUpdate::Set)
+                } else {
+                    None
+                }
+            });
+        match update {
+            Some(SessionUpdate::Delete) => todo!(),
+            Some(SessionUpdate::Set(id)) => todo!(),
+            None => {}
+        };
+
+        Poll::Ready(resp)
     }
 }
 
@@ -285,169 +344,15 @@ where
 
 /// A layer for providing [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManagerLayer<Store: SessionStore, C: CookieController = PlaintextCookie> {
-    session_store: Arc<Store>,
-    session_config: SessionConfig<'static>,
-    cookie_controller: C,
+pub struct SessionManagerLayer<Record, Store> {
+    store: Store,
+    config: SessionConfig<'static>,
+    _record: PhantomData<Record>,
 }
 
-impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
-    /// Configures the name of the cookie used for the session.
-    /// The default value is `"id"`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
-    /// ```
-    pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: &'static str) -> Self {
-        self.session_config.name = name.into();
-        self
-    }
-
-    /// Configures the `"HttpOnly"` attribute of the cookie used for the
-    /// session.
-    ///
-    /// # ⚠️ **Warning: Cross-site scripting risk**
-    ///
-    /// Applications should generally **not** override the default value of
-    /// `true`. If you do, you are exposing your application to increased risk
-    /// of cookie theft via techniques like cross-site scripting.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_http_only(true);
-    /// ```
-    pub fn with_http_only(mut self, http_only: bool) -> Self {
-        self.session_config.http_only = http_only;
-        self
-    }
-
-    /// Configures the `"SameSite"` attribute of the cookie used for the
-    /// session.
-    /// The default value is [`SameSite::Strict`].
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
-    /// ```
-    pub fn with_same_site(mut self, same_site: SameSite) -> Self {
-        self.session_config.same_site = same_site;
-        self
-    }
-
-    /// Configures the `"Max-Age"` attribute of the cookie used for the session.
-    /// The default value is `None`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
-    /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
-    /// ```
-    pub fn with_expiry(mut self, expiry: Expiry) -> Self {
-        self.session_config.expiry = Some(expiry);
-        self
-    }
-
-    /// Configures the `"Secure"` attribute of the cookie used for the session.
-    /// The default value is `true`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_secure(true);
-    /// ```
-    pub fn with_secure(mut self, secure: bool) -> Self {
-        self.session_config.secure = secure;
-        self
-    }
-
-    /// Configures the `"Path"` attribute of the cookie used for the session.
-    /// The default value is `"/"`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_path("/some/path");
-    /// ```
-    pub fn with_path<P: Into<Cow<'static, str>>>(mut self, path: P) -> Self {
-        self.session_config.path = path.into();
-        self
-    }
-
-    /// Configures the `"Domain"` attribute of the cookie used for the session.
-    /// The default value is `None`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store).with_domain("localhost");
-    /// ```
-    pub fn with_domain<D: Into<Cow<'static, str>>>(mut self, domain: D) -> Self {
-        self.session_config.domain = Some(domain.into());
-        self
-    }
-
-    /// Configures whether unmodified session should be saved on read or not.
-    /// When the value is `true`, the session will be saved even if it was not
-    /// changed.
-    ///
-    /// This is useful when you want to reset [`Session`] expiration time
-    /// on any valid request at the cost of higher [`SessionStore`] write
-    /// activity and transmitting `set-cookie` header with each response.
-    ///
-    /// It makes sense to use this setting with relative session expiration
-    /// values, such as `Expiry::OnInactivity(Duration)`. This setting will
-    /// _not_ cause session id to be cycled on save.
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use time::Duration;
-    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store = MemoryStore::default();
-    /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
-    /// let session_service = SessionManagerLayer::new(session_store)
-    ///     .with_expiry(session_expiry)
-    ///     .with_always_save(true);
-    /// ```
-    pub fn with_always_save(mut self, always_save: bool) -> Self {
-        self.session_config.always_save = always_save;
-        self
-    }
-}
-
-impl<Store: SessionStore> SessionManagerLayer<Store> {
+impl<Record, Store> SessionManagerLayer<Record, Store> {
     /// Create a new [`SessionManagerLayer`] with the provided session store
-    /// and default cookie configuration.
+    /// and configuration.
     ///
     /// # Examples
     ///
@@ -457,26 +362,29 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// let session_store = MemoryStore::default();
     /// let session_service = SessionManagerLayer::new(session_store);
     /// ```
-    pub fn new(session_store: Store) -> Self {
-        let session_config = SessionConfig::default();
-
+    pub fn new(store: Store, config: SessionConfig<'static>) -> Self {
         Self {
-            session_store: Arc::new(session_store),
-            session_config,
-            cookie_controller: PlaintextCookie,
+            store,
+            config,
+            _record: PhantomData,
         }
     }
 }
 
-impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLayer<Store, C> {
-    type Service = CookieManager<SessionManager<S, Store, C>>;
+impl<S, Record, Store> Layer<S> for SessionManagerLayer<Record, Store>
+where
+    Record: Default + Send + Sync,
+    Store: SessionStore<Record> + Clone,
+{
+    type Service = SessionManager<Record, Store, S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let session_manager = SessionManager {
+        SessionManager {
             inner,
-            session_store: self.session_store.clone(),
-            session_config: self.session_config.clone(),
-        };
+            store: self.store.clone(),
+            config: self.config,
+            _record: PhantomData,
+        }
     }
 }
 
