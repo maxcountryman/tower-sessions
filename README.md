@@ -21,6 +21,15 @@
     </a>
 </div>
 
+## TODOs
+- [ ] Make the `Store` trait take `R` instead of `&R`.
+- [ ] Add `'static` bounds to `Store` trait.
+- [ ] Spawn a task when dropping the `SessionData` to save the session data.
+- [ ] Complete middleware implementation.
+- [ ] Add examples everywhere.
+- [ ] Rewrite the in memory store.
+- [ ] Rewrite all the tests.
+
 ## 🎨 Overview
 
 This crate provides sessions, key-value pairs associated with a site

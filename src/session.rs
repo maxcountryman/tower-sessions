@@ -52,9 +52,9 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            id: self.id.clone(),
+            id: self.id,
             store: self.store.clone(),
-            data: self.data.clone(),
+            data: self.data,
             updater: self.updater.clone(),
         }
     }
@@ -112,7 +112,9 @@ impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct NoMiddleware;
+/// A rejection that is returned from the [`Session`] extractor when the [`SessionManagerLayer`]
+/// middleware is not set.
+pub struct NoMiddleware;
 
 impl Display for NoMiddleware {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -161,6 +163,7 @@ where
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
 /// a timeout, etc. A counterexample would be the session not being found in the store, which is
 /// not considered an error by the `SessionStore` trait.
+#[derive(Debug)]
 pub struct Session<R: Send + Sync, Store: SessionStore<R>> {
     store: Store,
     id: Id,
@@ -294,9 +297,9 @@ where
     Store: SessionStore<R>,
 {
     fn drop(&mut self) {
-        let _ = self
+        let _ = tokio::task::spawn(self
             .session
             .store
-            .save(&self.session.id, &self.session.data);
+            .save(&self.session.id, &self.session.data));
     }
 }

@@ -63,7 +63,7 @@ tower-sessions-core = { workspace = true }
 # tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
 time = { version = "0.3.29", features = ["serde"] }
-cookie = { version = "0.18.1", features = ["percent-encode"] }
+cookie = "0.18.1"
 
 [dev-dependencies]
 async-trait = "0.1.74"

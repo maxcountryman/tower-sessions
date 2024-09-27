@@ -159,7 +159,7 @@ where
             .into_iter()
             .filter_map(|value| value.to_str().ok())
             .flat_map(|value| value.split(';'))
-            .filter_map(|cookie| Cookie::parse_encoded(cookie).ok())
+            .filter_map(|cookie| Cookie::parse(cookie).ok())
             .find(|cookie| cookie.name() == self.config.name);
 
         let id = session_cookie.and_then(|cookie| {
@@ -229,8 +229,36 @@ where
                 }
             });
         match update {
-            Some(SessionUpdate::Delete) => todo!(),
-            Some(SessionUpdate::Set(id)) => todo!(),
+            Some(SessionUpdate::Delete) => {
+                if let Some(old_id) = this.old_id {
+                    let cookie = this.config.build_cookie(
+                        *old_id,
+                        Some(Expiry::AtDateTime(
+                            // The Year 2000.
+                            time::OffsetDateTime::from_unix_timestamp(946684800)
+                                .expect("year 2000 should be in range"),
+                        )),
+                    );
+                    resp.headers_mut().insert(
+                        http::header::SET_COOKIE,
+                        cookie
+                            .to_string()
+                            .try_into()
+                            .expect("cookie should be valid"),
+                    );
+                };
+            }
+            Some(SessionUpdate::Set(id)) => {
+                // TODO: This should also accept a user-provided expiry.
+                let cookie = this.config.build_cookie(id, None);
+                resp.headers_mut().insert(
+                    http::header::SET_COOKIE,
+                    cookie
+                        .to_string()
+                        .try_into()
+                        .expect("cookie should be valid"),
+                );
+            },
             None => {}
         };
 
