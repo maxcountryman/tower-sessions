@@ -1,5 +1,5 @@
 [workspace]
-members = ["tower-sessions-core"]
+members = [".", "tower-sessions-core", "memory-store"]
 resolver = "2"
 
 [workspace.package]
@@ -34,7 +34,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["axum-core"]
-# memory-store = ["tower-sessions-memory-store"]
+memory-store = ["tower-sessions-memory-store"]
 signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
 
@@ -42,7 +42,7 @@ private = ["tower-cookies/private"]
 tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
 
 tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access"] }
-# tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
+tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
 
 rmp-serde = { version = "1.1.2" }
 serde = "1.0.192"
@@ -59,7 +59,7 @@ pin-project-lite = "0.2.14"
 tower-layer = "0.3.2"
 tower-service = "0.3.2"
 tower-sessions-core = { workspace = true }
-# tower-sessions-memory-store = { workspace = true, optional = true }
+tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
 time = { version = "0.3.29", features = ["serde"] }
 cookie = "0.18.1"

@@ -1,12 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
-use async_trait::async_trait;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
-use tower_sessions_core::{
-    session::{Id, Record},
-    session_store, SessionStore,
-};
+use tower_sessions_core::{Id, SessionStore};
+use std::fmt::Debug;
 
 /// A session store that lives only in memory.
 ///
@@ -19,43 +16,92 @@ use tower_sessions_core::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
+pub struct MemoryStore<R>(Arc<Mutex<HashMap<Id, R>>>);
 
-#[async_trait]
-impl SessionStore for MemoryStore {
-    async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-        let mut store_guard = self.0.lock().await;
-        while store_guard.contains_key(&record.id) {
-            // Session ID collision mitigation.
-            record.id = Id::default();
+impl<R> SessionStore<R> for MemoryStore<R>
+where
+    R: Send + Sync + Debug + Clone,
+{
+    type Error = Infallible;
+
+    async fn create(
+        &mut self,
+        record: &R,
+    ) -> Result<Id, Self::Error> {
+        let mut id = random_id();
+        let mut store = self.0.lock().await;
+        while store.contains_key(&id) {
+            // If the ID already exists, generate a new one
+            id = random_id();
         }
-        store_guard.insert(record.id, record.clone());
+        store.insert(id, record.clone());
+        Ok(id)
+    }
+
+    async fn save(
+        &mut self,
+        id: &Id,
+        record: &R,
+    ) -> Result<bool, Self::Error> {
+        let mut store = self.0.lock().await;
+        if store.contains_key(id) {
+            store.insert(*id, record.clone());
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn save_or_create(
+        &mut self,
+        id: &Id,
+        record: &R,
+    ) -> Result<(), Self::Error> {
+        let mut store = self.0.lock().await;
+        store.insert(*id, record.clone());
         Ok(())
     }
 
-    async fn save(&self, record: &Record) -> session_store::Result<()> {
-        self.0.lock().await.insert(record.id, record.clone());
-        Ok(())
+    async fn load(
+        &mut self,
+        id: &Id,
+    ) -> Result<Option<R>, Self::Error> {
+        let store = self.0.lock().await;
+        Ok(store.get(id).cloned())
     }
 
-    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
-        Ok(self
-            .0
-            .lock()
-            .await
-            .get(session_id)
-            .filter(|Record { expiry_date, .. }| is_active(*expiry_date))
-            .cloned())
+    async fn delete(&mut self, id: &Id) -> Result<bool, Self::Error> {
+        let mut store = self.0.lock().await;
+        Ok(store.remove(id).is_some())
     }
 
-    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
-        self.0.lock().await.remove(session_id);
-        Ok(())
+    async fn cycle_id(
+        &mut self,
+        old_id: &Id,
+    ) -> Result<Option<Id>, Self::Error> {
+        let mut store = self.0.lock().await;
+        if let Some(record) = store.remove(old_id) {
+            let mut new_id = random_id();
+            while store.contains_key(&new_id) {
+                // If the ID already exists, generate a new one
+                new_id = random_id();
+            }
+            store.insert(new_id, record);
+            Ok(Some(new_id))
+        } else {
+            Ok(None)
+        }
     }
 }
 
 fn is_active(expiry_date: OffsetDateTime) -> bool {
     expiry_date > OffsetDateTime::now_utc()
+}
+
+fn random_id() -> Id {
+    use rand::prelude::*;
+    let id_val = rand::thread_rng().gen();
+    Id(id_val)
 }
 
 #[cfg(test)]

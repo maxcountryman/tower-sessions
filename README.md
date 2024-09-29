@@ -23,7 +23,7 @@
 
 ## TODOs
 - Only update the cookie if the session was extracted.
-- [ ] Complete middleware implementation.
+- [x] Complete middleware implementation.
 - [ ] Add tracing.
 - [ ] Document what session-store should implement, and what the `Record` type should implement.
 - [ ] Add examples everywhere.
