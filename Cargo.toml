@@ -33,7 +33,6 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["axum-core"]
 memory-store = ["tower-sessions-memory-store"]
 signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
@@ -48,12 +47,12 @@ rmp-serde = { version = "1.1.2" }
 serde = "1.0.192"
 thiserror = "1.0.50"
 time = "0.3.30"
-tokio = { version = "1.32.0", default-features = false, features = ["sync"] }
+tokio = { version = "1.32.0", default-features = false, features = ["sync", "macros"] }
 async-trait = "0.1.74"
 
 [dependencies]
 async-trait = { workspace = true }
-axum-core = { version = "0.4", optional = true }
+axum-core = { version = "0.4" }
 http = "1.0"
 pin-project-lite = "0.2.14"
 tower-layer = "0.3.2"

@@ -1,73 +1,110 @@
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
+use std::fmt::Debug;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
-use tower_sessions_core::{Id, SessionStore};
-use std::fmt::Debug;
+use tower_sessions_core::{expires::Expires, Expiry, Id, SessionStore};
 
 /// A session store that lives only in memory.
 ///
 /// This is useful for testing but not recommended for real applications.
 ///
+/// The store manages the expiry of the sessions with respect to UTC time. No cleanup is done for
+/// the expired sessions untile the are loaded.
+///
 /// # Examples
 ///
 /// ```rust
-/// use tower_sessions::MemoryStore;
-/// MemoryStore::default();
+/// use tower_sessions_memory_store::MemoryStore;
+///
+/// struct User {
+///    name: String,
+///    age: u8,
+/// }
+/// 
+/// let store: MemoryStore<User> = MemoryStore::default();
 /// ```
-#[derive(Clone, Debug, Default)]
-pub struct MemoryStore<R>(Arc<Mutex<HashMap<Id, R>>>);
+#[derive(Clone, Debug)]
+pub struct MemoryStore<R>(Arc<Mutex<HashMap<Id, Value<R>>>>);
+
+impl<R> Default for MemoryStore<R> {
+    fn default() -> Self {
+        MemoryStore(Default::default())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Value<R> {
+    data: R,
+    // Needed because if the expiry date is set to `OnInactivity`, we need to know whether the
+    // session is active or not.
+    expiry_date: Option<OffsetDateTime>,
+}
+
+impl<R: Expires> Value<R> {
+    /// Create a new `MemoryStore`.
+    pub fn new(data: R) -> Self {
+        let expiry_date = match data.expires() {
+            Expiry::OnSessionEnd => None,
+            Expiry::OnInactivity(duration) => Some(OffsetDateTime::now_utc() + duration),
+            Expiry::AtDateTime(offset_date_time) => Some(offset_date_time),
+        };
+
+        Value { data, expiry_date }
+    }
+}
 
 impl<R> SessionStore<R> for MemoryStore<R>
 where
-    R: Send + Sync + Debug + Clone,
+    R: Expires + Send + Sync + Debug + Clone,
 {
     type Error = Infallible;
 
-    async fn create(
-        &mut self,
-        record: &R,
-    ) -> Result<Id, Self::Error> {
+    async fn create(&mut self, record: &R) -> Result<Id, Self::Error> {
         let mut id = random_id();
         let mut store = self.0.lock().await;
         while store.contains_key(&id) {
             // If the ID already exists, generate a new one
             id = random_id();
         }
-        store.insert(id, record.clone());
+
+        let value = Value::new(record.clone());
+
+        store.insert(id, value);
         Ok(id)
     }
 
-    async fn save(
-        &mut self,
-        id: &Id,
-        record: &R,
-    ) -> Result<bool, Self::Error> {
+    async fn save(&mut self, id: &Id, record: &R) -> Result<bool, Self::Error> {
         let mut store = self.0.lock().await;
         if store.contains_key(id) {
-            store.insert(*id, record.clone());
+            let value = Value::new(record.clone());
+            store.insert(*id, value);
             Ok(true)
         } else {
             Ok(false)
         }
     }
 
-    async fn save_or_create(
-        &mut self,
-        id: &Id,
-        record: &R,
-    ) -> Result<(), Self::Error> {
+    async fn save_or_create(&mut self, id: &Id, record: &R) -> Result<(), Self::Error> {
         let mut store = self.0.lock().await;
-        store.insert(*id, record.clone());
+        let value = Value::new(record.clone());
+        store.insert(*id, value);
         Ok(())
     }
 
-    async fn load(
-        &mut self,
-        id: &Id,
-    ) -> Result<Option<R>, Self::Error> {
-        let store = self.0.lock().await;
-        Ok(store.get(id).cloned())
+    async fn load(&mut self, id: &Id) -> Result<Option<R>, Self::Error> {
+        let mut store = self.0.lock().await;
+
+        let Some(value) = store.get(id) else {
+            return Ok(None);
+        };
+        Ok(match value.expiry_date {
+            Some(expiry_date) if expiry_date > OffsetDateTime::now_utc() => {
+                store.remove(id);
+                None
+            }
+            _ => Some(value.data.clone()),
+        })
     }
 
     async fn delete(&mut self, id: &Id) -> Result<bool, Self::Error> {
@@ -75,10 +112,7 @@ where
         Ok(store.remove(id).is_some())
     }
 
-    async fn cycle_id(
-        &mut self,
-        old_id: &Id,
-    ) -> Result<Option<Id>, Self::Error> {
+    async fn cycle_id(&mut self, old_id: &Id) -> Result<Option<Id>, Self::Error> {
         let mut store = self.0.lock().await;
         if let Some(record) = store.remove(old_id) {
             let mut new_id = random_id();
@@ -94,10 +128,6 @@ where
     }
 }
 
-fn is_active(expiry_date: OffsetDateTime) -> bool {
-    expiry_date > OffsetDateTime::now_utc()
-}
-
 fn random_id() -> Id {
     use rand::prelude::*;
     let id_val = rand::thread_rng().gen();
@@ -106,75 +136,42 @@ fn random_id() -> Id {
 
 #[cfg(test)]
 mod tests {
-    use time::Duration;
-
     use super::*;
+    use tower_sessions_core::SessionStore;
 
-    #[tokio::test]
-    async fn test_create() {
-        let store = MemoryStore::default();
-        let mut record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        assert!(store.create(&mut record).await.is_ok());
+    
+    #[derive(Debug, Clone)]
+    struct SimpleUser {
+        age: u8,
     }
 
-    #[tokio::test]
-    async fn test_save() {
-        let store = MemoryStore::default();
-        let record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        assert!(store.save(&record).await.is_ok());
-    }
+    impl Expires for SimpleUser {}
 
     #[tokio::test]
-    async fn test_load() {
-        let store = MemoryStore::default();
-        let mut record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        store.create(&mut record).await.unwrap();
-        let loaded_record = store.load(&record.id).await.unwrap();
-        assert_eq!(Some(record), loaded_record);
-    }
+    async fn round_trip() {
+        let mut store: MemoryStore<SimpleUser> = MemoryStore::default();
 
-    #[tokio::test]
-    async fn test_delete() {
-        let store = MemoryStore::default();
-        let mut record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        store.create(&mut record).await.unwrap();
-        assert!(store.delete(&record.id).await.is_ok());
-        assert_eq!(None, store.load(&record.id).await.unwrap());
-    }
+        let id = store.create(&SimpleUser {
+            age: 20,
+        }).await.unwrap();
 
-    #[tokio::test]
-    async fn test_create_id_collision() {
-        let store = MemoryStore::default();
-        let expiry_date = OffsetDateTime::now_utc() + Duration::minutes(30);
-        let mut record1 = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date,
-        };
-        let mut record2 = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date,
-        };
-        store.create(&mut record1).await.unwrap();
-        record2.id = record1.id; // Set the same ID for record2
-        store.create(&mut record2).await.unwrap();
-        assert_ne!(record1.id, record2.id); // IDs should be different
+        let mut user = store.load(&id).await.unwrap().unwrap();
+        assert_eq!(20, user.age);
+
+        user.age = 30;
+        assert!(store.save(&id, &user).await.unwrap());
+
+        let user = store.load(&id).await.unwrap().unwrap();
+        assert_eq!(30, user.age);
+
+        let new_id = store.cycle_id(&id).await.unwrap().unwrap();
+        assert_ne!(id, new_id);
+
+        assert!(store.load(&id).await.unwrap().is_none());
+        let user = store.load(&new_id).await.unwrap().unwrap();
+        assert_eq!(30, user.age);
+
+        assert!(store.delete(&new_id).await.unwrap());
+        assert!(store.load(&new_id).await.unwrap().is_none());
     }
 }

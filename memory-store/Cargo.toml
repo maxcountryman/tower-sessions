@@ -10,9 +10,10 @@ repository.workspace = true
 
 [dependencies]
 tower-sessions-core = { workspace = true }
-time = { workspace = true }
 tokio = { workspace = true }
+time = { workspace = true }
 rand = "0.8.5"
 
 [dev-dependencies]
 tower-sessions = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
