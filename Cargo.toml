@@ -30,38 +30,35 @@ readme.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
+
+[workspace.dependencies]
+tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
+tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access"] }
+tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
+
+serde = "1.0.192"
+time = "0.3.30"
+tokio = { version = "1.32.0", default-features = false }
 
 [features]
 memory-store = ["tower-sessions-memory-store"]
 signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
 
-[workspace.dependencies]
-tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
-
-tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access"] }
-tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
-
-rmp-serde = { version = "1.1.2" }
-serde = "1.0.192"
-thiserror = "1.0.50"
-time = "0.3.30"
-tokio = { version = "1.32.0", default-features = false, features = ["sync", "macros"] }
-async-trait = "0.1.74"
-
 [dependencies]
-async-trait = { workspace = true }
+async-trait = "0.1.74"
 axum-core = { version = "0.4" }
+cookie = "0.18.1"
 http = "1.0"
 pin-project-lite = "0.2.14"
+time = { workspace = true, features = ["serde"] }
 tower-layer = "0.3.2"
 tower-service = "0.3.2"
 tower-sessions-core = { workspace = true }
 tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
-time = { version = "0.3.29", features = ["serde"] }
-cookie = "0.18.1"
 
 [dev-dependencies]
 async-trait = "0.1.74"
@@ -77,7 +74,7 @@ hyper = "1.0"
 reqwest = { version = "0.12.3", default-features = false, features = [
     "rustls-tls",
 ] }
-serde = "1.0.192"
+serde = { workspace = true }
 time = "0.3.30"
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
