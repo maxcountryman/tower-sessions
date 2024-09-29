@@ -13,7 +13,10 @@ use pin_project_lite::pin_project;
 use time::OffsetDateTime;
 use tower_layer::Layer;
 use tower_service::Service;
-use tower_sessions_core::{expires::Expiry, id::Id};
+use tower_sessions_core::{
+    expires::{Expires, Expiry},
+    id::Id,
+};
 
 use crate::{
     session::{SessionUpdate, Updater},
@@ -74,7 +77,7 @@ pub struct SessionConfig<'a> {
 }
 
 impl<'a> SessionConfig<'a> {
-    fn build_cookie(self, session_id: Id, expiry: Option<Expiry>) -> Cookie<'a> {
+    fn build_cookie(self, session_id: Id, expiry: Expiry) -> Cookie<'a> {
         let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
@@ -82,11 +85,11 @@ impl<'a> SessionConfig<'a> {
             .path(self.path);
 
         cookie_builder = match expiry {
-            Some(Expiry::OnInactivity(duration)) => cookie_builder.max_age(duration),
-            Some(Expiry::AtDateTime(datetime)) => {
+            Expiry::OnInactivity(duration) => cookie_builder.max_age(duration),
+            Expiry::AtDateTime(datetime) => {
                 cookie_builder.max_age(datetime - OffsetDateTime::now_utc())
             }
-            Some(Expiry::OnSessionEnd) | None => cookie_builder,
+            Expiry::OnSessionEnd => cookie_builder,
         };
 
         if let Some(domain) = self.domain {
@@ -141,7 +144,7 @@ where
     ReqBody: Send + 'static,
     ResBody: Default + Send,
     Store: SessionStore<Record> + Clone + 'static,
-    Record: Send + Sync + 'static,
+    Record: Expires + Send + Sync + 'static,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -211,33 +214,34 @@ where
     type Output = Result<Response<ResBody>, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-        let mut resp = match this.inner.poll(cx) {
+        let self_ = self.project();
+        let mut resp = match self_.inner.poll(cx) {
             Poll::Ready(r) => r,
             Poll::Pending => return Poll::Pending,
         }?;
 
-        let update = this
+        let update = self_
             .updater
             .lock()
             .expect("updater should not be poisoned")
             .or_else(|| {
-                if this.config.always_save {
-                    this.old_id.map(SessionUpdate::Set)
+                if self_.config.always_save {
+                    self_.old_id
+                        .map(|id| SessionUpdate::Set(id, self_.config.expiry))
                 } else {
                     None
                 }
             });
         match update {
             Some(SessionUpdate::Delete) => {
-                if let Some(old_id) = this.old_id {
-                    let cookie = this.config.build_cookie(
+                if let Some(old_id) = self_.old_id {
+                    let cookie = self_.config.build_cookie(
                         *old_id,
-                        Some(Expiry::AtDateTime(
-                            // The Year 2000.
+                        Expiry::AtDateTime(
+                            // The Year 2000 in UNIX time.
                             time::OffsetDateTime::from_unix_timestamp(946684800)
                                 .expect("year 2000 should be in range"),
-                        )),
+                        ),
                     );
                     resp.headers_mut().insert(
                         http::header::SET_COOKIE,
@@ -248,9 +252,8 @@ where
                     );
                 };
             }
-            Some(SessionUpdate::Set(id)) => {
-                // TODO: This should also accept a user-provided expiry.
-                let cookie = this.config.build_cookie(id, None);
+            Some(SessionUpdate::Set(id, expiry)) => {
+                let cookie = self_.config.build_cookie(id, expiry);
                 resp.headers_mut().insert(
                     http::header::SET_COOKIE,
                     cookie
@@ -258,7 +261,7 @@ where
                         .try_into()
                         .expect("cookie should be valid"),
                 );
-            },
+            }
             None => {}
         };
 

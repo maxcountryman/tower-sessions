@@ -22,10 +22,10 @@
 </div>
 
 ## TODOs
-- [ ] Make the `Store` trait take `R` instead of `&R`.
-- [ ] Add `'static` bounds to `Store` trait.
-- [ ] Spawn a task when dropping the `SessionData` to save the session data.
+- Only update the cookie if the session was extracted.
 - [ ] Complete middleware implementation.
+- [ ] Add tracing.
+- [ ] Document what session-store should implement, and what the `Record` type should implement.
 - [ ] Add examples everywhere.
 - [ ] Rewrite the in memory store.
 - [ ] Rewrite all the tests.

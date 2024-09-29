@@ -18,12 +18,12 @@ use http::request::Parts;
 
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
-use tower_sessions_core::{id::Id, SessionStore};
+use tower_sessions_core::{expires::Expires, id::Id, Expiry, SessionStore};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SessionUpdate {
     Delete,
-    Set(Id),
+    Set(Id, Expiry),
 }
 
 pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
@@ -70,7 +70,7 @@ impl<R, Store: Debug> Debug for LazySession<R, Store> {
     }
 }
 
-impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
+impl<R: Expires + Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
     /// Try to load the session from the store.
     ///
     /// The return type of this method looks convoluted, so let's break it down:
@@ -101,7 +101,7 @@ impl<R: Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
         self.updater
             .lock()
             .expect("lock should not be poisoned")
-            .replace(SessionUpdate::Set(id));
+            .replace(SessionUpdate::Set(id, data.expires()));
         Ok(Session {
             store: self.store,
             id,
@@ -173,7 +173,7 @@ pub struct Session<R: Send + Sync, Store: SessionStore<R>> {
 
 impl<R, Store> Session<R, Store>
 where
-    R: Send + Sync,
+    R: Expires + Send + Sync,
     Store: SessionStore<R>,
 {
     /// Read the data associated with the session.
@@ -225,7 +225,7 @@ where
             self.updater
                 .lock()
                 .expect("lock should not be poisoned")
-                .replace(SessionUpdate::Set(new_id));
+                .replace(SessionUpdate::Set(new_id, self.data.expires()));
             self.id = new_id;
             return Ok(Some(self));
         }
@@ -239,8 +239,9 @@ where
 /// This is created by calling `data_mut` on a `Session`.
 /// To retrieve the `Session`, call `save` on this struct.
 ///
-/// Saving is done automatically when this struct is dropped, but errors are ignored when doing so;
-/// Hence, it should be done explicitly with `save` whenever possible.
+/// You should save the session data by calling `save` before dropping this struct.
+#[derive(Debug)]
+#[must_use]
 pub struct DataMut<R: Send + Sync, Store: SessionStore<R>> {
     session: Session<R, Store>,
 }
@@ -248,32 +249,20 @@ pub struct DataMut<R: Send + Sync, Store: SessionStore<R>> {
 impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
     /// Save the session data to the store.
     ///
-    /// It is preferred to use this method to save the session rather than through `Drop`.
-    ///
     /// This method returns the `Session` if the data was saved successfully. It returns
     /// `Ok(None)` when the session was deleted or expired between the time it was loaded and the
-    /// time this method was called.
+    /// time this method is called.
     ///
     /// # Error
     ///
     /// Errors if the underlying store errors.
     pub async fn save(mut self) -> Result<Option<Session<R, Store>>, Store::Error> {
-        if self
+        Ok(self
             .session
             .store
             .save(&self.session.id, &self.session.data)
             .await?
-        {
-            let self_ = ManuallyDrop::new(self);
-            // Safety: https://internals.rust-lang.org/t/destructuring-droppable-structs/20993/16,
-            // we need to destructure the struct but it implements `Drop`.
-            // This is safe because the ptr comes from a reference: the pointer is valid for reads
-            // and the value is properly initialized.
-            Ok(Some(unsafe { std::ptr::read(&self_.session as *const _) }))
-        } else {
-            let _ = ManuallyDrop::new(self);
-            Ok(None)
-        }
+            .then_some(self.session))
     }
 }
 
@@ -288,18 +277,5 @@ impl<R: Send + Sync, Store: SessionStore<R>> Deref for DataMut<R, Store> {
 impl<R: Send + Sync, Store: SessionStore<R>> DerefMut for DataMut<R, Store> {
     fn deref_mut(&mut self) -> &mut R {
         &mut self.session.data
-    }
-}
-
-impl<R, Store> Drop for DataMut<R, Store>
-where
-    R: Send + Sync,
-    Store: SessionStore<R>,
-{
-    fn drop(&mut self) {
-        let _ = tokio::task::spawn(self
-            .session
-            .store
-            .save(&self.session.id, &self.session.data));
     }
 }

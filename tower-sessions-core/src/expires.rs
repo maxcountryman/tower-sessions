@@ -1,18 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 pub trait Expires {
-    fn expires(&self) -> Expiry;
-    fn set_expiry(&mut self, expiry: Expiry);
-}
-
-pub struct NoExpiry<T>(pub T);
-
-impl Expires for NoExpiry<()> {
     fn expires(&self) -> Expiry {
         Expiry::OnSessionEnd
     }
-
-    fn set_expiry(&mut self, _: Expiry) {}
+    #[allow(unused_variables)]
+    fn set_expiry(&mut self, expiry: Expiry) {}
 }
 
 /// Session expiry configuration.
@@ -21,7 +14,7 @@ impl Expires for NoExpiry<()> {
 ///
 /// ```rust
 /// use time::{Duration, OffsetDateTime};
-/// use tower_sessions::Expiry;
+/// use tower_sessions_core::Expiry;
 ///
 /// // Will be expired on "session end".
 /// let expiry = Expiry::OnSessionEnd;
