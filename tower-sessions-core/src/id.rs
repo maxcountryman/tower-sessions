@@ -24,11 +24,13 @@ pub struct Id(pub i128);
 
 #[cfg(feature = "id-access")]
 impl Id {
+    /// Create an ID from the default random source provided by the `rand` crate ([`rand::rngs::ThreadRng`]).
     #[cfg(feature = "random-id")]
     pub fn random() -> Self {
         Id(rand::random())
     }
 
+    /// Create an ID from the provided random number generator.
     #[cfg(feature = "random-id")]
     pub fn random_with_rng<R: rand::Rng>(rng: &mut R) -> Self {
         Id(rng.gen())
