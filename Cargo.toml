@@ -35,7 +35,7 @@ cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
 
 [workspace.dependencies]
 tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
-tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access"] }
+tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false, features = ["id-access", "random-id"] }
 tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
 
 serde = "1.0.192"

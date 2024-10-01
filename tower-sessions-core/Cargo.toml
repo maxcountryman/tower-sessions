@@ -12,6 +12,7 @@ repository.workspace = true
 default = []
 deletion-task = ["dep:tokio", "tokio/time"]
 id-access = []
+random-id = ["dep:rand"]
 
 [dependencies]
 time = { version = "0.3.36", features = ["serde"] }
@@ -25,6 +26,7 @@ either = "1.13"
 tokio = { workspace = true, default-features = false, optional = true, features = [
     "time",
 ] }
+rand = { version = "0.8.5", optional = true }
 
 [dev-dependencies]
 tower-sessions = { workspace = true, features = [] }

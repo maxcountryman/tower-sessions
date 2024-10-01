@@ -1,9 +1,11 @@
 //! Module for session IDs.
 
-use std::{fmt::{self, Display}, str::FromStr};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, DecodeError, Engine as _};
 use serde::{Deserialize, Serialize};
-
+use std::{
+    fmt::{self, Display},
+    str::FromStr,
+};
 
 /// ID type for sessions.
 ///
@@ -19,6 +21,19 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "id-access")]
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
 pub struct Id(pub i128);
+
+#[cfg(feature = "id-access")]
+impl Id {
+    #[cfg(feature = "random-id")]
+    pub fn random() -> Self {
+        Id(rand::random())
+    }
+
+    #[cfg(feature = "random-id")]
+    pub fn random_with_rng<R: rand::Rng>(rng: &mut R) -> Self {
+        Id(rng.gen())
+    }
+}
 
 /// ID type for sessions.
 ///
