@@ -15,10 +15,9 @@ random-id = ["dep:rand"]
 
 [dependencies]
 time = { version = "0.3.36", features = ["serde"] }
-http = { version = "1.1.0", optional = true }
 base64 = "0.22.0"
 futures-util = { version = "0.3.30", default-features = false }
-serde = { version = "1.0.189", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 either = "1.13"
 rand = { version = "0.8.5", optional = true }
 

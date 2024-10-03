@@ -1,11 +1,13 @@
 //! Module for session IDs.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, DecodeError, Engine as _};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{self, Display},
-    str::FromStr,
-};
+use std::fmt::{self, Display};
+
+#[cfg(feature = "id-access")]
+use base64::DecodeError;
+#[cfg(feature = "id-access")]
+use std::str::FromStr;
 
 /// ID type for sessions.
 ///

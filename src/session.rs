@@ -1,18 +1,19 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
-    error::Error,
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
 
+#[cfg(feature = "axum")]
 use axum_core::{
     body::Body,
     extract::FromRequestParts,
     response::{IntoResponse, Response},
 };
 
+#[cfg(feature = "axum")]
 use http::request::Parts;
 
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
@@ -118,19 +119,23 @@ impl<Store> Session<Store> {
     }
 }
 
+#[cfg(feature = "axum")]
 #[derive(Debug, Clone, Copy)]
 /// A rejection that is returned from the [`Session`] extractor when the [`SessionManagerLayer`]
 /// middleware is not set.
 pub struct NoMiddleware;
 
-impl Display for NoMiddleware {
+#[cfg(feature = "axum")]
+impl std::fmt::Display for NoMiddleware {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Missing session middleware. Is it added to the app?")
     }
 }
 
-impl Error for NoMiddleware {}
+#[cfg(feature = "axum")]
+impl std::error::Error for NoMiddleware {}
 
+#[cfg(feature = "axum")]
 impl IntoResponse for NoMiddleware {
     fn into_response(self) -> Response {
         let mut resp = Response::new(Body::from(self.to_string()));
@@ -139,6 +144,7 @@ impl IntoResponse for NoMiddleware {
     }
 }
 
+#[cfg(feature = "axum")]
 #[async_trait::async_trait]
 impl<State, Store> FromRequestParts<State> for Session<Store>
 where

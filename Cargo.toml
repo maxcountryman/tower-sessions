@@ -44,12 +44,11 @@ tokio = { version = "1.32.0", default-features = false }
 
 [features]
 memory-store = ["tower-sessions-memory-store"]
-signed = ["tower-cookies/signed"]
-private = ["tower-cookies/private"]
+axum = ["dep:axum-core", "dep:async-trait"]
 
 [dependencies]
-async-trait = "0.1.74"
-axum-core = { version = "0.4" }
+async-trait = { version = "0.1.74", optional = true }
+axum-core = { version = "0.4", optional = true }
 cookie = "0.18.1"
 http = "1.0"
 pin-project-lite = "0.2.14"
@@ -61,7 +60,6 @@ tower-sessions-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
 
 [dev-dependencies]
-async-trait = "0.1.74"
 anyhow = "1"
 axum = "0.7.1"
 axum-core = "0.4.0"
