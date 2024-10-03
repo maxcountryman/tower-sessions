@@ -83,9 +83,10 @@
 use std::{fmt::Debug, future::Future};
 
 use either::Either::{self, Left, Right};
-use futures::TryFutureExt;
+use futures_util::TryFutureExt;
+use futures_util::future::try_join;
 
-use crate::{expires::Expires, id::Id};
+use crate::id::Id;
 
 /// Defines the interface for session management.
 ///
@@ -251,7 +252,7 @@ where
         let store_save_fut = self.store.save(id, record).map_err(Right);
         let cache_save_fut = self.cache.save(id, record).map_err(Left);
 
-        let (exists_cache, exists_store) = futures::try_join!(cache_save_fut, store_save_fut)?;
+        let (exists_cache, exists_store) = try_join(cache_save_fut, store_save_fut).await?;
 
         if !exists_store && exists_cache {
             self.cache.delete(id).await.map_err(Left)?;
@@ -268,7 +269,7 @@ where
         let store_save_fut = self.store.save_or_create(id, record).map_err(Right);
         let cache_save_fut = self.cache.save_or_create(id, record).map_err(Left);
 
-        futures::try_join!(cache_save_fut, store_save_fut)?;
+        try_join(cache_save_fut, store_save_fut).await?;
 
         Ok(())
     }
@@ -303,7 +304,7 @@ where
         let store_delete_fut = self.store.delete(id).map_err(Right);
         let cache_delete_fut = self.cache.delete(id).map_err(Left);
 
-        let (_, in_store) = futures::try_join!(cache_delete_fut, store_delete_fut)?;
+        let (_, in_store) = try_join(cache_delete_fut, store_delete_fut).await?;
 
         Ok(in_store)
     }
@@ -315,61 +316,6 @@ where
         let delete_cache = self.cache.delete(old_id).map_err(Left);
         let new_id = self.store.cycle_id(old_id).map_err(Right);
 
-        futures::try_join!(delete_cache, new_id).map(|(_, new_id)| new_id)
-    }
-}
-
-/// Provides a method for deleting expired sessions.
-pub trait ExpiredDeletion<T>: SessionStore<T>
-where
-    Self: Sized,
-    T: Expires + Send + Sync,
-{
-    /// A method for deleting expired sessions from the store.
-    fn delete_expired(&self) -> impl Future<Output = Result<(), Self::Error>> + Send;
-
-    /// This function will keep running indefinitely, deleting expired rows and
-    /// then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `sqlx::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run,ignore
-    /// use tower_sessions::session_store::ExpiredDeletion;
-    /// use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
-    ///
-    /// # {
-    /// # tokio_test::block_on(async {
-    /// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    /// let session_store = SqliteStore::new(pool);
-    ///
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// ```
-    #[cfg(feature = "deletion-task")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "deletion-task")))]
-    fn continuously_delete_expired(
-        self,
-        period: tokio::time::Duration,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        let mut interval = tokio::time::interval(period);
-        async move {
-            interval.tick().await; // The first tick completes immediately; skip.
-            loop {
-                interval.tick().await;
-                self.delete_expired().await?;
-            }
-        }
+        try_join(delete_cache, new_id).await.map(|(_, new_id)| new_id)
     }
 }

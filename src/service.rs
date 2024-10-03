@@ -1,7 +1,6 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
     future::Future,
-    marker::PhantomData,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -14,13 +13,12 @@ use time::OffsetDateTime;
 use tower_layer::Layer;
 use tower_service::Service;
 use tower_sessions_core::{
-    expires::{Expires, Expiry},
+    expires::Expiry,
     id::Id,
 };
 
 use crate::{
-    session::{SessionUpdate, Updater},
-    LazySession, SessionStore,
+    session::{SessionUpdate, Updater}, Session
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -117,34 +115,31 @@ impl Default for SessionConfig<'static> {
 
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManager<Record, Store, S> {
+pub struct SessionManager<Store, S> {
     inner: S,
     store: Store,
     config: SessionConfig<'static>,
-    _record: PhantomData<Record>,
 }
 
-impl<Record, Store, S> SessionManager<Record, Store, S> {
+impl<Store, S> SessionManager<Store, S> {
     /// Create a new [`SessionManager`].
     pub fn new(inner: S, store: Store, config: SessionConfig<'static>) -> Self {
         Self {
             inner,
             store,
             config,
-            _record: PhantomData,
         }
     }
 }
 
-impl<ReqBody, ResBody, S, Record, Store> Service<Request<ReqBody>>
-    for SessionManager<Record, Store, S>
+impl<ReqBody, ResBody, S, Store> Service<Request<ReqBody>>
+    for SessionManager<Store, S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
     ReqBody: Send + 'static,
     ResBody: Default + Send,
-    Store: SessionStore<Record> + Clone + 'static,
-    Record: Expires + Send + Sync + 'static,
+    Store: Clone + Send + Sync + 'static,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -178,10 +173,9 @@ where
                 .ok()
         });
         let updater = Arc::new(Mutex::new(None));
-        let session = LazySession {
+        let session = Session {
             id,
             store: self.store.clone(),
-            data: std::marker::PhantomData::<Record>,
             updater: Arc::clone(&updater),
         };
         req.extensions_mut().insert(session);
@@ -271,13 +265,12 @@ where
 
 /// A layer for providing [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManagerLayer<Record, Store> {
+pub struct SessionManagerLayer<Store> {
     store: Store,
     config: SessionConfig<'static>,
-    _record: PhantomData<Record>,
 }
 
-impl<Record, Store> SessionManagerLayer<Record, Store> {
+impl<Store> SessionManagerLayer<Store> {
     /// Create a new [`SessionManagerLayer`] with the provided session store
     /// and configuration.
     ///
@@ -293,24 +286,21 @@ impl<Record, Store> SessionManagerLayer<Record, Store> {
         Self {
             store,
             config,
-            _record: PhantomData,
         }
     }
 }
 
-impl<S, Record, Store> Layer<S> for SessionManagerLayer<Record, Store>
+impl<S, Store> Layer<S> for SessionManagerLayer<Store>
 where
-    Record: Default + Send + Sync,
-    Store: SessionStore<Record> + Clone,
+    Store: Clone,
 {
-    type Service = SessionManager<Record, Store, S>;
+    type Service = SessionManager<Store, S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SessionManager {
             inner,
             store: self.store.clone(),
             config: self.config,
-            _record: PhantomData,
         }
     }
 }

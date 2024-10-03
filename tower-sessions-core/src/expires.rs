@@ -4,8 +4,6 @@ pub trait Expires {
     fn expires(&self) -> Expiry {
         Expiry::OnSessionEnd
     }
-    #[allow(unused_variables)]
-    fn set_expiry(&mut self, expiry: Expiry) {}
 }
 
 /// Session expiry configuration.

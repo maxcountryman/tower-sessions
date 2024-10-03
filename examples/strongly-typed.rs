@@ -5,7 +5,7 @@ use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Rout
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tower_sessions::{MemoryStore, LazySession, SessionManagerLayer};
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
 #[derive(Clone, Deserialize, Serialize)]
 struct GuestData {
@@ -25,7 +25,7 @@ impl Default for GuestData {
 }
 
 struct Guest {
-    session: LazySession,
+    session: Session,
     guest_data: GuestData,
 }
 
@@ -49,7 +49,7 @@ impl Guest {
         Self::update_session(&self.session, &self.guest_data).await
     }
 
-    async fn update_session(session: &LazySession, guest_data: &GuestData) {
+    async fn update_session(session: &Session, guest_data: &GuestData) {
         session
             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
             .await
@@ -75,7 +75,7 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let session = LazySession::from_request_parts(req, state).await?;
+        let session = Session::from_request_parts(req, state).await?;
 
         let mut guest_data: GuestData = session
             .get(Self::GUEST_DATA_KEY)

@@ -80,7 +80,7 @@ tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
 tower = { version = "0.5.0", features = ["util"] }
 tower-cookies = "0.10.0"
-tower-sessions-core = { workspace = true, features = ["deletion-task"] }
+tower-sessions-core = { workspace = true }
 
 [[example]]
 name = "counter"

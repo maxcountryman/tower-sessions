@@ -441,7 +441,7 @@ pub use tower_sessions_core::session_store;
 pub use tower_sessions_core::{
     id::Id,
     expires::Expires,
-    session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
+    session_store::{CachingSessionStore, SessionStore},
 };
 #[cfg(feature = "memory-store")]
 #[cfg_attr(docsrs, doc(cfg(feature = "memory-store")))]
@@ -449,7 +449,7 @@ pub use tower_sessions_core::{
 pub use tower_sessions_memory_store::MemoryStore;
 
 pub use crate::service::{SessionManager, SessionManagerLayer};
-pub use crate::session::{LazySession, Session};
+pub use crate::session::{Session, SessionState};
 
 pub mod service;
 pub mod session;

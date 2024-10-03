@@ -2,7 +2,6 @@
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
-    marker::PhantomData,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
@@ -28,25 +27,28 @@ pub(crate) enum SessionUpdate {
 
 pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 
-/// A session that is lazily loaded, and that can be extracted from a request.
+/// A session that is lazily loaded.
+///
+/// This is struct provided throught the Request's Extensions by the [`SessionManager`] middleware.
+/// If you happen to use `axum`, you can use this struct as an extractor since it implements
+/// [`FromRequestParts`].
 ///
 /// This struct has a somewhat convoluted API, but it is designed to be nearly impossible to
 /// misuse. Luckily, it only has a handful of methods, and each of them document how they work.
 ///
 /// When this struct refers to the "underlying store error", it is referring to the fact that the
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
-/// a timeout, etc. A counterexample would be the session not being found in the store, which is
-/// not considered an error by the `SessionStore` trait.
-pub struct LazySession<R, Store> {
+/// a timeout, etc. A counterexample would be the [`SessionState`] not being found in the store, which is
+/// not considered an error by the [`SessionStore`] trait.
+pub struct Session<Store> {
     /// This will be `None` if the handler has not received a session cookie or if the it could
     /// not be parsed.
     pub(crate) id: Option<Id>,
     pub(crate) store: Store,
-    pub(crate) data: PhantomData<R>,
     pub(crate) updater: Updater,
 }
 
-impl<R, Store> Clone for LazySession<R, Store>
+impl<Store> Clone for Session<Store>
 where
     Store: Clone,
 {
@@ -54,23 +56,21 @@ where
         Self {
             id: self.id,
             store: self.store.clone(),
-            data: self.data,
             updater: self.updater.clone(),
         }
     }
 }
 
-impl<R, Store: Debug> Debug for LazySession<R, Store> {
+impl<Store: Debug> Debug for Session<Store> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Session")
             .field("store", &self.store)
             .field("id", &self.id)
-            .field("data", &self.data)
             .finish()
     }
 }
 
-impl<R: Expires + Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
+impl<Store> Session<Store> {
     /// Try to load the session from the store.
     ///
     /// The return type of this method looks convoluted, so let's break it down:
@@ -78,9 +78,13 @@ impl<R: Expires + Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
     /// - Otherwise, it will return `Ok(...)`, where `...` is an `Option`.
     /// - The inner `Option` will be `None` if the session was not found in the store.
     /// - Otherwise, it will be `Some(...)`, where `...` is the loaded session.
-    pub async fn load(mut self) -> Result<Option<Session<R, Store>>, Store::Error> {
+    pub async fn load<R>(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error>
+    where
+        R: Send + Sync,
+        Store: SessionStore<R>,
+    {
         Ok(if let Some(id) = self.id {
-            self.store.load(&id).await?.map(|data| Session {
+            self.store.load(&id).await?.map(|data| SessionState {
                 store: self.store,
                 id,
                 data,
@@ -96,13 +100,16 @@ impl<R: Expires + Send + Sync, Store: SessionStore<R>> LazySession<R, Store> {
     /// # Error
     ///
     /// Errors if the underlying store errors.
-    pub async fn create(mut self, data: R) -> Result<Session<R, Store>, Store::Error> {
+    pub async fn create<R>(mut self, data: R) -> Result<SessionState<R, Store>, Store::Error>
+        where
+            R: Expires + Send + Sync,
+            Store: SessionStore<R> {
         let id = self.store.create(&data).await?;
         self.updater
             .lock()
             .expect("lock should not be poisoned")
             .replace(SessionUpdate::Set(id, data.expires()));
-        Ok(Session {
+        Ok(SessionState {
             store: self.store,
             id,
             data,
@@ -133,11 +140,9 @@ impl IntoResponse for NoMiddleware {
 }
 
 #[async_trait::async_trait]
-impl<State, Record, Store> FromRequestParts<State> for LazySession<Record, Store>
+impl<State, Store> FromRequestParts<State> for Session<Store>
 where
-    State: Send + Sync,
-    Record: Send + Sync + 'static,
-    Store: SessionStore<Record> + 'static,
+    Store: Send + Sync + 'static,
 {
     type Rejection = NoMiddleware;
 
@@ -147,7 +152,7 @@ where
     ) -> Result<Self, Self::Rejection> {
         let session = parts
             .extensions
-            .remove::<LazySession<Record, Store>>()
+            .remove::<Session<Store>>()
             .ok_or(NoMiddleware)?;
 
         Ok(session)
@@ -163,31 +168,32 @@ where
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
 /// a timeout, etc. A counterexample would be the session not being found in the store, which is
 /// not considered an error by the `SessionStore` trait.
-#[derive(Debug)]
-pub struct Session<R: Send + Sync, Store: SessionStore<R>> {
+#[derive(Debug, Clone)]
+pub struct SessionState<R, Store> {
     store: Store,
     id: Id,
     data: R,
     updater: Updater,
 }
 
-impl<R, Store> Session<R, Store>
-where
-    R: Expires + Send + Sync,
-    Store: SessionStore<R>,
-{
+impl<R, Store> SessionState<R, Store> {
     /// Read the data associated with the session.
     pub fn data(&self) -> &R {
         &self.data
     }
-
     /// Mutably access the data associated with the session.
     ///
     /// Returns a [`DataMut`], which functions similarly to a `Guard`.
     pub fn data_mut(self) -> DataMut<R, Store> {
         DataMut { session: self }
     }
+}
 
+impl<R, Store> SessionState<R, Store>
+where
+    R: Expires + Send + Sync,
+    Store: SessionStore<R>,
+{
     /// Delete the session from the store.
     ///
     /// This method returns a boolean indicating whether the session was deleted from the store.
@@ -220,7 +226,7 @@ where
     /// # Error
     ///
     /// Errors if the underlying store errors.
-    pub async fn cycle(mut self) -> Result<Option<Session<R, Store>>, Store::Error> {
+    pub async fn cycle(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error> {
         if let Some(new_id) = self.store.cycle_id(&self.id).await? {
             self.updater
                 .lock()
@@ -241,9 +247,9 @@ where
 ///
 /// You should save the session data by calling `save` before dropping this struct.
 #[derive(Debug)]
-#[must_use]
-pub struct DataMut<R: Send + Sync, Store: SessionStore<R>> {
-    session: Session<R, Store>,
+#[must_use = "You should call `save` before dropping this struct"]
+pub struct DataMut<R, Store> {
+    session: SessionState<R, Store>,
 }
 
 impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
@@ -256,7 +262,7 @@ impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
     /// # Error
     ///
     /// Errors if the underlying store errors.
-    pub async fn save(mut self) -> Result<Option<Session<R, Store>>, Store::Error> {
+    pub async fn save(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error> {
         Ok(self
             .session
             .store
@@ -266,7 +272,7 @@ impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
     }
 }
 
-impl<R: Send + Sync, Store: SessionStore<R>> Deref for DataMut<R, Store> {
+impl<R, Store> Deref for DataMut<R, Store> {
     type Target = R;
 
     fn deref(&self) -> &Self::Target {
@@ -274,7 +280,7 @@ impl<R: Send + Sync, Store: SessionStore<R>> Deref for DataMut<R, Store> {
     }
 }
 
-impl<R: Send + Sync, Store: SessionStore<R>> DerefMut for DataMut<R, Store> {
+impl<R, Store> DerefMut for DataMut<R, Store> {
     fn deref_mut(&mut self) -> &mut R {
         &mut self.session.data
     }

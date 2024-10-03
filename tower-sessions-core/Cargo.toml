@@ -10,7 +10,6 @@ repository.workspace = true
 
 [features]
 default = []
-deletion-task = ["dep:tokio", "tokio/time"]
 id-access = []
 random-id = ["dep:rand"]
 
@@ -18,14 +17,9 @@ random-id = ["dep:rand"]
 time = { version = "0.3.36", features = ["serde"] }
 http = { version = "1.1.0", optional = true }
 base64 = "0.22.0"
-futures = { version = "0.3.28", default-features = false, features = [
-    "async-await",
-] }
+futures-util = { version = "0.3.30", default-features = false }
 serde = { version = "1.0.189", features = ["derive"] }
 either = "1.13"
-tokio = { workspace = true, default-features = false, optional = true, features = [
-    "time",
-] }
 rand = { version = "0.8.5", optional = true }
 
 [dev-dependencies]

@@ -3,14 +3,14 @@ use std::net::SocketAddr;
 use axum::{response::IntoResponse, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use tower_sessions::{cookie::Key, Expiry, MemoryStore, LazySession, SessionManagerLayer};
+use tower_sessions::{cookie::Key, Expiry, MemoryStore, Session, SessionManagerLayer};
 
 const COUNTER_KEY: &str = "counter";
 
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
 
-async fn handler(session: LazySession) -> impl IntoResponse {
+async fn handler(session: Session) -> impl IntoResponse {
     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
     format!("Current count: {}", counter.0)
