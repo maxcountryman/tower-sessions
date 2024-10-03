@@ -92,7 +92,7 @@ use crate::{expires::Expires, id::Id};
 /// See [`session_store`](crate::session_store) for more details.
 // TODO: Remove all `Send` bounds once we have `return_type_notation`:
 // https://github.com/rust-lang/rust/issues/109417.
-pub trait SessionStore<R: Send + Sync>: Debug + Send + Sync {
+pub trait SessionStore<R: Send + Sync>: Send + Sync {
     type Error: Send;
 
     /// Creates a new session in the store with the provided session record.
@@ -198,46 +198,42 @@ pub trait SessionStore<R: Send + Sync>: Debug + Send + Sync {
 /// let caching_store = CachingSessionStore::new(moka_store, sqlite_store);
 /// # })
 /// ```
-pub struct CachingSessionStore<R, Cache, Store> {
+pub struct CachingSessionStore<Cache, Store> {
     cache: Cache,
     store: Store,
-    phantom: std::marker::PhantomData<R>,
 }
 
-impl<R, Cache: Clone, Store: Clone> Clone for CachingSessionStore<R, Cache, Store> {
+impl<Cache: Clone, Store: Clone> Clone for CachingSessionStore<Cache, Store> {
     fn clone(&self) -> Self {
         Self {
             cache: self.cache.clone(),
             store: self.store.clone(),
-            phantom: Default::default(),
         }
     }
 }
 
-impl<R, Cache: Debug, Store: Debug> Debug for CachingSessionStore<R, Cache, Store> {
+impl<Cache: Debug, Store: Debug> Debug for CachingSessionStore<Cache, Store> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CachingSessionStore")
             .field("cache", &self.cache)
             .field("store", &self.store)
-            .field("phantom", &self.phantom)
             .finish()
     }
 }
 
-impl<R: Send + Sync, Cache: SessionStore<R>, Store: SessionStore<R>>
-    CachingSessionStore<R, Cache, Store>
+impl<Cache, Store>
+    CachingSessionStore<Cache, Store>
 {
     /// Create a new `CachingSessionStore`.
     pub fn new(cache: Cache, store: Store) -> Self {
         Self {
             cache,
             store,
-            phantom: Default::default(),
         }
     }
 }
 
-impl<Cache, Store, R> SessionStore<R> for CachingSessionStore<R, Cache, Store>
+impl<Cache, Store, R> SessionStore<R> for CachingSessionStore<Cache, Store>
 where
     R: Send + Sync,
     Cache: SessionStore<R>,
