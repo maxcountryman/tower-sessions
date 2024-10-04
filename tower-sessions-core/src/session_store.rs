@@ -7,66 +7,13 @@
 //!
 //! # Implementing a Custom Store
 //!
-//! Below is an example of implementing a custom session store using an
-//! in-memory [`HashMap`]. This example is for illustration purposes only; you
-//! can use the provided [`MemoryStore`] directly without implementing it
-//! yourself.
+//! Every method on the [`SessionStore`] trait describes precisely how it should be implemented.
+//! The words _must_ and _should_ are used to indicate the level of necessity for each method.
+//! Implementations _must_ adhere to the requirements of the method, while _should_ indicates a
+//! recommended approach. These recommendations can be taken more lightly if the implementation is
+//! for internal use only.
 //!
-//! ```rust
-//! use std::{collections::HashMap, sync::Arc};
-//!
-//! use time::OffsetDateTime;
-//! use tokio::sync::Mutex;
-//! use tower_sessions_core::{
-//!     session::{Id, Record},
-//!     session_store, SessionStore,
-//! };
-//!
-//! #[derive(Clone, Debug, Default)]
-//! pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
-//!
-//! #[async_trait]
-//! impl SessionStore for MemoryStore {
-//!     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-//!         let mut store_guard = self.0.lock().await;
-//!         while store_guard.contains_key(&record.id) {
-//!             // Session ID collision mitigation.
-//!             record.id = Id::default();
-//!         }
-//!         store_guard.insert(record.id, record.clone());
-//!         Ok(())
-//!     }
-//!
-//!     async fn save(&self, record: &Record) -> session_store::Result<()> {
-//!         self.0.lock().await.insert(record.id, record.clone());
-//!         Ok(())
-//!     }
-//!
-//!     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
-//!         Ok(self
-//!             .0
-//!             .lock()
-//!             .await
-//!             .get(session_id)
-//!             .filter(|Record { expiry_date, .. }| is_active(*expiry_date))
-//!             .cloned())
-//!     }
-//!
-//!     async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
-//!         self.0.lock().await.remove(session_id);
-//!         Ok(())
-//!     }
-//! }
-//!
-//! fn is_active(expiry_date: OffsetDateTime) -> bool {
-//!     expiry_date > OffsetDateTime::now_utc()
-//! }
-//! ```
-//!
-//! # Session Store Trait
-//!
-//! The [`SessionStore`] trait defines the interface for session management.
-//! Implementations must handle session creation, saving, loading, and deletion.
+//! TODO: List good examples of implementations.
 //!
 //! # CachingSessionStore
 //!
@@ -74,12 +21,6 @@
 //! cache as the frontend and a store as the backend. This can improve read
 //! performance by reducing the need to access the backend store for frequently
 //! accessed sessions.
-//!
-//! # ExpiredDeletion
-//!
-//! The [`ExpiredDeletion`] trait provides a method for deleting expired
-//! sessions. Implementations can optionally provide a method for continuously
-//! deleting expired sessions at a specified interval.
 use std::{fmt::Debug, future::Future};
 
 use either::Either::{self, Left, Right};
@@ -90,7 +31,17 @@ use crate::id::Id;
 
 /// Defines the interface for session management.
 ///
-/// See [`session_store`](crate::session_store) for more details.
+/// The [`SessionStore::Error`] associated type should be used to represent hard errors that occur
+/// during backend operations. For example, an implementation _must not_ return an error if a saved
+/// record expired. See each method for more details.
+/// __Reasoning__: The [`SessionStore`] should not be responsible for handling logic errors.
+/// Methods on this trait are designed to return meaningful results for the caller to handle. The
+/// `Err(...)` case is reserved for hard errors that the caller most likely cannot handle, such as
+/// network errors, timeouts, invalid backend state/config, etc. These errors usually come from the
+/// backend store directly, such as [`sqlx::Error`], [`redis::RedisError`], etc.
+///
+/// [`sqlx::Error`]: https://docs.rs/sqlx
+/// [`redis::RedisError`]: https://docs.rs/redis
 // TODO: Remove all `Send` bounds once we have `return_type_notation`:
 // https://github.com/rust-lang/rust/issues/109417.
 pub trait SessionStore<R: Send + Sync>: Send + Sync {
@@ -98,11 +49,17 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
 
     /// Creates a new session in the store with the provided session record.
     ///
-    /// Implementers must return an ID in order to avoid ID Collisions. For
-    /// example, they might generate a new unique ID or return `Error::Backend`.
+    /// # Implementations
+    /// 
+    /// In the successful path, Implementations _must_ return a unique ID for the provided record.
     ///
-    /// The record is given as an exclusive reference to allow modifications,
-    /// such as assigning a new ID, during the creation process.
+    /// If the a provided record is already expired, the implementation _must_ not return an error.
+    /// A correct implementation _should_ instead return a new ID for the record and not insert it
+    /// into the store, or it should let the backend store handle the expiration immediately and
+    /// return the new ID.
+    /// __Reasoning__: Creating a session that is already expired is a logical mistake, not a hard
+    /// error. The caller should be responsible for handling this case, when it comes time to
+    /// use the session.
     fn create(
         &mut self,
         record: &R,
@@ -111,10 +68,15 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// Saves the provided session record to the store.
     ///
     /// This method is intended for updating the state of an existing session.
+    /// 
+    /// # Implementations
     ///
-    /// If the session does not exist (`Id` not in store, or expired), then this method should return
-    /// `Ok(false)` and should not create the new session. Otherwise it should update the session
-    /// and return `Ok(true)`.
+    /// In the successful path, implementations _must_ return `bool` indicating whether the
+    /// session existed and thus was updated, or if it did not exist (or was expired) and was not
+    /// updated.
+    /// __Reasoning__: The caller should be aware of whether the session was successfully updated
+    /// or not. If not, then this case can be handled by the caller trivially, thus it is not a
+    /// hard error.
     fn save(
         &mut self,
         id: &Id,
@@ -122,13 +84,21 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 
     /// Save the provided session record to the store, and create a new one if it does not exist.
+    ///
+    /// # Implementations
+    ///
+    /// In the successful path, implementations _must_ return `Ok(())` if the record was saved or
+    /// created with the given ID. This method is only exposed in the API for the sake of other
+    /// implementations relying on generic `SessionStore` implementations (see
+    /// [`CachingSessionStore`]). End users using `tower-sessions` are not exposed to this method.
+    /// `
     /// 
-    /// ## Caution
+    /// # Caution
     ///
     /// Since the caller can potentially create a new session with a chosen ID, this method should
-    /// only be used when it is known that a collision will not occur. The caller should not be in
-    /// charge of setting the `Id`, it is rather a job for the `SessionStore` through the `create`
-    /// method.
+    /// only be used by implementations when it is known that a collision will not occur. The caller
+    /// should not be in charge of setting the `Id`, it is rather a job for the `SessionStore`
+    /// through the `create` method.
     /// 
     /// This can also accidently increase the lifetime of a session. Suppose a session is loaded
     /// successfully from the store, but then expires before changes are saved. Using this method
@@ -141,9 +111,12 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
 
     /// Loads an existing session record from the store using the provided ID.
     ///
-    /// If a session with the given ID exists, it is returned. If the session
-    /// does not exist or has been invalidated (e.g., expired), `None` is
-    /// returned.
+    /// # Implementations
+    ///
+    /// If a session with the given ID exists, it is returned as `Some(record)`. If the session
+    /// does not exist or has been invalidated (i.e., expired), `None` is returned.
+    /// __Reasoning__: Loading a session that does not exist is not a hard error, and the caller
+    /// should be responsible for handling this case.
     fn load(
         &mut self,
         id: &Id,
@@ -151,14 +124,23 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
 
     /// Deletes a session record from the store using the provided ID.
     ///
-    /// If the session existed, it is removed from the store and returns `Ok(true)`,
-    /// Otherwise, it returns `Ok(false)`.
+    /// # Implementations
+    ///
+    /// If the session exists (and is not expired), an implmementation _must_ remove the session
+    /// from the store and return `Some` with the associated record. Otherwise, it must return
+    /// `Ok(None)`.
+    /// __Reasoning__: Deleting a session that does not exist is not a hard error, and the caller
+    /// should be responsible for handling this case.
     fn delete(&mut self, id: &Id) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 
     /// Update the ID of a session record.
     ///
-    /// This method should return `Ok(None)` if the session does not exist (or is expired).
-    /// It should return `Ok(Some(id))` with the new id if it does exist.
+    /// # Implementations
+    ///
+    /// This method _must_ return `Ok(None)` if the session does not exist (or is expired).
+    /// It _must_ return `Ok(Some(id))` with the newly assigned id if it does exist.
+    /// __Reasoning__: Updating the ID of a session that does not exist is not a hard error, and
+    /// the caller should be responsible for handling this case.
     ///
     /// The default implementation uses one `load`, one `create`, and one `delete` operation to
     /// update the `Id`. it is __highly recommended__ to implmement it more efficiently whenever possible.
@@ -185,41 +167,10 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
 /// By using a cache, the cost of reads can be greatly reduced as once cached,
 /// reads need only interact with the frontend, forgoing the cost of retrieving
 /// the session record from the backend.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// # tokio_test::block_on(async {
-/// use tower_sessions::CachingSessionStore;
-/// use tower_sessions_moka_store::MokaStore;
-/// use tower_sessions_sqlx_store::{SqlitePool, SqliteStore};
-/// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-/// let sqlite_store = SqliteStore::new(pool);
-/// let moka_store = MokaStore::new(Some(2_000));
-/// let caching_store = CachingSessionStore::new(moka_store, sqlite_store);
-/// # })
-/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CachingSessionStore<Cache, Store> {
     cache: Cache,
     store: Store,
-}
-
-impl<Cache: Clone, Store: Clone> Clone for CachingSessionStore<Cache, Store> {
-    fn clone(&self) -> Self {
-        Self {
-            cache: self.cache.clone(),
-            store: self.store.clone(),
-        }
-    }
-}
-
-impl<Cache: Debug, Store: Debug> Debug for CachingSessionStore<Cache, Store> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CachingSessionStore")
-            .field("cache", &self.cache)
-            .field("store", &self.store)
-            .finish()
-    }
 }
 
 impl<Cache, Store>
