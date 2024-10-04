@@ -1,6 +1,7 @@
 //! An abstraction over session storage and retrieval through [`SessionStore`].
 //!
-//! Sessions are identified by a unique [`Id`] and can be configured to expire with the [`Expires`] trait.
+//! Sessions are identified by a unique [`Id`] and can have an [`Expiry`] with the [`Expires`]
+//! trait.
 #[doc(inline)]
 pub use self::session_store::SessionStore;
 pub use self::id::Id;
