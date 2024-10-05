@@ -40,6 +40,10 @@ use crate::id::Id;
 /// network errors, timeouts, invalid backend state/config, etc. These errors usually come from the
 /// backend store directly, such as [`sqlx::Error`], [`redis::RedisError`], etc.
 ///
+/// Although recommended, it is not required for a `SessionStore` to handle session expiration. It
+/// is acceptable behavior for a session to return a record that is expired. The caller should be
+/// the one to decide what storage to use, and to use one that handles expiration if needed.
+///
 /// [`sqlx::Error`]: https://docs.rs/sqlx
 /// [`redis::RedisError`]: https://docs.rs/redis
 // TODO: Remove all `Send` bounds once we have `return_type_notation`:

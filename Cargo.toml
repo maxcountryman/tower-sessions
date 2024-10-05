@@ -44,7 +44,7 @@ tokio = { version = "1.32.0", default-features = false }
 
 [features]
 memory-store = ["tower-sessions-memory-store"]
-axum = ["dep:axum-core", "dep:async-trait"]
+extractor = ["dep:axum-core", "dep:async-trait"]
 
 [dependencies]
 async-trait = { version = "0.1.74", optional = true }
@@ -73,12 +73,13 @@ reqwest = { version = "0.12.3", default-features = false, features = [
     "rustls-tls",
 ] }
 serde = { workspace = true }
-time = "0.3.30"
+time = { workspace = true }
 tokio = { version = "1.32.0", features = ["full"] }
 tokio-test = "0.4.3"
 tower = { version = "0.5.0", features = ["util"] }
-tower-cookies = "0.10.0"
 tower-sessions-core = { workspace = true }
+tower-sessions-memory-store = { workspace = true }
+tower-sessions = { workspace = true, features = ["extractor", "memory-store"] }
 
 [[example]]
 name = "counter"
@@ -87,10 +88,6 @@ required-features = ["axum-core", "memory-store"]
 [[example]]
 name = "counter-extractor"
 required-features = ["axum-core", "memory-store"]
-
-[[example]]
-name = "strongly-typed"
-required-features = ["axum-core"]
 
 [[example]]
 name = "signed"

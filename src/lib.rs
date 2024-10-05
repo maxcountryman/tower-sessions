@@ -440,7 +440,7 @@ pub use tower_sessions_core::session_store;
 #[doc(inline)]
 pub use tower_sessions_core::{
     id::Id,
-    expires::Expires,
+    expires::{Expires, Expiry},
     session_store::{CachingSessionStore, SessionStore},
 };
 #[cfg(feature = "memory-store")]
@@ -448,8 +448,8 @@ pub use tower_sessions_core::{
 #[doc(inline)]
 pub use tower_sessions_memory_store::MemoryStore;
 
-pub use crate::service::{SessionManager, SessionManagerLayer};
+pub use crate::middleware::{SessionManager, SessionManagerLayer};
 pub use crate::session::{Session, SessionState};
 
-pub mod service;
+pub mod middleware;
 pub mod session;

@@ -1,21 +1,12 @@
 //! A session which allows HTTP applications to associate data with visitors.
+//!
+//! The structs provided here have a strict API, but they are designed to be nearly impossible to
+//! misuse. Luckily, they only have a handful of methods, and all of them document how they work.
 use std::{
-    fmt::{self, Debug},
+    fmt::Debug,
     mem::ManuallyDrop,
-    ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
-
-#[cfg(feature = "axum")]
-use axum_core::{
-    body::Body,
-    extract::FromRequestParts,
-    response::{IntoResponse, Response},
-};
-
-#[cfg(feature = "axum")]
-use http::request::Parts;
-
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
 use tower_sessions_core::{expires::Expires, id::Id, Expiry, SessionStore};
@@ -30,45 +21,21 @@ pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 
 /// A session that is lazily loaded.
 ///
-/// This is struct provided throught the Request's Extensions by the [`SessionManager`] middleware.
+/// This is struct provided throught a Request's Extensions by the [`SessionManager`] middleware.
 /// If you happen to use `axum`, you can use this struct as an extractor since it implements
 /// [`FromRequestParts`].
-///
-/// This struct has a somewhat convoluted API, but it is designed to be nearly impossible to
-/// misuse. Luckily, it only has a handful of methods, and each of them document how they work.
 ///
 /// When this struct refers to the "underlying store error", it is referring to the fact that the
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
 /// a timeout, etc. A counterexample would be the [`SessionState`] not being found in the store, which is
 /// not considered an error by the [`SessionStore`] trait.
+#[derive(Debug, Clone)]
 pub struct Session<Store> {
     /// This will be `None` if the handler has not received a session cookie or if the it could
     /// not be parsed.
     pub(crate) id: Option<Id>,
     pub(crate) store: Store,
     pub(crate) updater: Updater,
-}
-
-impl<Store> Clone for Session<Store>
-where
-    Store: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            store: self.store.clone(),
-            updater: self.updater.clone(),
-        }
-    }
-}
-
-impl<Store: Debug> Debug for Session<Store> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Session")
-            .field("store", &self.store)
-            .field("id", &self.id)
-            .finish()
-    }
 }
 
 impl<Store> Session<Store> {
@@ -85,31 +52,58 @@ impl<Store> Session<Store> {
         Store: SessionStore<R>,
     {
         Ok(if let Some(id) = self.id {
-            self.store.load(&id).await?.map(|data| SessionState {
-                store: self.store,
-                id,
-                data,
-                updater: self.updater,
-            })
+            if let Some(record) = self.store.load(&id).await? {
+                Some(SessionState {
+                    store: self.store,
+                    id,
+                    data: record,
+                    updater: self.updater,
+                })
+            } else {
+                self.updater
+                    .lock()
+                    .expect("lock should not be poisoned")
+                    .replace(SessionUpdate::Delete);
+                None
+            }
         } else {
             None
         })
     }
 
-    /// Create a new session with the given data.
+    /// Create a new session with the given data, using the expiry from the data's `Expires` impl.
     ///
     /// # Error
     ///
     /// Errors if the underlying store errors.
-    pub async fn create<R>(mut self, data: R) -> Result<SessionState<R, Store>, Store::Error>
-        where
-            R: Expires + Send + Sync,
-            Store: SessionStore<R> {
+    pub async fn create<R>(self, data: R) -> Result<SessionState<R, Store>, Store::Error>
+    where
+        R: Expires + Send + Sync,
+        Store: SessionStore<R>,
+    {
+        let exp = data.expires();
+        self.create_with_expiry(data, exp).await
+    }
+
+    /// Create a new session with the given data and expiry.
+    ///
+    /// # Error
+    ///
+    /// Errors if the underlying store errors.
+    pub async fn create_with_expiry<R>(
+        mut self,
+        data: R,
+        exp: Expiry,
+    ) -> Result<SessionState<R, Store>, Store::Error>
+    where
+        R: Send + Sync,
+        Store: SessionStore<R>,
+    {
         let id = self.store.create(&data).await?;
         self.updater
             .lock()
             .expect("lock should not be poisoned")
-            .replace(SessionUpdate::Set(id, data.expires()));
+            .replace(SessionUpdate::Set(id, exp));
         Ok(SessionState {
             store: self.store,
             id,
@@ -119,56 +113,64 @@ impl<Store> Session<Store> {
     }
 }
 
-#[cfg(feature = "axum")]
-#[derive(Debug, Clone, Copy)]
-/// A rejection that is returned from the [`Session`] extractor when the [`SessionManagerLayer`]
-/// middleware is not set.
-pub struct NoMiddleware;
+#[cfg(feature = "extractor")]
+pub use self::extractor::*;
 
-#[cfg(feature = "axum")]
-impl std::fmt::Display for NoMiddleware {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Missing session middleware. Is it added to the app?")
+#[cfg(feature = "extractor")]
+mod extractor {
+    use super::*;
+    use axum_core::{
+        body::Body,
+        extract::FromRequestParts,
+        response::{IntoResponse, Response},
+    };
+    use http::request::Parts;
+
+    /// A rejection that is returned from the [`Session`] extractor when the [`SessionManagerLayer`]
+    /// middleware is not set.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "extractor")))]
+    pub struct NoMiddleware;
+
+    impl std::fmt::Display for NoMiddleware {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Missing session middleware. Is it added to the app?")
+        }
     }
-}
 
-#[cfg(feature = "axum")]
-impl std::error::Error for NoMiddleware {}
+    impl std::error::Error for NoMiddleware {}
 
-#[cfg(feature = "axum")]
-impl IntoResponse for NoMiddleware {
-    fn into_response(self) -> Response {
-        let mut resp = Response::new(Body::from(self.to_string()));
-        *resp.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
-        resp
+    impl IntoResponse for NoMiddleware {
+        fn into_response(self) -> Response {
+            let mut resp = Response::new(Body::from(self.to_string()));
+            *resp.status_mut() = http::StatusCode::INTERNAL_SERVER_ERROR;
+            resp
+        }
     }
-}
 
-#[cfg(feature = "axum")]
-#[async_trait::async_trait]
-impl<State, Store> FromRequestParts<State> for Session<Store>
-where
-    Store: Send + Sync + 'static,
-{
-    type Rejection = NoMiddleware;
+    #[async_trait::async_trait]
+    #[cfg_attr(docsrs, doc(cfg(feature = "extractor")))]
+    impl<State, Store> FromRequestParts<State> for Session<Store>
+    where
+        Store: Send + Sync + 'static,
+    {
+        type Rejection = NoMiddleware;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &State,
-    ) -> Result<Self, Self::Rejection> {
-        let session = parts
-            .extensions
-            .remove::<Session<Store>>()
-            .ok_or(NoMiddleware)?;
+        async fn from_request_parts(
+            parts: &mut Parts,
+            _state: &State,
+        ) -> Result<Self, Self::Rejection> {
+            let session = parts
+                .extensions
+                .remove::<Session<Store>>()
+                .ok_or(NoMiddleware)?;
 
-        Ok(session)
+            Ok(session)
+        }
     }
 }
 
 /// A loaded session.
-///
-/// This struct has a somewhat convoluted API, but it is designed to be nearly impossible to
-/// misuse. Luckily, it only has a handful of methods, and each of them document how they work.
 ///
 /// When this struct refers to the "underlying store error", it is referring to the fact that the
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
@@ -187,19 +189,63 @@ impl<R, Store> SessionState<R, Store> {
     pub fn data(&self) -> &R {
         &self.data
     }
-    /// Mutably access the data associated with the session.
-    ///
-    /// Returns a [`DataMut`], which functions similarly to a `Guard`.
-    pub fn data_mut(self) -> DataMut<R, Store> {
-        DataMut { session: self }
-    }
 }
 
 impl<R, Store> SessionState<R, Store>
 where
-    R: Expires + Send + Sync,
+    R: Send + Sync,
     Store: SessionStore<R>,
 {
+    /// Update the session data, returning the session if successful.
+    ///
+    /// It updates the sessions' expiry through the [`Expires`] impl. If your data does not implement
+    /// [`Expires`], or you want to set a different expiry, use [`DataMut::save_with_expiry`].
+    ///
+    /// This method returns the `Session` if the data was saved successfully. It returns
+    /// `Ok(None)` when the session was deleted or expired between the time it was loaded and the
+    /// time this method is called.
+    ///
+    /// # Error
+    ///
+    /// Errors if the underlying store errors.
+    pub async fn update<F>(self, update: F) -> Result<Option<SessionState<R, Store>>, Store::Error>
+    where
+        F: FnOnce(&mut R),
+        R: Expires,
+    {
+        let exp = self.data.expires();
+        self.update_with_expiry(update, exp).await
+    }
+
+    /// Update the session data with a provided expiry, returning the session if successful.
+    ///
+    /// Similar to [`SessionState::update`], but allows you to set an expiry for types that don't
+    /// implement [`Expires`]. See [that method's documentation][SessionState::update] for more
+    /// information.
+    pub async fn update_with_expiry<F>(
+        mut self,
+        update: F,
+        exp: Expiry,
+    ) -> Result<Option<SessionState<R, Store>>, Store::Error>
+    where
+        F: FnOnce(&mut R),
+    {
+        update(&mut self.data);
+        Ok(if self.store.save(&self.id, &self.data).await? {
+            self.updater
+                .lock()
+                .expect("lock should not be poisoned")
+                .replace(SessionUpdate::Set(self.id, exp));
+            Some(self)
+        } else {
+            self.updater
+                .lock()
+                .expect("lock should not be poisoned")
+                .replace(SessionUpdate::Delete);
+            None
+        })
+    }
+    
     /// Delete the session from the store.
     ///
     /// This method returns a boolean indicating whether the session was deleted from the store.
@@ -232,62 +278,37 @@ where
     /// # Error
     ///
     /// Errors if the underlying store errors.
-    pub async fn cycle(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error> {
+    pub async fn cycle(self) -> Result<Option<SessionState<R, Store>>, Store::Error>
+    where
+        R: Expires,
+    {
+        let exp = self.data.expires();
+        self.cycle_with_expiry(exp).await
+    }
+
+    /// Cycle the session ID with a provided expiry, instead of the one from the [`Expires`] trait.
+    ///
+    /// Similar to [`SessionState::cycle`], but allows you to set an expiry for types that don't
+    /// implement [`Expires`]. See [that method's documentation][SessionState::cycle] for more information.
+    pub async fn cycle_with_expiry(mut self, exp: Expiry) -> Result<Option<SessionState<R, Store>>, Store::Error>
+    {
         if let Some(new_id) = self.store.cycle_id(&self.id).await? {
             self.updater
                 .lock()
                 .expect("lock should not be poisoned")
-                .replace(SessionUpdate::Set(new_id, self.data.expires()));
+                .replace(SessionUpdate::Set(new_id, exp));
             self.id = new_id;
             return Ok(Some(self));
         }
+        self.updater
+            .lock()
+            .expect("lock should not be poisoned")
+            .replace(SessionUpdate::Delete);
         Ok(None)
     }
-}
 
-/// A struct that provides mutable access to a session's data.
-/// Access to `R` is provided through `Deref` and `DerefMut`.
-///
-/// This is created by calling `data_mut` on a `Session`.
-/// To retrieve the `Session`, call `save` on this struct.
-///
-/// You should save the session data by calling `save` before dropping this struct.
-#[derive(Debug)]
-#[must_use = "You should call `save` before dropping this struct"]
-pub struct DataMut<R, Store> {
-    session: SessionState<R, Store>,
-}
-
-impl<R: Send + Sync, Store: SessionStore<R>> DataMut<R, Store> {
-    /// Save the session data to the store.
-    ///
-    /// This method returns the `Session` if the data was saved successfully. It returns
-    /// `Ok(None)` when the session was deleted or expired between the time it was loaded and the
-    /// time this method is called.
-    ///
-    /// # Error
-    ///
-    /// Errors if the underlying store errors.
-    pub async fn save(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error> {
-        Ok(self
-            .session
-            .store
-            .save(&self.session.id, &self.session.data)
-            .await?
-            .then_some(self.session))
-    }
-}
-
-impl<R, Store> Deref for DataMut<R, Store> {
-    type Target = R;
-
-    fn deref(&self) -> &Self::Target {
-        &self.session.data
-    }
-}
-
-impl<R, Store> DerefMut for DataMut<R, Store> {
-    fn deref_mut(&mut self) -> &mut R {
-        &mut self.session.data
+    /// Get the session store.
+    pub fn into_store(self) -> Store {
+        self.store
     }
 }

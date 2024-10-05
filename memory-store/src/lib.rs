@@ -1,8 +1,8 @@
+use std::sync::Mutex;
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use std::fmt::Debug;
 use time::OffsetDateTime;
-use tokio::sync::Mutex;
 use tower_sessions_core::{expires::Expires, Expiry, Id, SessionStore};
 
 /// A session store that lives only in memory.
@@ -24,12 +24,18 @@ use tower_sessions_core::{expires::Expires, Expiry, Id, SessionStore};
 /// 
 /// let store: MemoryStore<User> = MemoryStore::default();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MemoryStore<R>(Arc<Mutex<HashMap<Id, Value<R>>>>);
 
 impl<R> Default for MemoryStore<R> {
     fn default() -> Self {
         MemoryStore(Default::default())
+    }
+}
+
+impl<R> Clone for MemoryStore<R> {
+    fn clone(&self) -> Self {
+        MemoryStore(self.0.clone())
     }
 }
 
@@ -62,7 +68,7 @@ where
 
     async fn create(&mut self, record: &R) -> Result<Id, Self::Error> {
         let mut id = random_id();
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
         while store.contains_key(&id) {
             // If the ID already exists, generate a new one
             id = random_id();
@@ -75,7 +81,7 @@ where
     }
 
     async fn save(&mut self, id: &Id, record: &R) -> Result<bool, Self::Error> {
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
         if store.contains_key(id) {
             let value = Value::new(record.clone());
             store.insert(*id, value);
@@ -86,14 +92,14 @@ where
     }
 
     async fn save_or_create(&mut self, id: &Id, record: &R) -> Result<(), Self::Error> {
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
         let value = Value::new(record.clone());
         store.insert(*id, value);
         Ok(())
     }
 
     async fn load(&mut self, id: &Id) -> Result<Option<R>, Self::Error> {
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
 
         let Some(value) = store.get(id) else {
             return Ok(None);
@@ -108,12 +114,12 @@ where
     }
 
     async fn delete(&mut self, id: &Id) -> Result<bool, Self::Error> {
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
         Ok(store.remove(id).is_some())
     }
 
     async fn cycle_id(&mut self, old_id: &Id) -> Result<Option<Id>, Self::Error> {
-        let mut store = self.0.lock().await;
+        let mut store = self.0.lock().unwrap();
         if let Some(record) = store.remove(old_id) {
             let mut new_id = random_id();
             while store.contains_key(&new_id) {
