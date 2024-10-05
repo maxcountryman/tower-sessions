@@ -151,9 +151,6 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// __Reasoning__: Updating the ID of a session that does not exist is not a hard error, and
     /// the caller should be responsible for handling this case.
     ///
-    /// If the implementation handles expiration, it _should_ update the expiration time on the
-    /// session record.
-    ///
     /// ### Note
     /// 
     /// The default implementation uses one `load`, one `create`, and one `delete` operation to
