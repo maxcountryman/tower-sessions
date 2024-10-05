@@ -14,7 +14,7 @@ repository.workspace = true
 time = { version = "0.3.36", features = ["serde"] }
 base64 = "0.22.0"
 futures-util = { version = "0.3.30", default-features = false }
-serde = { workspace = true, features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
 either = "1.13"
 
 [dev-dependencies]

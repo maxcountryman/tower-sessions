@@ -1,27 +1,46 @@
 use std::net::SocketAddr;
 
 use axum::{response::IntoResponse, routing::get, Router};
-use serde::{Deserialize, Serialize};
 use time::Duration;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{Expires, Expiry, MemoryStore, Session, SessionManagerLayer};
 
-const COUNTER_KEY: &str = "counter";
-
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug)]
 struct Counter(usize);
 
-async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
-    format!("Current count: {}", counter.0)
+impl Expires for Counter {
+    fn expires(&self) -> Expiry {
+        Expiry::OnInactivity(Duration::seconds(10))
+    }
+}
+
+async fn handler(session: Session<MemoryStore<Counter>>) -> impl IntoResponse {
+    let value = if let Some(counter_state) = session.clone().load::<Counter>().await.unwrap() {
+        // We loaded the session, let's update the counter.
+        match counter_state
+            .update(|counter| counter.0 += 1)
+            .await
+            .unwrap()
+        {
+            Some(new_state) => new_state.data().0,
+            None => {
+                // The session has expired while we were updating it, let's create a new one.
+                session.create(Counter(0)).await.unwrap();
+                0
+            }
+        }
+    } else {
+        // No session found, let's create a new one.
+        session.create(Counter(0)).await.unwrap();
+        0
+    };
+
+    format!("Current count: {}", value)
 }
 
 #[tokio::main]
 async fn main() {
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
+    let session_store: MemoryStore<Counter> = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store, Default::default());
 
     let app = Router::new().route("/", get(handler)).layer(session_layer);
 

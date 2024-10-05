@@ -25,8 +25,7 @@
 - Only update the cookie if the session was extracted.
 - [X] Complete middleware implementation.
 - [ ] Add tracing.
-- [ ] Add signed cookies functionality.
-- [ ] Document what session-store should implement, and what the `Record` type should implement.
+- [X] Document what session-store should implement, and what the `Record` type should implement.
 - [ ] Add examples everywhere.
 - [X] Rewrite the in memory store.
 - [ ] Rewrite all the tests.
