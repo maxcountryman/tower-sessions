@@ -81,6 +81,9 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// __Reasoning__: The caller should be aware of whether the session was successfully updated
     /// or not. If not, then this case can be handled by the caller trivially, thus it is not a
     /// hard error.
+    ///
+    /// If the implementation handles expiration, id _should_ update the expiration time on the
+    /// session record.
     fn save(
         &mut self,
         id: &Id,
@@ -95,7 +98,9 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// created with the given ID. This method is only exposed in the API for the sake of other
     /// implementations relying on generic `SessionStore` implementations (see
     /// [`CachingSessionStore`]). End users using `tower-sessions` are not exposed to this method.
-    /// `
+    ///
+    /// If the implementation handles expiration, id _should_ update the expiration time on the
+    /// session record.
     /// 
     /// # Caution
     ///
@@ -146,6 +151,11 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// __Reasoning__: Updating the ID of a session that does not exist is not a hard error, and
     /// the caller should be responsible for handling this case.
     ///
+    /// If the implementation handles expiration, it _should_ update the expiration time on the
+    /// session record.
+    ///
+    /// ### Note
+    /// 
     /// The default implementation uses one `load`, one `create`, and one `delete` operation to
     /// update the `Id`. it is __highly recommended__ to implmement it more efficiently whenever possible.
     fn cycle_id(

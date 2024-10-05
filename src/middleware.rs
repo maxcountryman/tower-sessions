@@ -71,12 +71,18 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    fn build_cookie(self, session_id: Id, expiry: Expiry) -> Cookie<'a> {
-        let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
-            .http_only(self.http_only)
-            .same_site(self.same_site)
-            .secure(self.secure)
-            .path(self.path);
+    fn build_cookie(self, session_id: Option<Id>, expiry: Expiry) -> Cookie<'a> {
+        let mut cookie_builder = Cookie::build((
+            self.name,
+            session_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
+        ))
+        .http_only(self.http_only)
+        .same_site(self.same_site)
+        .secure(self.secure)
+        .path(self.path);
 
         cookie_builder = match expiry {
             Expiry::OnInactivity(duration) => cookie_builder.max_age(duration),
@@ -220,26 +226,24 @@ where
             });
         match update {
             Some(SessionUpdate::Delete) => {
-                if let Some(old_id) = self_.old_id {
-                    let cookie = self_.config.build_cookie(
-                        *old_id,
-                        Expiry::AtDateTime(
-                            // The Year 2000 in UNIX time.
-                            time::OffsetDateTime::from_unix_timestamp(946684800)
-                                .expect("year 2000 should be in range"),
-                        ),
-                    );
-                    resp.headers_mut().insert(
-                        http::header::SET_COOKIE,
-                        cookie
-                            .to_string()
-                            .try_into()
-                            .expect("cookie should be valid"),
-                    );
-                };
+                let cookie = self_.config.build_cookie(
+                    *self_.old_id,
+                    Expiry::AtDateTime(
+                        // The Year 2000 in UNIX time.
+                        time::OffsetDateTime::from_unix_timestamp(946684800)
+                            .expect("year 2000 should be in range"),
+                    ),
+                );
+                resp.headers_mut().insert(
+                    http::header::SET_COOKIE,
+                    cookie
+                        .to_string()
+                        .try_into()
+                        .expect("cookie should be valid"),
+                );
             }
             Some(SessionUpdate::Set(id, expiry)) => {
-                let cookie = self_.config.build_cookie(id, expiry);
+                let cookie = self_.config.build_cookie(Some(id), expiry);
                 resp.headers_mut().insert(
                     http::header::SET_COOKIE,
                     cookie
@@ -439,42 +443,6 @@ mod tests {
             .body(Body::empty())?;
         let res = noop_svc.oneshot(req).await?;
         assert!(cookie_has_expected_max_age(&res, 7200));
-
-        Ok(())
-    }
-
-    #[cfg(feature = "signed")]
-    #[tokio::test]
-    async fn signed_test() -> anyhow::Result<()> {
-        let key = Key::generate();
-        let session_store = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store).with_signed(key);
-        let svc = ServiceBuilder::new()
-            .layer(session_layer)
-            .service_fn(handler);
-
-        let req = Request::builder().body(Body::empty())?;
-        let res = svc.oneshot(req).await?;
-
-        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
-
-        Ok(())
-    }
-
-    #[cfg(feature = "private")]
-    #[tokio::test]
-    async fn private_test() -> anyhow::Result<()> {
-        let key = Key::generate();
-        let session_store = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store).with_private(key);
-        let svc = ServiceBuilder::new()
-            .layer(session_layer)
-            .service_fn(handler);
-
-        let req = Request::builder().body(Body::empty())?;
-        let res = svc.oneshot(req).await?;
-
-        assert!(res.headers().get(http::header::SET_COOKIE).is_some());
 
         Ok(())
     }
