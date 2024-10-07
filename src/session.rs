@@ -29,6 +29,34 @@ pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 /// store used returned a "hard" error. For example, it could be a connection error, a protocol error,
 /// a timeout, etc. A counterexample would be the [`SessionState`] not being found in the store, which is
 /// not considered an error by the [`SessionStore`] trait.
+///
+/// # Examples
+/// - If you are using `axum`, and you have enabled the `extractor` feature, you can use this
+///     struct as an extractor:
+/// ```rust
+/// use tower_sessions::{Session, MemoryStore};
+///
+/// async fn handler(session: Session<MemoryStore<()>>) -> String {
+///     unimplemented!()
+/// }
+/// ```
+/// The extractor will error if the handler was called without a `SessionManager` middleware.
+///
+/// - Otherwise, you can extract it from a request's extensions:
+/// ```
+/// use tower_sessions::{Session, MemoryStore};
+/// use axum_core::{extract::Request, body::Body};
+///
+/// async fn handler(mut req: Request<Body>) -> String {
+///    let Some(session) = req.extensions_mut().remove::<Session<MemoryStore<()>>>() else {
+///         return "No session found".to_string();
+///    };
+///    unimplemented!()
+///    // ...
+/// }
+/// ```
+/// Again, the session will not be found if the handler was called without a `SessionManager`
+/// middleware.
 #[derive(Debug, Clone)]
 pub struct Session<Store> {
     /// This will be `None` if the handler has not received a session cookie or if the it could
@@ -46,6 +74,37 @@ impl<Store> Session<Store> {
     /// - Otherwise, it will return `Ok(...)`, where `...` is an `Option`.
     /// - The inner `Option` will be `None` if the session was not found in the store.
     /// - Otherwise, it will be `Some(...)`, where `...` is the loaded session.
+    ///
+    /// # Error
+    ///
+    /// Errors if the underlying store errors.
+    ///
+    /// # Example
+    /// ```rust
+    /// use tower_sessions::{Session, MemoryStore, Expires};
+    ///
+    /// #[derive(Clone)]
+    /// struct User {
+    ///     id: u64,
+    ///     admin: bool,
+    /// }
+    ///
+    /// impl Expires for User {}
+    ///
+    /// async fn handler(session: Session<MemoryStore<User>>) -> String {
+    ///     match session.load().await {
+    ///         Ok(Some(session)) => {
+    ///             "User has a valid session"
+    ///         }
+    ///         Ok(None) => {
+    ///             "User does not have a session, redirect to login?"
+    ///         }
+    ///         Err(_error) => {
+    ///             "An error occurred while loading the session"
+    ///         }
+    ///     }.to_string()
+    /// }
+    /// ```
     pub async fn load<R>(mut self) -> Result<Option<SessionState<R, Store>>, Store::Error>
     where
         R: Send + Sync,
@@ -76,6 +135,31 @@ impl<Store> Session<Store> {
     /// # Error
     ///
     /// Errors if the underlying store errors.
+    ///
+    /// # Example
+    /// ```rust
+    /// use tower_sessions::{Session, MemoryStore, Expires};
+    ///
+    /// #[derive(Clone)]
+    /// struct User {
+    ///     id: u64,
+    ///     admin: bool,
+    /// }
+    ///
+    /// impl Expires for User {}
+    ///
+    /// async fn handler(session: Session<MemoryStore<User>>) -> String {
+    ///     let user = User { id: 1, admin: false };
+    ///     match session.create(user).await {
+    ///         Ok(session) => {
+    ///             "We have successfully created a new session with the user's id"
+    ///         }
+    ///         Err(_error) => {
+    ///             "An error occurred while loading the session"
+    ///         }
+    ///     }.to_string()
+    /// }
+    /// ```
     pub async fn create<R>(self, data: R) -> Result<SessionState<R, Store>, Store::Error>
     where
         R: Expires + Send + Sync,
@@ -85,7 +169,7 @@ impl<Store> Session<Store> {
         self.create_with_expiry(data, exp).await
     }
 
-    /// Create a new session with the given data and expiry.
+    /// Create a new session with the given data and expiry. See [`Session::create`] for an example.
     ///
     /// # Error
     ///
@@ -208,6 +292,27 @@ where
     /// # Error
     ///
     /// Errors if the underlying store errors.
+    ///
+    /// # Example
+    /// ```
+    /// use tower_sessions::{SessionState, Expires, MemoryStore};
+    ///
+    /// #[derive(Clone)]
+    /// struct User {
+    ///    id: u64,
+    ///    admin: bool,
+    /// }
+    ///
+    /// impl Expires for User {}
+    ///
+    /// async fn upgrade_priviledges(state: SessionState<User, MemoryStore<User>>) -> Option<String> {
+    ///     let new_state = state.update(|user| {
+    ///         user.admin = true;
+    ///     }).await.ok()??;
+    ///     assert!(new_state.data().admin);
+    ///     Some("User has been upgraded to admin".to_string())
+    /// }
+    /// ```
     pub async fn update<F>(self, update: F) -> Result<Option<SessionState<R, Store>>, Store::Error>
     where
         F: FnOnce(&mut R),
@@ -245,7 +350,7 @@ where
             None
         })
     }
-    
+
     /// Delete the session from the store.
     ///
     /// This method returns a boolean indicating whether the session was deleted from the store.
@@ -256,6 +361,23 @@ where
     /// # Error
     ///
     /// Errors if the underlying store errors.
+    ///
+    /// # Example
+    /// ```
+    /// use tower_sessions::{SessionState, MemoryStore, Expires};
+    ///
+    /// #[derive(Clone)]
+    /// struct User;
+    ///
+    /// impl Expires for User {}
+    /// 
+    /// async fn logout(state: SessionState<User, MemoryStore<User>>) -> Option<String> {
+    ///     Some(if state.delete().await.ok()? {
+    ///         "User has been logged out".to_string()
+    ///     } else {
+    ///         "User was not logged in".to_string()
+    ///     })
+    /// }
     pub async fn delete(mut self) -> Result<bool, Store::Error> {
         let deleted = self.store.delete(&self.id).await?;
         self.updater
@@ -278,6 +400,24 @@ where
     /// # Error
     ///
     /// Errors if the underlying store errors.
+    ///
+    /// # Example
+    /// ```
+    /// use tower_sessions::{SessionState, MemoryStore, Expires};
+    /// 
+    /// #[derive(Clone)]
+    /// struct User;
+    ///
+    /// impl Expires for User {}
+    /// 
+    /// async fn cycle(state: SessionState<User, MemoryStore<User>>) -> Option<String> {
+    ///     Some(if let Some(new_state) = state.cycle().await.ok()? {
+    ///         "Session has been cycled".to_string()
+    ///     } else {
+    ///         "Session was not found".to_string()
+    ///     })
+    /// }
+    /// ```
     pub async fn cycle(self) -> Result<Option<SessionState<R, Store>>, Store::Error>
     where
         R: Expires,
@@ -290,8 +430,10 @@ where
     ///
     /// Similar to [`SessionState::cycle`], but allows you to set an expiry for types that don't
     /// implement [`Expires`]. See [that method's documentation][SessionState::cycle] for more information.
-    pub async fn cycle_with_expiry(mut self, exp: Expiry) -> Result<Option<SessionState<R, Store>>, Store::Error>
-    {
+    pub async fn cycle_with_expiry(
+        mut self,
+        exp: Expiry,
+    ) -> Result<Option<SessionState<R, Store>>, Store::Error> {
         if let Some(new_id) = self.store.cycle_id(&self.id).await? {
             self.updater
                 .lock()

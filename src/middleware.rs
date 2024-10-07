@@ -124,6 +124,15 @@ pub struct SessionManager<Store, S> {
 
 impl<Store, S> SessionManager<Store, S> {
     /// Create a new [`SessionManager`].
+    ///
+    /// # Examples
+    /// ```
+    /// use tower_sessions::{MemoryStore, SessionManager};
+    ///
+    /// struct MyService;
+    ///
+    /// let _ = SessionManager::new(MyService, MemoryStore::<()>::default(), Default::default());
+    /// ```
     pub fn new(inner: S, store: Store, config: Config<'static>) -> Self {
         Self {
             inner,

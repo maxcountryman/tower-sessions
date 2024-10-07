@@ -62,7 +62,7 @@ impl<R: Expires> Value<R> {
 
 impl<R> SessionStore<R> for MemoryStore<R>
 where
-    R: Expires + Send + Sync + Debug + Clone,
+    R: Expires + Send + Sync + Clone,
 {
     type Error = Infallible;
 

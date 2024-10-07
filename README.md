@@ -22,12 +22,8 @@
 </div>
 
 ## TODOs
-- Only update the cookie if the session was extracted.
-- [X] Complete middleware implementation.
 - [ ] Add tracing.
-- [X] Document what session-store should implement, and what the `Record` type should implement.
-- [ ] Add examples everywhere.
-- [X] Rewrite the in memory store.
+- [x] Add examples everywhere.
 - [ ] Rewrite all the tests.
 
 ## 🎨 Overview
@@ -47,12 +43,6 @@ It offers:
 - **An `axum` Extractor for `Session`:** Applications built with `axum`
   can use `Session` as an extractor directly in their handlers. This makes
   using sessions as easy as including `Session` in your handler.
-- **Simple Key-Value Interface:** Sessions offer a key-value interface that
-  supports native Rust types. So long as these types are `Serialize` and can
-  be converted to JSON, it's straightforward to insert, get, and remove any
-  value.
-- **Strongly-Typed Sessions:** Strong typing guarantees are easy to layer on
-  top of this foundational key-value interface.
 
 This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
 
@@ -93,47 +83,6 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 [dependencies]
 tower-sessions = "0.13.0"
 ```
-
-## 🤸 Usage
-
-### `axum` Example
-
-```rust
-use std::net::SocketAddr;
-
-use axum::{response::IntoResponse, routing::get, Router};
-use serde::{Deserialize, Serialize};
-use time::Duration;
-use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
-
-const COUNTER_KEY: &str = "counter";
-
-#[derive(Default, Deserialize, Serialize)]
-struct Counter(usize);
-
-async fn handler(session: Session) -> impl IntoResponse {
-    let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-    session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
-    format!("Current count: {}", counter.0)
-}
-
-#[tokio::main]
-async fn main() {
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
-
-    let app = Router::new().route("/", get(handler)).layer(session_layer);
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app.into_make_service())
-        .await
-        .unwrap();
-}
-```
-
 You can find this [example][counter-example] as well as other example projects in the [example directory][examples].
 
 > [!NOTE]

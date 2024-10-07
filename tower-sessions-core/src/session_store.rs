@@ -24,8 +24,8 @@
 use std::{fmt::Debug, future::Future};
 
 use either::Either::{self, Left, Right};
-use futures_util::TryFutureExt;
 use futures_util::future::try_join;
+use futures_util::TryFutureExt;
 
 use crate::id::Id;
 
@@ -44,6 +44,11 @@ use crate::id::Id;
 /// is acceptable behavior for a session to return a record that is expired. The caller should be
 /// the one to decide what storage to use, and to use one that handles expiration if needed.
 ///
+/// For a [`SessionStore`] to be used as a middleware in a [`SessionManagerLayer`], it must also
+/// implement the [`Clone`] trait. The store should also be relatively cheap to clone (a few
+/// [`Arc`]s are fine). This is because the store is cloned for every request, and the user should
+/// be able to clone it inside of a request handler without much overhead.
+///
 /// [`sqlx::Error`]: https://docs.rs/sqlx
 /// [`redis::RedisError`]: https://docs.rs/redis
 // TODO: Remove all `Send` bounds once we have `return_type_notation`:
@@ -54,7 +59,7 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// Creates a new session in the store with the provided session record.
     ///
     /// # Implementations
-    /// 
+    ///
     /// In the successful path, Implementations _must_ return a unique ID for the provided record.
     ///
     /// If the a provided record is already expired, the implementation _must_ not return an error.
@@ -64,15 +69,12 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// __Reasoning__: Creating a session that is already expired is a logical mistake, not a hard
     /// error. The caller should be responsible for handling this case, when it comes time to
     /// use the session.
-    fn create(
-        &mut self,
-        record: &R,
-    ) -> impl Future<Output = Result<Id, Self::Error>> + Send;
+    fn create(&mut self, record: &R) -> impl Future<Output = Result<Id, Self::Error>> + Send;
 
     /// Saves the provided session record to the store.
     ///
     /// This method is intended for updating the state of an existing session.
-    /// 
+    ///
     /// # Implementations
     ///
     /// In the successful path, implementations _must_ return `bool` indicating whether the
@@ -101,14 +103,14 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     ///
     /// If the implementation handles expiration, id _should_ update the expiration time on the
     /// session record.
-    /// 
+    ///
     /// # Caution
     ///
     /// Since the caller can potentially create a new session with a chosen ID, this method should
     /// only be used by implementations when it is known that a collision will not occur. The caller
     /// should not be in charge of setting the `Id`, it is rather a job for the `SessionStore`
     /// through the `create` method.
-    /// 
+    ///
     /// This can also accidently increase the lifetime of a session. Suppose a session is loaded
     /// successfully from the store, but then expires before changes are saved. Using this method
     /// will reinstate the session with the same ID, prolonging its lifetime.
@@ -126,10 +128,7 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// does not exist or has been invalidated (i.e., expired), `None` is returned.
     /// __Reasoning__: Loading a session that does not exist is not a hard error, and the caller
     /// should be responsible for handling this case.
-    fn load(
-        &mut self,
-        id: &Id,
-    ) -> impl Future<Output = Result<Option<R>, Self::Error>> + Send;
+    fn load(&mut self, id: &Id) -> impl Future<Output = Result<Option<R>, Self::Error>> + Send;
 
     /// Deletes a session record from the store using the provided ID.
     ///
@@ -152,7 +151,7 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// the caller should be responsible for handling this case.
     ///
     /// ### Note
-    /// 
+    ///
     /// The default implementation uses one `load`, one `create`, and one `delete` operation to
     /// update the `Id`. it is __highly recommended__ to implmement it more efficiently whenever possible.
     fn cycle_id(
@@ -184,15 +183,10 @@ pub struct CachingSessionStore<Cache, Store> {
     store: Store,
 }
 
-impl<Cache, Store>
-    CachingSessionStore<Cache, Store>
-{
+impl<Cache, Store> CachingSessionStore<Cache, Store> {
     /// Create a new `CachingSessionStore`.
     pub fn new(cache: Cache, store: Store) -> Self {
-        Self {
-            cache,
-            store,
-        }
+        Self { cache, store }
     }
 }
 
@@ -223,11 +217,7 @@ where
         Ok(exists_store)
     }
 
-    async fn save_or_create(
-            &mut self,
-            id: &Id,
-            record: &R,
-        ) -> Result<(), Self::Error> {
+    async fn save_or_create(&mut self, id: &Id, record: &R) -> Result<(), Self::Error> {
         let store_save_fut = self.store.save_or_create(id, record).map_err(Right);
         let cache_save_fut = self.cache.save_or_create(id, record).map_err(Left);
 
@@ -238,12 +228,7 @@ where
 
     async fn load(&mut self, id: &Id) -> Result<Option<R>, Self::Error> {
         match self.cache.load(id).await {
-            // We found a session in the cache, so let's use it.
             Ok(Some(session_record)) => Ok(Some(session_record)),
-
-            // We didn't find a session in the cache, so we'll try loading from the backend.
-            //
-            // When we find a session in the backend, we'll hydrate our cache with it.
             Ok(None) => {
                 let session_record = self.store.load(id).await.map_err(Right)?;
 
@@ -256,8 +241,6 @@ where
 
                 Ok(session_record)
             }
-
-            // Some error occurred with our cache so we'll bubble this up.
             Err(err) => Err(Left(err)),
         }
     }
@@ -271,13 +254,12 @@ where
         Ok(in_store)
     }
 
-    async fn cycle_id(
-            &mut self,
-            old_id: &Id,
-        ) -> Result<Option<Id>, Self::Error> {
+    async fn cycle_id(&mut self, old_id: &Id) -> Result<Option<Id>, Self::Error> {
         let delete_cache = self.cache.delete(old_id).map_err(Left);
         let new_id = self.store.cycle_id(old_id).map_err(Right);
 
-        try_join(delete_cache, new_id).await.map(|(_, new_id)| new_id)
+        try_join(delete_cache, new_id)
+            .await
+            .map(|(_, new_id)| new_id)
     }
 }
