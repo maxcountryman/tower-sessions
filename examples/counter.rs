@@ -40,7 +40,10 @@ async fn handler(session: Session<MemoryStore<Counter>>) -> impl IntoResponse {
 #[tokio::main]
 async fn main() {
     let session_store: MemoryStore<Counter> = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store, Default::default());
+    let session_layer = SessionManagerLayer {
+        store: session_store,
+        config: Default::default(),
+    };
 
     let app = Router::new().route("/", get(handler)).layer(session_layer);
 

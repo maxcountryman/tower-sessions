@@ -276,7 +276,10 @@ where
 /// use tower_sessions::{MemoryStore, SessionManagerLayer};
 ///
 /// let session_store: MemoryStore<()> = MemoryStore::default();
-/// let session_service = SessionManagerLayer::new(session_store, Default::default());
+/// let session_service = SessionManagerLayer {
+///     store: session_store,
+///     config: Default::default()
+/// };
 /// ```
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store> {
@@ -346,7 +349,10 @@ mod tests {
     #[tokio::test]
     async fn basic_service_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store, Default::default());
+        let session_layer = SessionManagerLayer {
+            store: session_store, 
+            config: Default::default(),
+        };
         let svc = ServiceBuilder::new()
             .layer(session_layer.clone())
             .service_fn(handler);
@@ -374,7 +380,10 @@ mod tests {
     #[tokio::test]
     async fn bogus_cookie_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store, Default::default());
+        let session_layer = SessionManagerLayer {
+            store: session_store, 
+            config: Default::default(),
+        };
         let svc = ServiceBuilder::new()
             .layer(session_layer)
             .service_fn(handler);
@@ -397,7 +406,10 @@ mod tests {
     #[tokio::test]
     async fn no_set_cookie_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store, Default::default());
+        let session_layer = SessionManagerLayer {
+            store: session_store, 
+            config: Default::default(),
+        };
         let svc = ServiceBuilder::new()
             .layer(session_layer)
             .service_fn(noop_handler);
@@ -423,7 +435,10 @@ mod tests {
             domain: Some("example.com"),
             always_set_expiry: Some(Expiry::OnInactivity(time::Duration::hours(2))),
         };
-        let session_layer = SessionManagerLayer::new(session_store, session_config);
+        let session_layer = SessionManagerLayer {
+            store: session_store,
+            config: session_config,
+        };
         let svc = ServiceBuilder::new()
             .layer(session_layer.clone())
             .service_fn(handler);
