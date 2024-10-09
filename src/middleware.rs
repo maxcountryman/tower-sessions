@@ -269,27 +269,19 @@ where
 }
 
 /// A layer for providing [`Session`] as a request extension.
+///
+/// # Examples
+///
+/// ```rust
+/// use tower_sessions::{MemoryStore, SessionManagerLayer};
+///
+/// let session_store: MemoryStore<()> = MemoryStore::default();
+/// let session_service = SessionManagerLayer::new(session_store, Default::default());
+/// ```
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store> {
-    store: Store,
-    config: Config<'static>,
-}
-
-impl<Store> SessionManagerLayer<Store> {
-    /// Create a new [`SessionManagerLayer`] with the provided session store
-    /// and configuration.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
-    ///
-    /// let session_store: MemoryStore<()> = MemoryStore::default();
-    /// let session_service = SessionManagerLayer::new(session_store, Default::default());
-    /// ```
-    pub fn new(store: Store, config: Config<'static>) -> Self {
-        Self { store, config }
-    }
+    pub store: Store,
+    pub config: Config<'static>,
 }
 
 impl<S, Store> Layer<S> for SessionManagerLayer<Store>
