@@ -280,7 +280,11 @@ where
 /// ```
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store> {
+    /// The store to use for session data.
+    /// 
+    /// This should implement [`tower_sessions_core::SessionStore`], and be cloneable.
     pub store: Store,
+    /// The configuration options for the session cookie.
     pub config: Config<'static>,
 }
 
