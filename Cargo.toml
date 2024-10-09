@@ -34,7 +34,7 @@ rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
 cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
+tower-sessions = { version = "=0.13.0", path = ".", features = ["memory-store", "extractor"] }
 tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core" }
 tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
 
@@ -70,6 +70,7 @@ tokio = { version = "1.32.0", features = ["full"] }
 tower = { version = "0.5.0", features = ["util"] }
 tower-sessions-core = { workspace = true }
 tower-sessions-memory-store = { workspace = true }
+tower-sessions = { workspace = true }
 
 [[example]]
 name = "counter"

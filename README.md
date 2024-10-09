@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-    🥠 Sessions as a `tower` and `axum` middleware.
+    User sessions as a `tower` middleware.
 </p>
 
 <div align="center">
@@ -22,31 +22,11 @@
 </div>
 
 ## TODOs
-- [ ] Add tracing.
-- [x] Add examples everywhere.
-- [ ] Rewrite all the tests.
+- [ ] tracing.
+- [ ] TEST
 
-## 🎨 Overview
 
-This crate provides sessions, key-value pairs associated with a site
-visitor, as a `tower` middleware.
-
-It offers:
-
-- **Pluggable Storage Backends:** Bring your own backend simply by
-  implementing the `SessionStore` trait, fully decoupling sessions from their
-  storage.
-- **Minimal Overhead**: Sessions are only loaded from their backing stores
-  when they're actually used and only in e.g. the handler they're used in.
-  That means this middleware can be installed anywhere in your route
-  graph with minimal overhead.
-- **An `axum` Extractor for `Session`:** Applications built with `axum`
-  can use `Session` as an extractor directly in their handlers. This makes
-  using sessions as easy as including `Session` in your handler.
-
-This crate's session implementation is inspired by the [Django sessions middleware](https://docs.djangoproject.com/en/4.2/topics/http/sessions) and it provides a transliteration of those semantics.
-
-### Session stores
+## Session stores
 
 Session data persistence is managed by user-provided types that implement
 `SessionStore`. What this means is that applications can and should
@@ -57,25 +37,11 @@ useful starting points.
 
 | Crate                                                                                                            | Persistent | Description                                                 |
 | ---------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------- |
-| [`tower-sessions-dynamodb-store`](https://github.com/necrobious/tower-sessions-dynamodb-store)                   | Yes        | DynamoDB session store                                      |
-| [`tower-sessions-firestore-store`](https://github.com/AtTheTavern/tower-sessions-firestore-store)                | Yes        | Firestore session store                                     |
-| [`tower-sessions-libsql-store`](https://github.com/daybowbow-dev/tower-sessions-libsql-store)                    | Yes        | libSQL session store                                        |
-| [`tower-sessions-mongodb-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/mongodb-store) | Yes        | MongoDB session store                                       |
-| [`tower-sessions-moka-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/moka-store)       | No         | Moka session store                                          |
 | [`tower-sessions-redis-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/redis-store)     | Yes        | Redis via `fred` session store                              |
-| [`tower-sessions-rorm-store`](https://github.com/rorm-orm/tower-sessions-rorm-store)                             | Yes        | SQLite, Postgres and Mysql session store provided by `rorm` |
-| [`tower-sessions-rusqlite-store`](https://github.com/patte/tower-sessions-rusqlite-store)                        | Yes        | Rusqlite session store                                      |
-| [`tower-sessions-sled-store`](https://github.com/Zatzou/tower-sessions-sled-store)                               | Yes        | Sled session store                                          |
-| [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores                  |
-| [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                                     |
 
 Have a store to add? Please open a PR adding it.
 
-### User session management
-
-To facilitate authentication and authorization, we've built [`axum-login`](https://github.com/maxcountryman/axum-login) on top of this crate. Please check it out if you're looking for a generalized auth solution.
-
-## 📦 Install
+## Usage
 
 To use the crate in your project, add the following to your `Cargo.toml` file:
 
@@ -88,7 +54,7 @@ You can find this [example][counter-example] as well as other example projects i
 > [!NOTE]
 > See the [crate documentation][docs] for more usage information.
 
-## 🛟 Getting Help
+## Getting Help
 
 We've put together a number of [examples][examples] to help get you started. You're also welcome to [open a discussion](https://github.com/maxcountryman/tower-sessions/discussions/new?category=q-a) and ask additional questions you might have.
 
