@@ -13,6 +13,7 @@ use time::OffsetDateTime;
 use tower_layer::Layer;
 use tower_service::Service;
 use tower_sessions_core::{expires::Expiry, id::Id};
+use tracing::{instrument::Instrumented, Instrument};
 
 use crate::{
     session::{SessionUpdate, Updater},
@@ -152,7 +153,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = Instrumented<ResponseFuture<S::Future>>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -160,6 +161,9 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        let span = tracing::debug_span!("call");
+        let _enter = span.enter();
+
         let session_cookie = req
             .headers()
             .get_all(COOKIE)
@@ -189,12 +193,14 @@ where
         };
         req.extensions_mut().insert(session);
 
+        drop(_enter);
         ResponseFuture {
             inner: self.inner.call(req),
             updater,
             config: self.config,
             old_id: id,
         }
+        .instrument(span)
     }
 }
 
@@ -235,6 +241,7 @@ where
             });
         match update {
             Some(SessionUpdate::Delete) => {
+                tracing::debug!("deleting session");
                 let cookie = self_.config.build_cookie(
                     *self_.old_id,
                     Expiry::AtDateTime(
@@ -252,6 +259,7 @@ where
                 );
             }
             Some(SessionUpdate::Set(id, expiry)) => {
+                tracing::debug!("setting session {id}, expiring: {:?}", expiry);
                 let cookie = self_.config.build_cookie(Some(id), expiry);
                 resp.headers_mut().insert(
                     http::header::SET_COOKIE,
@@ -284,7 +292,7 @@ where
 #[derive(Debug, Clone)]
 pub struct SessionManagerLayer<Store> {
     /// The store to use for session data.
-    /// 
+    ///
     /// This should implement [`tower_sessions_core::SessionStore`], and be cloneable.
     pub store: Store,
     /// The configuration options for the session cookie.
@@ -350,7 +358,7 @@ mod tests {
     async fn basic_service_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
         let session_layer = SessionManagerLayer {
-            store: session_store, 
+            store: session_store,
             config: Default::default(),
         };
         let svc = ServiceBuilder::new()
@@ -381,7 +389,7 @@ mod tests {
     async fn bogus_cookie_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
         let session_layer = SessionManagerLayer {
-            store: session_store, 
+            store: session_store,
             config: Default::default(),
         };
         let svc = ServiceBuilder::new()
@@ -407,7 +415,7 @@ mod tests {
     async fn no_set_cookie_test() -> anyhow::Result<()> {
         let session_store: MemoryStore<Record> = MemoryStore::default();
         let session_layer = SessionManagerLayer {
-            store: session_store, 
+            store: session_store,
             config: Default::default(),
         };
         let svc = ServiceBuilder::new()
