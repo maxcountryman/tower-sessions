@@ -145,10 +145,7 @@ impl<Store, S> SessionManager<Store, S> {
 
 impl<ReqBody, ResBody, S, Store> Service<Request<ReqBody>> for SessionManager<Store, S>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
-    S::Future: Send,
-    ReqBody: Send + 'static,
-    ResBody: Default + Send,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     Store: Clone + Send + Sync + 'static,
 {
     type Response = S::Response;
