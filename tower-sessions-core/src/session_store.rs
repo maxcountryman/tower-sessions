@@ -7,67 +7,13 @@
 //!
 //! # Implementing a Custom Store
 //!
-//! Below is an example of implementing a custom session store using an
-//! in-memory [`HashMap`]. This example is for illustration purposes only; you
-//! can use the provided [`MemoryStore`] directly without implementing it
-//! yourself.
+//! Every method on the [`SessionStore`] trait describes precisely how it should be implemented.
+//! The words _must_ and _should_ are used to indicate the level of necessity for each method.
+//! Implementations _must_ adhere to the requirements of the method, while _should_ indicates a
+//! recommended approach. These recommendations can be taken more lightly if the implementation is
+//! for internal use only.
 //!
-//! ```rust
-//! use std::{collections::HashMap, sync::Arc};
-//!
-//! use async_trait::async_trait;
-//! use time::OffsetDateTime;
-//! use tokio::sync::Mutex;
-//! use tower_sessions_core::{
-//!     session::{Id, Record},
-//!     session_store, SessionStore,
-//! };
-//!
-//! #[derive(Clone, Debug, Default)]
-//! pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
-//!
-//! #[async_trait]
-//! impl SessionStore for MemoryStore {
-//!     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-//!         let mut store_guard = self.0.lock().await;
-//!         while store_guard.contains_key(&record.id) {
-//!             // Session ID collision mitigation.
-//!             record.id = Id::default();
-//!         }
-//!         store_guard.insert(record.id, record.clone());
-//!         Ok(())
-//!     }
-//!
-//!     async fn save(&self, record: &Record) -> session_store::Result<()> {
-//!         self.0.lock().await.insert(record.id, record.clone());
-//!         Ok(())
-//!     }
-//!
-//!     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
-//!         Ok(self
-//!             .0
-//!             .lock()
-//!             .await
-//!             .get(session_id)
-//!             .filter(|Record { expiry_date, .. }| is_active(*expiry_date))
-//!             .cloned())
-//!     }
-//!
-//!     async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
-//!         self.0.lock().await.remove(session_id);
-//!         Ok(())
-//!     }
-//! }
-//!
-//! fn is_active(expiry_date: OffsetDateTime) -> bool {
-//!     expiry_date > OffsetDateTime::now_utc()
-//! }
-//! ```
-//!
-//! # Session Store Trait
-//!
-//! The [`SessionStore`] trait defines the interface for session management.
-//! Implementations must handle session creation, saving, loading, and deletion.
+//! TODO: List good examples of implementations.
 //!
 //! # CachingSessionStore
 //!
@@ -75,430 +21,245 @@
 //! cache as the frontend and a store as the backend. This can improve read
 //! performance by reducing the need to access the backend store for frequently
 //! accessed sessions.
-//!
-//! # ExpiredDeletion
-//!
-//! The [`ExpiredDeletion`] trait provides a method for deleting expired
-//! sessions. Implementations can optionally provide a method for continuously
-//! deleting expired sessions at a specified interval.
-use std::fmt::Debug;
+use std::{fmt::Debug, future::Future};
 
-use async_trait::async_trait;
+use either::Either::{self, Left, Right};
+use futures_util::future::try_join;
+use futures_util::TryFutureExt;
 
-use crate::session::{Id, Record};
-
-/// Stores must map any errors that might occur during their use to this type.
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Encoding failed with: {0}")]
-    Encode(String),
-
-    #[error("Decoding failed with: {0}")]
-    Decode(String),
-
-    #[error("{0}")]
-    Backend(String),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
+use crate::id::Id;
 
 /// Defines the interface for session management.
 ///
-/// See [`session_store`](crate::session_store) for more details.
-#[async_trait]
-pub trait SessionStore: Debug + Send + Sync + 'static {
+/// The [`SessionStore::Error`] associated type should be used to represent hard errors that occur
+/// during backend operations. For example, an implementation _must not_ return an error if a saved
+/// record expired. See each method for more details.
+/// __Reasoning__: The [`SessionStore`] should not be responsible for handling logic errors.
+/// Methods on this trait are designed to return meaningful results for the caller to handle. The
+/// `Err(...)` case is reserved for hard errors that the caller most likely cannot handle, such as
+/// network errors, timeouts, invalid backend state/config, etc. These errors usually come from the
+/// backend store directly, such as [`sqlx::Error`], [`redis::RedisError`], etc.
+///
+/// Although recommended, it is not required for a `SessionStore` to handle session expiration. It
+/// is acceptable behavior for a session to return a record that is expired. The caller should be
+/// the one to decide what storage to use, and to use one that handles expiration if needed.
+///
+/// For a [`SessionStore`] to be used as a middleware in a [`SessionManagerLayer`], it must also
+/// implement the [`Clone`] trait. The store should also be relatively cheap to clone (a few
+/// [`Arc`]s are fine). This is because the store is cloned for every request, and the user should
+/// be able to clone it inside of a request handler without much overhead.
+///
+/// [`sqlx::Error`]: https://docs.rs/sqlx
+/// [`redis::RedisError`]: https://docs.rs/redis
+// TODO: Remove all `Send` bounds once we have `return_type_notation`:
+// https://github.com/rust-lang/rust/issues/109417.
+pub trait SessionStore<R: Send + Sync>: Send + Sync {
+    type Error: Send;
+
     /// Creates a new session in the store with the provided session record.
     ///
-    /// Implementers must decide how to handle potential ID collisions. For
-    /// example, they might generate a new unique ID or return `Error::Backend`.
+    /// # Implementations
     ///
-    /// The record is given as an exclusive reference to allow modifications,
-    /// such as assigning a new ID, during the creation process.
-    async fn create(&self, session_record: &mut Record) -> Result<()> {
-        default_create(self, session_record).await
-    }
+    /// In the successful path, Implementations _must_ return a unique ID for the provided record.
+    ///
+    /// If the a provided record is already expired, the implementation _must_ not return an error.
+    /// A correct implementation _should_ instead return a new ID for the record and not insert it
+    /// into the store, or it should let the backend store handle the expiration immediately and
+    /// return the new ID.
+    /// __Reasoning__: Creating a session that is already expired is a logical mistake, not a hard
+    /// error. The caller should be responsible for handling this case, when it comes time to
+    /// use the session.
+    fn create(&mut self, record: &R) -> impl Future<Output = Result<Id, Self::Error>> + Send;
 
     /// Saves the provided session record to the store.
     ///
     /// This method is intended for updating the state of an existing session.
-    async fn save(&self, session_record: &Record) -> Result<()>;
+    ///
+    /// # Implementations
+    ///
+    /// In the successful path, implementations _must_ return `bool` indicating whether the
+    /// session existed and thus was updated, or if it did not exist (or was expired) and was not
+    /// updated.
+    /// __Reasoning__: The caller should be aware of whether the session was successfully updated
+    /// or not. If not, then this case can be handled by the caller trivially, thus it is not a
+    /// hard error.
+    ///
+    /// If the implementation handles expiration, id _should_ update the expiration time on the
+    /// session record.
+    fn save(
+        &mut self,
+        id: &Id,
+        record: &R,
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+
+    /// Save the provided session record to the store, and create a new one if it does not exist.
+    ///
+    /// # Implementations
+    ///
+    /// In the successful path, implementations _must_ return `Ok(())` if the record was saved or
+    /// created with the given ID. This method is only exposed in the API for the sake of other
+    /// implementations relying on generic `SessionStore` implementations (see
+    /// [`CachingSessionStore`]). End users using `tower-sessions` are not exposed to this method.
+    ///
+    /// If the implementation handles expiration, id _should_ update the expiration time on the
+    /// session record.
+    ///
+    /// # Caution
+    ///
+    /// Since the caller can potentially create a new session with a chosen ID, this method should
+    /// only be used by implementations when it is known that a collision will not occur. The caller
+    /// should not be in charge of setting the `Id`, it is rather a job for the `SessionStore`
+    /// through the `create` method.
+    ///
+    /// This can also accidently increase the lifetime of a session. Suppose a session is loaded
+    /// successfully from the store, but then expires before changes are saved. Using this method
+    /// will reinstate the session with the same ID, prolonging its lifetime.
+    fn save_or_create(
+        &mut self,
+        id: &Id,
+        record: &R,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     /// Loads an existing session record from the store using the provided ID.
     ///
-    /// If a session with the given ID exists, it is returned. If the session
-    /// does not exist or has been invalidated (e.g., expired), `None` is
-    /// returned.
-    async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
+    /// # Implementations
+    ///
+    /// If a session with the given ID exists, it is returned as `Some(record)`. If the session
+    /// does not exist or has been invalidated (i.e., expired), `None` is returned.
+    /// __Reasoning__: Loading a session that does not exist is not a hard error, and the caller
+    /// should be responsible for handling this case.
+    fn load(&mut self, id: &Id) -> impl Future<Output = Result<Option<R>, Self::Error>> + Send;
 
     /// Deletes a session record from the store using the provided ID.
     ///
-    /// If the session exists, it is removed from the store.
-    async fn delete(&self, session_id: &Id) -> Result<()>;
-}
+    /// # Implementations
+    ///
+    /// If the session exists (and is not expired), an implmementation _must_ remove the session
+    /// from the store and return `Some` with the associated record. Otherwise, it must return
+    /// `Ok(None)`.
+    /// __Reasoning__: Deleting a session that does not exist is not a hard error, and the caller
+    /// should be responsible for handling this case.
+    fn delete(&mut self, id: &Id) -> impl Future<Output = Result<bool, Self::Error>> + Send;
 
-async fn default_create<S: SessionStore + ?Sized>(
-    store: &S,
-    session_record: &mut Record,
-) -> Result<()> {
-    tracing::warn!(
-        "The default implementation of `SessionStore::create` is being used, which relies on \
-         `SessionStore::save`. To properly handle potential ID collisions, it is recommended that \
-         stores implement their own version of `SessionStore::create`."
-    );
-    store.save(session_record).await?;
-    Ok(())
+    /// Update the ID of a session record.
+    ///
+    /// # Implementations
+    ///
+    /// This method _must_ return `Ok(None)` if the session does not exist (or is expired).
+    /// It _must_ return `Ok(Some(id))` with the newly assigned id if it does exist.
+    /// __Reasoning__: Updating the ID of a session that does not exist is not a hard error, and
+    /// the caller should be responsible for handling this case.
+    ///
+    /// ### Note
+    ///
+    /// The default implementation uses one `load`, one `create`, and one `delete` operation to
+    /// update the `Id`. it is __highly recommended__ to implmement it more efficiently whenever possible.
+    fn cycle_id(
+        &mut self,
+        old_id: &Id,
+    ) -> impl Future<Output = Result<Option<Id>, Self::Error>> + Send {
+        async move {
+            let record = self.load(old_id).await?;
+            if let Some(record) = record {
+                let new_id = self.create(&record).await?;
+                self.delete(old_id).await?;
+                Ok(Some(new_id))
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 /// Provides a layered caching mechanism with a cache as the frontend and a
-/// store as the backend..
-///
-/// Contains both a cache, which acts as a frontend, and a store which acts as a
-/// backend. Both cache and store implement `SessionStore`.
+/// store as the backend.
 ///
 /// By using a cache, the cost of reads can be greatly reduced as once cached,
 /// reads need only interact with the frontend, forgoing the cost of retrieving
 /// the session record from the backend.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// # tokio_test::block_on(async {
-/// use tower_sessions::CachingSessionStore;
-/// use tower_sessions_moka_store::MokaStore;
-/// use tower_sessions_sqlx_store::{SqlitePool, SqliteStore};
-/// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-/// let sqlite_store = SqliteStore::new(pool);
-/// let moka_store = MokaStore::new(Some(2_000));
-/// let caching_store = CachingSessionStore::new(moka_store, sqlite_store);
-/// # })
-/// ```
-#[derive(Debug, Clone)]
-pub struct CachingSessionStore<Cache: SessionStore, Store: SessionStore> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CachingSessionStore<Cache, Store> {
     cache: Cache,
     store: Store,
 }
 
-impl<Cache: SessionStore, Store: SessionStore> CachingSessionStore<Cache, Store> {
+impl<Cache, Store> CachingSessionStore<Cache, Store> {
     /// Create a new `CachingSessionStore`.
     pub fn new(cache: Cache, store: Store) -> Self {
         Self { cache, store }
     }
 }
 
-#[async_trait]
-impl<Cache, Store> SessionStore for CachingSessionStore<Cache, Store>
+impl<Cache, Store, R> SessionStore<R> for CachingSessionStore<Cache, Store>
 where
-    Cache: SessionStore,
-    Store: SessionStore,
+    R: Send + Sync,
+    Cache: SessionStore<R>,
+    Store: SessionStore<R>,
 {
-    async fn create(&self, record: &mut Record) -> Result<()> {
-        self.store.create(record).await?;
-        self.cache.create(record).await?;
+    type Error = Either<Cache::Error, Store::Error>;
+
+    async fn create(&mut self, record: &R) -> Result<Id, Self::Error> {
+        let id = self.store.create(record).await.map_err(Right)?;
+        self.cache.save_or_create(&id, record).await.map_err(Left)?;
+        Ok(id)
+    }
+
+    async fn save(&mut self, id: &Id, record: &R) -> Result<bool, Self::Error> {
+        let store_save_fut = self.store.save(id, record).map_err(Right);
+        let cache_save_fut = self.cache.save(id, record).map_err(Left);
+
+        let (exists_cache, exists_store) = try_join(cache_save_fut, store_save_fut).await?;
+
+        if !exists_store && exists_cache {
+            self.cache.delete(id).await.map_err(Left)?;
+        }
+
+        Ok(exists_store)
+    }
+
+    async fn save_or_create(&mut self, id: &Id, record: &R) -> Result<(), Self::Error> {
+        let store_save_fut = self.store.save_or_create(id, record).map_err(Right);
+        let cache_save_fut = self.cache.save_or_create(id, record).map_err(Left);
+
+        try_join(cache_save_fut, store_save_fut).await?;
+
         Ok(())
     }
 
-    async fn save(&self, record: &Record) -> Result<()> {
-        let store_save_fut = self.store.save(record);
-        let cache_save_fut = self.cache.save(record);
-
-        futures::try_join!(store_save_fut, cache_save_fut)?;
-
-        Ok(())
-    }
-
-    async fn load(&self, session_id: &Id) -> Result<Option<Record>> {
-        match self.cache.load(session_id).await {
-            // We found a session in the cache, so let's use it.
+    async fn load(&mut self, id: &Id) -> Result<Option<R>, Self::Error> {
+        match self.cache.load(id).await {
             Ok(Some(session_record)) => Ok(Some(session_record)),
-
-            // We didn't find a session in the cache, so we'll try loading from the backend.
-            //
-            // When we find a session in the backend, we'll hydrate our cache with it.
             Ok(None) => {
-                let session_record = self.store.load(session_id).await?;
+                let session_record = self.store.load(id).await.map_err(Right)?;
 
                 if let Some(ref session_record) = session_record {
-                    self.cache.save(session_record).await?;
+                    self.cache
+                        .save(id, session_record)
+                        .await
+                        .map_err(Either::Left)?;
                 }
 
                 Ok(session_record)
             }
-
-            // Some error occurred with our cache so we'll bubble this up.
-            Err(err) => Err(err),
+            Err(err) => Err(Left(err)),
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<()> {
-        let store_delete_fut = self.store.delete(session_id);
-        let cache_delete_fut = self.cache.delete(session_id);
+    async fn delete(&mut self, id: &Id) -> Result<bool, Self::Error> {
+        let store_delete_fut = self.store.delete(id).map_err(Right);
+        let cache_delete_fut = self.cache.delete(id).map_err(Left);
 
-        futures::try_join!(store_delete_fut, cache_delete_fut)?;
+        let (_, in_store) = try_join(cache_delete_fut, store_delete_fut).await?;
 
-        Ok(())
-    }
-}
-
-/// Provides a method for deleting expired sessions.
-#[async_trait]
-pub trait ExpiredDeletion: SessionStore
-where
-    Self: Sized,
-{
-    /// A method for deleting expired sessions from the store.
-    async fn delete_expired(&self) -> Result<()>;
-
-    /// This function will keep running indefinitely, deleting expired rows and
-    /// then waiting for the specified period before deleting again.
-    ///
-    /// Generally this will be used as a task, for example via
-    /// `tokio::task::spawn`.
-    ///
-    /// # Errors
-    ///
-    /// This function returns a `Result` that contains an error of type
-    /// `sqlx::Error` if the deletion operation fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run,ignore
-    /// use tower_sessions::session_store::ExpiredDeletion;
-    /// use tower_sessions_sqlx_store::{sqlx::SqlitePool, SqliteStore};
-    ///
-    /// # {
-    /// # tokio_test::block_on(async {
-    /// let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    /// let session_store = SqliteStore::new(pool);
-    ///
-    /// tokio::task::spawn(
-    ///     session_store
-    ///         .clone()
-    ///         .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
-    /// );
-    /// # })
-    /// ```
-    #[cfg(feature = "deletion-task")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "deletion-task")))]
-    async fn continuously_delete_expired(self, period: tokio::time::Duration) -> Result<()> {
-        let mut interval = tokio::time::interval(period);
-        interval.tick().await; // The first tick completes immediately; skip.
-        loop {
-            interval.tick().await;
-            self.delete_expired().await?;
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use mockall::{
-        mock,
-        predicate::{self, *},
-    };
-    use time::{Duration, OffsetDateTime};
-
-    use super::*;
-
-    mock! {
-        #[derive(Debug)]
-        pub Cache {}
-
-        #[async_trait]
-        impl SessionStore for Cache {
-            async fn create(&self, record: &mut Record) -> Result<()>;
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
-        }
+        Ok(in_store)
     }
 
-    mock! {
-        #[derive(Debug)]
-        pub Store {}
+    async fn cycle_id(&mut self, old_id: &Id) -> Result<Option<Id>, Self::Error> {
+        let delete_cache = self.cache.delete(old_id).map_err(Left);
+        let new_id = self.store.cycle_id(old_id).map_err(Right);
 
-        #[async_trait]
-        impl SessionStore for Store {
-            async fn create(&self, record: &mut Record) -> Result<()>;
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
-        }
-    }
-
-    mock! {
-        #[derive(Debug)]
-        pub CollidingStore {}
-
-        #[async_trait]
-        impl SessionStore for CollidingStore {
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create() {
-        let mut store = MockCollidingStore::new();
-        let mut record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-
-        store
-            .expect_save()
-            .with(predicate::eq(record.clone()))
-            .times(1)
-            .returning(|_| Ok(()));
-        let result = store.create(&mut record).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_save() {
-        let mut store = MockStore::new();
-        let record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        store
-            .expect_save()
-            .with(predicate::eq(record.clone()))
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let result = store.save(&record).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_load() {
-        let mut store = MockStore::new();
-        let session_id = Id::default();
-        let record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        let expected_record = record.clone();
-
-        store
-            .expect_load()
-            .with(predicate::eq(session_id))
-            .times(1)
-            .returning(move |_| Ok(Some(record.clone())));
-
-        let result = store.load(&session_id).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(expected_record));
-    }
-
-    #[tokio::test]
-    async fn test_delete() {
-        let mut store = MockStore::new();
-        let session_id = Id::default();
-
-        store
-            .expect_delete()
-            .with(predicate::eq(session_id))
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let result = store.delete(&session_id).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_caching_store_create() {
-        let mut cache = MockCache::new();
-        let mut store = MockStore::new();
-        let mut record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-
-        cache.expect_create().times(1).returning(|_| Ok(()));
-        store.expect_create().times(1).returning(|_| Ok(()));
-
-        let caching_store = CachingSessionStore::new(cache, store);
-        let result = caching_store.create(&mut record).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_caching_store_save() {
-        let mut cache = MockCache::new();
-        let mut store = MockStore::new();
-        let record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-
-        cache
-            .expect_save()
-            .with(predicate::eq(record.clone()))
-            .times(1)
-            .returning(|_| Ok(()));
-        store
-            .expect_save()
-            .with(predicate::eq(record.clone()))
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let caching_store = CachingSessionStore::new(cache, store);
-        let result = caching_store.save(&record).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_caching_store_load() {
-        let mut cache = MockCache::new();
-        let mut store = MockStore::new();
-        let session_id = Id::default();
-        let record = Record {
-            id: Default::default(),
-            data: Default::default(),
-            expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
-        };
-        let expected_record = record.clone();
-
-        cache
-            .expect_load()
-            .with(predicate::eq(session_id))
-            .times(1)
-            .returning(move |_| Ok(Some(record.clone())));
-        // Store load should not be called since cache returns a record
-        store.expect_load().times(0);
-
-        let caching_store = CachingSessionStore::new(cache, store);
-        let result = caching_store.load(&session_id).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(expected_record));
-    }
-
-    #[tokio::test]
-    async fn test_caching_store_delete() {
-        let mut cache = MockCache::new();
-        let mut store = MockStore::new();
-        let session_id = Id::default();
-
-        cache
-            .expect_delete()
-            .with(predicate::eq(session_id))
-            .times(1)
-            .returning(|_| Ok(()));
-        store
-            .expect_delete()
-            .with(predicate::eq(session_id))
-            .times(1)
-            .returning(|_| Ok(()));
-
-        let caching_store = CachingSessionStore::new(cache, store);
-        let result = caching_store.delete(&session_id).await;
-        assert!(result.is_ok());
+        try_join(delete_cache, new_id)
+            .await
+            .map(|(_, new_id)| new_id)
     }
 }
