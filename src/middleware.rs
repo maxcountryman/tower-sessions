@@ -158,7 +158,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let span = tracing::debug_span!("call");
+        let span = tracing::debug_span!("session_manager");
         let _enter = span.enter();
 
         let session_cookie = req
@@ -182,12 +182,14 @@ where
                 })
                 .ok()
         });
+
         let updater = Arc::new(Mutex::new(None));
         let session = Session {
             id,
             store: self.store.clone(),
             updater: Arc::clone(&updater),
         };
+        tracing::debug!("adding session to request extensions");
         req.extensions_mut().insert(session);
 
         drop(_enter);
