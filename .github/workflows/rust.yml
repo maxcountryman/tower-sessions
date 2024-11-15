@@ -53,7 +53,7 @@ jobs:
           cargo test --workspace --all-features --doc
           cargo tarpaulin --workspace --all-features --doc -olcov
       - name: Upload coverage data to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
         env:
@@ -73,7 +73,7 @@ jobs:
           cargo test --workspace --all-features --lib
           cargo tarpaulin --workspace --all-features --lib -olcov
       - name: Upload coverage data to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
         env:
@@ -95,7 +95,7 @@ jobs:
           cargo nextest run --test integration-tests
           cargo tarpaulin --test integration-tests -olcov
       - name: Upload coverage data to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
         env:
