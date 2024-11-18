@@ -1,5 +1,5 @@
 [package]
-name = "tower-sesh"
+name = "tower-sesh-core"
 description = "Core types and traits for tower-sesh."
 documentation.workspace = true
 version.workspace = true
@@ -18,7 +18,7 @@ serde = { version = "1.0.210", features = ["derive"] }
 either = "1.13"
 
 [dev-dependencies]
-tower-sessions = { workspace = true, features = [] }
+tower-sesh = { workspace = true, features = [] }
 tokio-test = "0.4.3"
 tokio = { workspace = true, features = ["rt", "macros"] }
 mockall = "0.13.0"
