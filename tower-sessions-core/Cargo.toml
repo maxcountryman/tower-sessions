@@ -1,6 +1,6 @@
 [package]
-name = "tower-sessions-core"
-description = "Core types and traits for tower-sessions."
+name = "tower-sesh"
+description = "Core types and traits for tower-sesh."
 documentation.workspace = true
 version.workspace = true
 license.workspace = true
