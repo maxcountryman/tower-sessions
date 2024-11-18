@@ -250,6 +250,7 @@ where
 
                     _ if (modified || session_config.always_save)
                         && !empty
+                        && !res.status().is_client_error()
                         && !res.status().is_server_error() =>
                     {
                         tracing::debug!("saving session");
