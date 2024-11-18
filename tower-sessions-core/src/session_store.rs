@@ -99,7 +99,7 @@ pub trait SessionStore<R: Send + Sync>: Send + Sync {
     /// In the successful path, implementations _must_ return `Ok(())` if the record was saved or
     /// created with the given ID. This method is only exposed in the API for the sake of other
     /// implementations relying on generic `SessionStore` implementations (see
-    /// [`CachingSessionStore`]). End users using `tower-sessions` are not exposed to this method.
+    /// [`CachingSessionStore`]). End users using `tower-sesh` are not exposed to this method.
     ///
     /// If the implementation handles expiration, id _should_ update the expiration time on the
     /// session record.

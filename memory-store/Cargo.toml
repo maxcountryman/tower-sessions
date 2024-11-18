@@ -1,6 +1,6 @@
 [package]
-name = "tower-sessions-memory-store"
-description = "Memory session store. Not for direct use; see the `tower-sessions` crate for details."
+name = "tower-sesh-memory-store"
+description = "Memory session store. Not for direct use; see the `tower-sesh` crate for details."
 documentation.workspace = true
 version.workspace = true
 license.workspace = true
@@ -9,11 +9,11 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-tower-sessions-core = { workspace = true }
+tower-sesh-core = { workspace = true }
 tokio = { workspace = true }
 time = { workspace = true }
 rand = "0.8.5"
 
 [dev-dependencies]
-tower-sessions = { workspace = true }
+tower-sesh = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

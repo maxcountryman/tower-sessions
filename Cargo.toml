@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "tower-sessions-core", "memory-store"]
+members = [".", "tower-sesh-core", "memory-store"]
 resolver = "2"
 
 [workspace.package]
@@ -7,15 +7,15 @@ version = "0.13.0"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
-homepage = "https://github.com/maxcountryman/tower-sessions"
+homepage = "https://github.com/maxcountryman/tower-sesh"
 keywords = ["axum", "session", "sessions", "cookie", "tower"]
 categories = ["asynchronous", "network-programming", "web-programming"]
-repository = "https://github.com/maxcountryman/tower-sessions"
-documentation = "https://docs.rs/tower-sessions"
+repository = "https://github.com/maxcountryman/tower-sesh"
+documentation = "https://docs.rs/tower-sesh"
 readme = "README.md"
 
 [package]
-name = "tower-sessions"
+name = "tower-sesh"
 description = "🥠 Sessions as a `tower` and `axum` middleware."
 version.workspace = true
 edition.workspace = true
@@ -34,15 +34,15 @@ rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
 cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.13.0", path = ".", features = ["memory-store", "extractor"] }
-tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core" }
-tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
+tower-sesh = { version = "=0.13.0", path = ".", features = ["memory-store", "extractor"] }
+tower-sesh-core = { version = "=0.13.0", path = "tower-sesh-core" }
+tower-sesh-memory-store = { version = "=0.13.0", path = "memory-store" }
 
 time = "0.3.30"
 tokio = { version = "1.32.0", default-features = false }
 
 [features]
-memory-store = ["tower-sessions-memory-store"]
+memory-store = ["tower-sesh-memory-store"]
 extractor = ["dep:axum-core", "dep:async-trait"]
 
 [dependencies]
@@ -54,8 +54,8 @@ pin-project-lite = "0.2.14"
 time = { workspace = true, features = ["serde"] }
 tower-layer = "0.3.2"
 tower-service = "0.3.2"
-tower-sessions-core = { workspace = true }
-tower-sessions-memory-store = { workspace = true, optional = true }
+tower-sesh-core = { workspace = true }
+tower-sesh-memory-store = { workspace = true, optional = true }
 tracing = { version = "0.1.40", features = ["log"] }
 
 [dev-dependencies]
@@ -68,9 +68,9 @@ hyper = "1.0"
 time = { workspace = true }
 tokio = { version = "1.32.0", features = ["full"] }
 tower = { version = "0.5.0", features = ["util"] }
-tower-sessions-core = { workspace = true }
-tower-sessions-memory-store = { workspace = true }
-tower-sessions = { workspace = true }
+tower-sesh-core = { workspace = true }
+tower-sesh-memory-store = { workspace = true }
+tower-sesh = { workspace = true }
 
 [[example]]
 name = "counter"
