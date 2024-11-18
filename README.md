@@ -1,9 +1,9 @@
 # tower-sesh
-An opinionated session middleware for `tower` services.
+An opinionated cookie session middleware for `tower` services.
 
 ## Comparison with `tower-sessions`
 `tower-sessions` tries to follow the design of `django`'s session middleware. As a consequence,
-every request does the following:
+_every request going through the middleware_ does the following:
 - allocate multiple `HashMap`s,
 - Use dynamic dispatch for futures (using `Pin<Box<dyn Future>>`)
 - make extensive use of the `Arc<Mutex<_>>` magic sauce.

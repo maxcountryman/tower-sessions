@@ -3,7 +3,7 @@ use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 use std::fmt::Debug;
 use time::OffsetDateTime;
-use tower_sessions_core::{expires::Expires, Expiry, Id, SessionStore};
+use tower_sesh_core::{expires::Expires, Expiry, Id, SessionStore};
 
 /// A session store that lives only in memory.
 ///
@@ -15,7 +15,7 @@ use tower_sessions_core::{expires::Expires, Expiry, Id, SessionStore};
 /// # Examples
 ///
 /// ```rust
-/// use tower_sessions_memory_store::MemoryStore;
+/// use tower_sesh_memory_store::MemoryStore;
 ///
 /// struct User {
 ///    name: String,
@@ -143,7 +143,7 @@ fn random_id() -> Id {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tower_sessions_core::SessionStore;
+    use tower_sesh_core::SessionStore;
 
     
     #[derive(Debug, Clone)]

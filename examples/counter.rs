@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use axum::{response::IntoResponse, routing::get, Router};
 use time::Duration;
-use tower_sessions::{Expires, Expiry, MemoryStore, Session, SessionManagerLayer};
+use tower_sesh::{Expires, Expiry, MemoryStore, Session, SessionManagerLayer};
 
 #[derive(Clone, Copy, Debug)]
 struct Counter(usize);

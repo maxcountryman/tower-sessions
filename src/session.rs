@@ -9,7 +9,7 @@ use std::{
 };
 // TODO: Remove send + sync bounds on `R` once return type notation is stable.
 
-use tower_sessions_core::{expires::Expires, id::Id, Expiry, SessionStore};
+use tower_sesh_core::{expires::Expires, id::Id, Expiry, SessionStore};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SessionUpdate {
@@ -34,7 +34,7 @@ pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 /// - If you are using `axum`, and you have enabled the `extractor` feature, you can use this
 ///     struct as an extractor:
 /// ```rust
-/// use tower_sessions::{Session, MemoryStore};
+/// use tower_sesh::{Session, MemoryStore};
 ///
 /// async fn handler(session: Session<MemoryStore<()>>) -> String {
 ///     unimplemented!()
@@ -44,7 +44,7 @@ pub(crate) type Updater = Arc<Mutex<Option<SessionUpdate>>>;
 ///
 /// - Otherwise, you can extract it from a request's extensions:
 /// ```
-/// use tower_sessions::{Session, MemoryStore};
+/// use tower_sesh::{Session, MemoryStore};
 /// use axum_core::{extract::Request, body::Body};
 ///
 /// async fn handler(mut req: Request<Body>) -> String {
@@ -81,7 +81,7 @@ impl<Store> Session<Store> {
     ///
     /// # Example
     /// ```rust
-    /// use tower_sessions::{Session, MemoryStore, Expires};
+    /// use tower_sesh::{Session, MemoryStore, Expires};
     ///
     /// #[derive(Clone)]
     /// struct User {
@@ -138,7 +138,7 @@ impl<Store> Session<Store> {
     ///
     /// # Example
     /// ```rust
-    /// use tower_sessions::{Session, MemoryStore, Expires};
+    /// use tower_sesh::{Session, MemoryStore, Expires};
     ///
     /// #[derive(Clone)]
     /// struct User {
@@ -295,7 +295,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use tower_sessions::{SessionState, Expires, MemoryStore};
+    /// use tower_sesh::{SessionState, Expires, MemoryStore};
     ///
     /// #[derive(Clone)]
     /// struct User {
@@ -364,7 +364,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use tower_sessions::{SessionState, MemoryStore, Expires};
+    /// use tower_sesh::{SessionState, MemoryStore, Expires};
     ///
     /// #[derive(Clone)]
     /// struct User;
@@ -403,7 +403,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use tower_sessions::{SessionState, MemoryStore, Expires};
+    /// use tower_sesh::{SessionState, MemoryStore, Expires};
     /// 
     /// #[derive(Clone)]
     /// struct User;

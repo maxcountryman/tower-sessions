@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 /// - A record that should not expire:
 /// ```
-/// use tower_sessions_core::{Expires, Expiry};
+/// use tower_sesh_core::{Expires, Expiry};
 ///
 /// struct NeverExpires;
 ///
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// - A record that should expire after 5 minutes of inactivity:
 /// ```
 /// use time::{Duration, OffsetDateTime};
-/// use tower_sessions_core::{Expires, Expiry};
+/// use tower_sesh_core::{Expires, Expiry};
 ///
 /// struct ExpiresAfter5Minutes;
 ///
@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 /// - A record that keeps track of its own expiration:
 /// ```
 /// use time::{Duration, OffsetDateTime};
-/// use tower_sessions_core::{Expires, Expiry};
+/// use tower_sesh_core::{Expires, Expiry};
 ///
 /// struct CustomExpiry {
 ///     expiry: Expiry,
@@ -66,7 +66,7 @@ pub trait Expires {
 ///
 /// ```rust
 /// use time::{Duration, OffsetDateTime};
-/// use tower_sessions_core::Expiry;
+/// use tower_sesh_core::Expiry;
 ///
 /// // Will be expired on "session end".
 /// let expiry = Expiry::OnSessionEnd;

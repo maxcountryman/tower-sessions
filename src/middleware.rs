@@ -12,7 +12,7 @@ use pin_project_lite::pin_project;
 use time::OffsetDateTime;
 use tower_layer::Layer;
 use tower_service::Service;
-use tower_sessions_core::{expires::Expiry, id::Id};
+use tower_sesh_core::{expires::Expiry, id::Id};
 use tracing::{instrument::Instrumented, Instrument};
 
 use crate::{
@@ -24,8 +24,8 @@ use crate::{
 ///
 /// ## Default
 /// ```
-/// # use tower_sessions::middleware::Config;
-/// # use tower_sessions::Expiry;
+/// # use tower_sesh::middleware::Config;
+/// # use tower_sesh::Expiry;
 /// # use cookie::SameSite;
 /// let default = Config {
 ///    name: "id",
@@ -128,7 +128,7 @@ impl<Store, S> SessionManager<Store, S> {
     ///
     /// # Examples
     /// ```
-    /// use tower_sessions::{MemoryStore, SessionManager};
+    /// use tower_sesh::{MemoryStore, SessionManager};
     ///
     /// struct MyService;
     ///
@@ -280,7 +280,7 @@ where
 /// # Examples
 ///
 /// ```rust
-/// use tower_sessions::{MemoryStore, SessionManagerLayer};
+/// use tower_sesh::{MemoryStore, SessionManagerLayer};
 ///
 /// let session_store: MemoryStore<()> = MemoryStore::default();
 /// let session_service = SessionManagerLayer {
@@ -292,7 +292,7 @@ where
 pub struct SessionManagerLayer<Store> {
     /// The store to use for session data.
     ///
-    /// This should implement [`tower_sessions_core::SessionStore`], and be cloneable.
+    /// This should implement [`tower_sesh_core::SessionStore`], and be cloneable.
     pub store: Store,
     /// The configuration options for the session cookie.
     pub config: Config<'static>,
@@ -318,8 +318,8 @@ mod tests {
     use anyhow::anyhow;
     use axum::body::Body;
     use tower::{ServiceBuilder, ServiceExt};
-    use tower_sessions_core::Expires;
-    use tower_sessions_memory_store::MemoryStore;
+    use tower_sesh_core::Expires;
+    use tower_sesh_memory_store::MemoryStore;
 
     use super::*;
 

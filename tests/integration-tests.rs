@@ -4,7 +4,7 @@
 // #[cfg(all(test, feature = "extractor", feature = "memory-store"))]
 // mod memory_store_tests {
 //     use axum::Router;
-//     use tower_sessions::{MemoryStore, SessionManagerLayer};
+//     use tower_sesh_core::{MemoryStore, SessionManagerLayer};
 // 
 //     use crate::common::build_app;
 // 

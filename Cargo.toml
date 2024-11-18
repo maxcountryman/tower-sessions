@@ -16,7 +16,7 @@ readme = "README.md"
 
 [package]
 name = "tower-sesh"
-description = "🥠 Sessions as a `tower` and `axum` middleware."
+description = "Cookie sessions as a `tower` and `axum` middleware."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
