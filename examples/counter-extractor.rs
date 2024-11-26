@@ -1,6 +1,5 @@
+use std::future::Future;
 use std::net::SocketAddr;
-
-use async_trait::async_trait;
 use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
 use http::request::Parts;
 use serde::{Deserialize, Serialize};
@@ -12,20 +11,22 @@ const COUNTER_KEY: &str = "counter";
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Counter
 where
     S: Send + Sync,
 {
     type Rejection = (http::StatusCode, &'static str);
 
-    async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let session = Session::from_request_parts(req, state).await?;
-        let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-        session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
-        Ok(counter)
+    fn from_request_parts(parts: &mut Parts, state: &S) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        Box::pin(async move {
+            let session = Session::from_request_parts(parts, state).await?;
+            let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
+            session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+            Ok(counter)
+        })
     }
 }
+
 
 #[tokio::main]
 async fn main() {

@@ -1,9 +1,8 @@
-use std::{fmt, net::SocketAddr};
-
-use async_trait::async_trait;
 use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::{fmt, net::SocketAddr};
 use time::OffsetDateTime;
 use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
@@ -67,29 +66,33 @@ impl fmt::Display for Guest {
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Guest
 where
     S: Send + Sync,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let session = Session::from_request_parts(req, state).await?;
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        Box::pin(async move {
+            let session = Session::from_request_parts(parts, state).await?;
 
-        let mut guest_data: GuestData = session
-            .get(Self::GUEST_DATA_KEY)
-            .await
-            .unwrap()
-            .unwrap_or_default();
+            let mut guest_data: GuestData = session
+                .get(Self::GUEST_DATA_KEY)
+                .await
+                .unwrap()
+                .unwrap_or_default();
 
-        guest_data.last_seen = OffsetDateTime::now_utc();
+            guest_data.last_seen = OffsetDateTime::now_utc();
 
-        Self::update_session(&session, &guest_data).await;
+            Self::update_session(&session, &guest_data).await;
 
-        Ok(Self {
-            session,
-            guest_data,
+            Ok(Self {
+                session,
+                guest_data,
+            })
         })
     }
 }
