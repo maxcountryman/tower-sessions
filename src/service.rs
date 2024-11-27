@@ -547,9 +547,8 @@ mod tests {
     use tower::{ServiceBuilder, ServiceExt};
     use tower_sessions_memory_store::MemoryStore;
 
-    use crate::session::{Id, Record};
-
     use super::*;
+    use crate::session::{Id, Record};
 
     async fn handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
         let session = req
