@@ -136,7 +136,6 @@
 //! #[derive(Default, Deserialize, Serialize)]
 //! struct Counter(usize);
 //!
-//! #[async_trait]
 //! impl<S> FromRequestParts<S> for Counter
 //! where
 //!     S: Send + Sync,
@@ -221,7 +220,6 @@
 //!     }
 //! }
 //!
-//! #[async_trait]
 //! impl<S> FromRequestParts<S> for Guest
 //! where
 //!     S: Send + Sync,

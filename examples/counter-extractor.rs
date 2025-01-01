@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use async_trait::async_trait;
 use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
 use http::request::Parts;
 use serde::{Deserialize, Serialize};
@@ -12,7 +11,6 @@ const COUNTER_KEY: &str = "counter";
 #[derive(Default, Deserialize, Serialize)]
 struct Counter(usize);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Counter
 where
     S: Send + Sync,
