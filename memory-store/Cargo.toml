@@ -15,4 +15,4 @@ time = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-tower-sessions = { workspace = true }
+tower-sessions = { path = "../" }

@@ -1,5 +1,11 @@
 # Unreleased
 
+# 0.14.0
+
+- Update axum-core to v0.5.0. #231
+
+This also includes an version bump to tower-cookies, now at v0.11.0.
+
 # 0.13.0
 
 - Add option to always save session. #216

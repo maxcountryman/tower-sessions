@@ -3,7 +3,7 @@ members = [".", "memory-store", "tower-sessions-core"]
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 authors = ["Max Countryman <hello@maxcountryman.com>"]
 license = "MIT"
@@ -40,10 +40,10 @@ signed = ["tower-cookies/signed"]
 private = ["tower-cookies/private"]
 
 [workspace.dependencies]
-tower-sessions = { version = "=0.13.0", path = ".", default-features = false }
+tower-sessions = { version = "=0.14.0", path = ".", default-features = false }
 
-tower-sessions-core = { version = "=0.13.0", path = "tower-sessions-core", default-features = false }
-tower-sessions-memory-store = { version = "=0.13.0", path = "memory-store" }
+tower-sessions-core = { version = "=0.14.0", path = "tower-sessions-core", default-features = false }
+tower-sessions-memory-store = { version = "=0.14.0", path = "memory-store" }
 
 async-trait = "0.1.74"
 parking_lot = { version = "0.12.1", features = ["serde"] }
@@ -71,13 +71,13 @@ anyhow = "1"
 axum = "0.8.1"
 axum-core = "0.5.0"
 futures = { version = "0.3.28", default-features = false, features = [
-    "async-await",
+  "async-await",
 ] }
 http = "1.0"
 http-body-util = "0.1"
 hyper = "1.0"
 reqwest = { version = "0.12.3", default-features = false, features = [
-    "rustls-tls",
+  "rustls-tls",
 ] }
 serde = "1.0.192"
 time = "0.3.30"

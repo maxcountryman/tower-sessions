@@ -53,7 +53,7 @@ Session data persistence is managed by user-provided types that implement
 `SessionStore`. What this means is that applications can and should
 implement session stores to fit their specific needs.
 
-That said, a number of session store implmentations already exist and may be
+That said, a number of session store implementations already exist and may be
 useful starting points.
 
 | Crate                                                                                                            | Persistent | Description                                                 |
@@ -83,7 +83,7 @@ To use the crate in your project, add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tower-sessions = "0.13.0"
+tower-sessions = "0.14.0"
 ```
 
 ## 🤸 Usage
