@@ -1,6 +1,5 @@
 use std::{fmt, net::SocketAddr};
 
-use async_trait::async_trait;
 use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Router};
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -67,7 +66,6 @@ impl fmt::Display for Guest {
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Guest
 where
     S: Send + Sync,

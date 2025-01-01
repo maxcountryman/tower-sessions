@@ -1,10 +1,8 @@
-use async_trait::async_trait;
 use axum_core::extract::FromRequestParts;
 use http::{request::Parts, StatusCode};
 
 use crate::session::Session;
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Session
 where
     S: Sync + Send,
