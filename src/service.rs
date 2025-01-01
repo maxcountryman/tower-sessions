@@ -126,7 +126,7 @@ impl<'a> SessionConfig<'a> {
     }
 }
 
-impl<'a> Default for SessionConfig<'a> {
+impl Default for SessionConfig<'_> {
     fn default() -> Self {
         Self {
             name: "id".into(), /* See: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-id-name-fingerprinting */
@@ -791,7 +791,7 @@ mod tests {
         let sid1 = get_session_id(&res1);
         let rec1 = get_record(&session_store, &sid1).await;
         let req2 = Request::builder()
-            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .header(http::header::COOKIE, format!("id={}", sid1))
             .body(Body::empty())?;
         let res2 = svc.call(req2).await?;
         let sid2 = get_session_id(&res2);
@@ -820,7 +820,7 @@ mod tests {
         let sid1 = get_session_id(&res1);
         let rec1 = get_record(&session_store, &sid1).await;
         let req2 = Request::builder()
-            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .header(http::header::COOKIE, format!("id={}", sid1))
             .body(Body::empty())?;
         let res2 = svc.call(req2).await?;
         let sid2 = get_session_id(&res2);
@@ -850,7 +850,7 @@ mod tests {
         let sid1 = get_session_id(&res1);
         let rec1 = get_record(&session_store, &sid1).await;
         let req2 = Request::builder()
-            .header(http::header::COOKIE, &format!("id={}", sid1))
+            .header(http::header::COOKIE, format!("id={}", sid1))
             .body(Body::empty())?;
         let res2 = svc.call(req2).await?;
         let sid2 = get_session_id(&res2);
