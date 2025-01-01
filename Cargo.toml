@@ -69,7 +69,7 @@ time = { version = "0.3.29", features = ["serde"] }
 async-trait = "0.1.74"
 anyhow = "1"
 axum = "0.7.1"
-axum-core = "0.4.0"
+axum-core = "0.5.0"
 futures = { version = "0.3.28", default-features = false, features = [
     "async-await",
 ] }
