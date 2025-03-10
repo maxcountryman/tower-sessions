@@ -880,7 +880,7 @@ impl Default for Id {
     fn default() -> Self {
         use rand::prelude::*;
 
-        Self(rand::thread_rng().gen())
+        Self(rand::rng().random())
     }
 }
 
