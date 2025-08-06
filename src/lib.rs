@@ -436,6 +436,8 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub use time;
+
 pub use tower_cookies::cookie;
 pub use tower_sessions_core::{session, session_store};
 #[doc(inline)]
