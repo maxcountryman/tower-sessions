@@ -46,9 +46,6 @@ tower-sessions-core = { version = "=0.14.0", path = "tower-sessions-core", defau
 tower-sessions-memory-store = { version = "=0.14.0", path = "memory-store" }
 
 async-trait = "0.1.74"
-parking_lot = { version = "0.12.1", features = ["serde"] }
-rmp-serde = { version = "1.1.2" }
-serde = "1.0.192"
 thiserror = "2.0.0"
 time = "0.3.30"
 tokio = { version = "1.32.0", default-features = false, features = ["sync"] }
