@@ -105,7 +105,7 @@ impl Session {
     }
 
     #[tracing::instrument(skip(self), err)]
-    async fn get_record(&self) -> Result<MappedMutexGuard<Record>> {
+    async fn get_record(&self) -> Result<MappedMutexGuard<'_, Record>> {
         let mut record_guard = self.inner.record.lock().await;
 
         // Lazily load the record since `None` here indicates we have no yet loaded it.
