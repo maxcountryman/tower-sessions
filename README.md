@@ -70,6 +70,7 @@ useful starting points.
 | [`tower-sessions-sled-store`](https://github.com/Zatzou/tower-sessions-sled-store)                               | Yes        | Sled session store                                          |
 | [`tower-sessions-sqlx-store`](https://github.com/maxcountryman/tower-sessions-stores/tree/main/sqlx-store)       | Yes        | SQLite, Postgres, and MySQL session stores                  |
 | [`tower-sessions-surrealdb-store`](https://github.com/rynoV/tower-sessions-surrealdb-store)                      | Yes        | SurrealDB session store                                     |
+| [`tower-sessions-cookie-store`](https://github.com/benwilber/tower-sessions-cookie-store)                        | No         | Cookie-backed session storage (signed/private)              |
 
 Have a store to add? Please open a PR adding it.
 
