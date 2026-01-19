@@ -72,7 +72,7 @@
 //!
 //! async fn handler(session: Session) -> impl IntoResponse {
 //!     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-//!     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+//!     session.insert(COUNTER_KEY, &(counter.0 + 1)).await.unwrap();
 //!     format!("Current count: {}", counter.0)
 //! }
 //!
@@ -145,7 +145,7 @@
 //!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
 //!         let session = Session::from_request_parts(req, state).await?;
 //!         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-//!         session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+//!         session.insert(COUNTER_KEY, &(counter.0 + 1)).await.unwrap();
 //!
 //!         Ok(counter)
 //!     }
@@ -214,7 +214,7 @@
 //!
 //!     async fn update_session(session: &Session, guest_data: &GuestData) {
 //!         session
-//!             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
+//!             .insert(Self::GUEST_DATA_KEY, guest_data)
 //!             .await
 //!             .unwrap()
 //!     }
@@ -399,7 +399,7 @@
 //! A session is initialized by looking for a cookie that matches the configured
 //! session cookie name. If no such cookie is found or a cookie is found but is
 //! malformed, an empty session is initialized.
-//!  
+//!
 //! Modified sessions will invoke the session's [`save`](Session::save) method
 //! as well as append to the `Set-Cookie` header of the response.
 //!

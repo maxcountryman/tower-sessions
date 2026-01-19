@@ -156,7 +156,7 @@ impl Session {
     /// let store = Arc::new(MemoryStore::default());
     /// let session = Session::new(None, store, None);
     ///
-    /// session.insert("foo", 42).await.unwrap();
+    /// session.insert("foo", &42).await.unwrap();
     ///
     /// let value = session.get::<usize>("foo").await.unwrap();
     /// assert_eq!(value, Some(42));
