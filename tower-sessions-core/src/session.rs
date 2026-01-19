@@ -168,9 +168,8 @@ impl Session {
     /// - This method can fail when [`serde_json::to_value`] fails.
     /// - If the session has not been hydrated and loading from the store fails,
     ///   we fail with [`Error::Store`].
-    pub async fn insert(&self, key: &str, value: impl Serialize) -> Result<()> {
-        self.insert_value(key, serde_json::to_value(&value)?)
-            .await?;
+    pub async fn insert(&self, key: &str, value: &impl Serialize) -> Result<()> {
+        self.insert_value(key, serde_json::to_value(value)?).await?;
         Ok(())
     }
 
@@ -1034,7 +1033,7 @@ mod tests {
         let session = Session::new(Some(initial_id), store.clone(), None);
 
         // Insert some data and save the session
-        session.insert("foo", 42).await.unwrap();
+        session.insert("foo", &42).await.unwrap();
         session.save().await.unwrap();
 
         // Cycle the session ID

@@ -20,7 +20,7 @@ where
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let session = Session::from_request_parts(req, state).await?;
         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
-        session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
+        session.insert(COUNTER_KEY, &(counter.0 + 1)).await.unwrap();
         Ok(counter)
     }
 }

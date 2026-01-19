@@ -12,7 +12,7 @@ fn routes() -> Router {
         .route(
             "/insert",
             get(|session: Session| async move {
-                session.insert("foo", 42).await.unwrap();
+                session.insert("foo", &42).await.unwrap();
             }),
         )
         .route(

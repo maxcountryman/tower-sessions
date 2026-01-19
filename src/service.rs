@@ -556,7 +556,7 @@ mod tests {
             .get::<Session>()
             .ok_or(anyhow!("Missing session"))?;
 
-        session.insert("foo", 42).await?;
+        session.insert("foo", &42).await?;
 
         Ok(Response::new(Body::empty()))
     }

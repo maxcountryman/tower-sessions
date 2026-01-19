@@ -50,7 +50,7 @@ impl Guest {
 
     async fn update_session(session: &Session, guest_data: &GuestData) {
         session
-            .insert(Self::GUEST_DATA_KEY, guest_data.clone())
+            .insert(Self::GUEST_DATA_KEY, guest_data)
             .await
             .unwrap()
     }
