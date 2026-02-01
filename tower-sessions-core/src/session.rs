@@ -220,10 +220,11 @@ impl Session {
     pub async fn insert_value(&self, key: &str, value: Value) -> Result<Option<Value>> {
         let mut record_guard = self.get_record().await?;
         Ok(if record_guard.data.get(key) != Some(&value) {
+            let previous = record_guard.data.insert(key.to_string(), value);
             self.inner
                 .is_modified
                 .store(true, atomic::Ordering::Release);
-            record_guard.data.insert(key.to_string(), value)
+            previous
         } else {
             None
         })
@@ -356,10 +357,11 @@ impl Session {
     ///   we fail with [`Error::Store`].
     pub async fn remove_value(&self, key: &str) -> Result<Option<Value>> {
         let mut record_guard = self.get_record().await?;
+        let previous = record_guard.data.remove(key);
         self.inner
             .is_modified
             .store(true, atomic::Ordering::Release);
-        Ok(record_guard.data.remove(key))
+        Ok(previous)
     }
 
     /// Clears the session of all data but does not delete it from the store.
