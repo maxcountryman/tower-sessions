@@ -1178,7 +1178,10 @@ mod tests {
         // Regression contract: a failed ID rotation must not destroy the
         // previously persisted session record.
         let reloaded_session = Session::new(Some(old_id), store.clone(), None);
-        assert_eq!(reloaded_session.get::<usize>("foo").await.unwrap(), Some(42));
+        assert_eq!(
+            reloaded_session.get::<usize>("foo").await.unwrap(),
+            Some(42)
+        );
         assert!(store.load(&old_id).await.unwrap().is_some());
     }
 }
