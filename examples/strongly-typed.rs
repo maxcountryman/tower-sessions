@@ -4,7 +4,7 @@ use axum::{extract::FromRequestParts, response::IntoResponse, routing::get, Rout
 use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+use tower_sessions::{MemoryStore, SesId, Session, SessionManagerLayer};
 
 #[derive(Clone, Deserialize, Serialize)]
 struct GuestData {
@@ -24,7 +24,7 @@ impl Default for GuestData {
 }
 
 struct Guest {
-    session: Session,
+    session: Session<SesId>,
     guest_data: GuestData,
 }
 
@@ -48,7 +48,7 @@ impl Guest {
         Self::update_session(&self.session, &self.guest_data).await
     }
 
-    async fn update_session(session: &Session, guest_data: &GuestData) {
+    async fn update_session(session: &Session<SesId>, guest_data: &GuestData) {
         session
             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
             .await
@@ -104,7 +104,7 @@ async fn handler(mut guest: Guest) -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() {
-    let session_store = MemoryStore::default();
+    let session_store = MemoryStore::<SesId>::default();
     let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
 
     let app = Router::new().route("/", get(handler)).layer(session_layer);

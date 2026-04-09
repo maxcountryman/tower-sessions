@@ -1,7 +1,7 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
     collections::HashMap,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     hash::Hash,
     result,
     str::{self, FromStr},
@@ -38,19 +38,19 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-struct Inner {
+struct Inner<I> {
     // This will be `None` when:
     //
     // 1. We have not been provided a session cookie or have failed to parse it,
     // 2. The store has not found the session.
     //
     // Sync lock, see: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
-    session_id: parking_lot::Mutex<Option<Id>>,
+    session_id: parking_lot::Mutex<Option<I>>,
 
     // A lazy representation of the session's value, hydrated on a just-in-time basis. A
     // `None` value indicates we have not tried to access it yet. After access, it will always
     // contain `Some(Record)`.
-    record: Mutex<Option<Record>>,
+    record: Mutex<Option<Record<I>>>,
 
     // Sync lock, see: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
     expiry: parking_lot::Mutex<Option<Expiry>>,
@@ -61,12 +61,15 @@ struct Inner {
 /// A session which allows HTTP applications to associate key-value pairs with
 /// visitors.
 #[derive(Debug, Clone)]
-pub struct Session {
-    store: Arc<dyn SessionStore>,
-    inner: Arc<Inner>,
+pub struct Session<I> {
+    store: Arc<dyn SessionStore<Id = I>>,
+    inner: Arc<Inner<I>>,
 }
 
-impl Session {
+impl<I> Session<I>
+where
+    I: Clone + Debug + Display + Default + GenId + Send + Sync + 'static,
+{
     /// Creates a new session with the session ID, store, and expiry.
     ///
     /// This method is lazy and does not invoke the overhead of talking to the
@@ -83,8 +86,8 @@ impl Session {
     /// Session::new(None, store, None);
     /// ```
     pub fn new(
-        session_id: Option<Id>,
-        store: Arc<impl SessionStore>,
+        session_id: Option<I>,
+        store: Arc<impl SessionStore<Id = I>>,
         expiry: Option<Expiry>,
     ) -> Self {
         let inner = Inner {
@@ -100,19 +103,20 @@ impl Session {
         }
     }
 
-    fn create_record(&self) -> Record {
+    fn create_record(&self) -> Record<I> {
         Record::new(self.expiry_date())
     }
 
     #[tracing::instrument(skip(self), err)]
-    async fn get_record(&self) -> Result<MappedMutexGuard<'_, Record>> {
+    async fn get_record(&self) -> Result<MappedMutexGuard<'_, Record<I>>> {
         let mut record_guard = self.inner.record.lock().await;
 
         // Lazily load the record since `None` here indicates we have no yet loaded it.
         if record_guard.is_none() {
             tracing::trace!("record not loaded from store; loading");
 
-            let session_id = *self.inner.session_id.lock();
+            let session_id = self.inner.session_id.lock().clone();
+
             *record_guard = Some(if let Some(session_id) = session_id {
                 match self.store.load(&session_id).await? {
                     Some(loaded_record) => {
@@ -403,7 +407,7 @@ impl Session {
         let mut record_guard = self.inner.record.lock().await;
         if let Some(record) = record_guard.as_mut() {
             record.data.clear();
-        } else if let Some(session_id) = *self.inner.session_id.lock() {
+        } else if let Some(session_id) = self.inner.session_id.lock().clone() {
             let mut new_record = self.create_record();
             new_record.id = session_id;
             *record_guard = Some(new_record);
@@ -499,8 +503,8 @@ impl Session {
     /// let session = Session::new(id, store, None);
     /// assert_eq!(id, session.id());
     /// ```
-    pub fn id(&self) -> Option<Id> {
-        *self.inner.session_id.lock()
+    pub fn id(&self) -> Option<I> {
+        self.inner.session_id.lock().clone()
     }
 
     /// Get the session expiry.
@@ -678,7 +682,7 @@ impl Session {
         // Potential ID collisions must be handled by session store implementers.
         if self.inner.session_id.lock().is_none() {
             self.store.create(&mut record_guard).await?;
-            *self.inner.session_id.lock() = Some(record_guard.id);
+            *self.inner.session_id.lock() = Some(record_guard.id.clone());
         } else {
             self.store.save(&record_guard).await?;
         }
@@ -717,7 +721,7 @@ impl Session {
     /// - If loading from the store fails, we fail with [`Error::Store`].
     #[tracing::instrument(skip(self), err)]
     pub async fn load(&self) -> Result<()> {
-        let session_id = *self.inner.session_id.lock();
+        let session_id = self.inner.session_id.lock().clone();
         let Some(ref id) = session_id else {
             tracing::warn!("called load with no session id");
             return Ok(());
@@ -756,7 +760,7 @@ impl Session {
     /// - If deleting from the store fails, we fail with [`Error::Store`].
     #[tracing::instrument(skip(self), err)]
     pub async fn delete(&self) -> Result<()> {
-        let session_id = *self.inner.session_id.lock();
+        let session_id = self.inner.session_id.lock().clone();
         let Some(ref session_id) = session_id else {
             tracing::warn!("called delete with no session id");
             return Ok(());
@@ -845,8 +849,8 @@ impl Session {
     pub async fn cycle_id(&self) -> Result<()> {
         let mut record_guard = self.get_record().await?;
 
-        let old_session_id = record_guard.id;
-        record_guard.id = Id::default();
+        let old_session_id = record_guard.id.clone();
+        record_guard.id = I::gen_id();
         *self.inner.session_id.lock() = None; // Setting `None` ensures `save` invokes the store's
                                               // `create` method.
 
@@ -875,10 +879,10 @@ impl Session {
 /// Id::default();
 /// ```
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub struct Id(pub i128); // TODO: By this being public, it may be possible to override the
-                         // session ID, which is undesirable.
+pub struct SesId(pub i128); // TODO: By this being public, it may be possible to override the
+                            // session ID, which is undesirable.
 
-impl Default for Id {
+impl Default for SesId {
     fn default() -> Self {
         use rand::prelude::*;
 
@@ -886,7 +890,7 @@ impl Default for Id {
     }
 }
 
-impl Display for Id {
+impl Display for SesId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut encoded = [0; 22];
         URL_SAFE_NO_PAD
@@ -898,7 +902,7 @@ impl Display for Id {
     }
 }
 
-impl FromStr for Id {
+impl FromStr for SesId {
     type Err = base64::DecodeSliceError;
 
     fn from_str(s: &str) -> result::Result<Self, Self::Err> {
@@ -913,19 +917,45 @@ impl FromStr for Id {
     }
 }
 
+impl GenId for SesId {
+    fn gen_id() -> Self {
+        Default::default()
+    }
+}
+
 /// Record type that's appropriate for encoding and decoding sessions to and
 /// from session stores.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Record {
-    pub id: Id,
+pub struct Record<I> {
+    pub id: I,
     pub data: Data,
     pub expiry_date: OffsetDateTime,
 }
 
-impl Record {
-    fn new(expiry_date: OffsetDateTime) -> Self {
+pub trait GenId {
+    fn gen_id() -> Self;
+}
+
+impl<I> Record<I> {
+    fn new(expiry_date: OffsetDateTime) -> Self
+    where
+        I: GenId,
+    {
         Self {
-            id: Id::default(),
+            // FIXME:
+            //
+            // This relies on a custom impl of Default for SesId, but you actually don't
+            // want to use Default for this, because you don't want to force the impl of
+            // Default for every type `I` to produce a random value of that type.
+            //
+            // If you fix this, then you can remove the Default trait bound everywhere.
+            // One option is to add a new method to `SessionStore` called new_id() that
+            // returns Self::Id and then impl that using the funky default only in the
+            // case of SesId.
+            //
+            // Since functions like this don't take an implementor of SessionStore, you
+            // probably need to make a new trait for this and just impl it on `I`.
+            id: I::gen_id(),
             data: Data::default(),
             expiry_date,
         }
@@ -988,10 +1018,11 @@ mod tests {
 
         #[async_trait]
         impl SessionStore for Store {
-            async fn create(&self, record: &mut Record) -> session_store::Result<()>;
-            async fn save(&self, record: &Record) -> session_store::Result<()>;
-            async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> session_store::Result<()>;
+            type Id = SesId;
+            async fn create(&self, record: &mut Record<SesId>) -> session_store::Result<()>;
+            async fn save(&self, record: &Record<SesId>) -> session_store::Result<()>;
+            async fn load(&self, session_id: &SesId) -> session_store::Result<Option<Record<SesId>>>;
+            async fn delete(&self, session_id: &SesId) -> session_store::Result<()>;
         }
     }
 
@@ -999,8 +1030,8 @@ mod tests {
     async fn test_cycle_id() {
         let mut mock_store = MockStore::new();
 
-        let initial_id = Id::default();
-        let new_id = Id::default();
+        let initial_id = SesId::default();
+        let new_id = SesId::default();
 
         // Set up expectations for the mock store
         mock_store
