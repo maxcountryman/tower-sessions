@@ -1,6 +1,6 @@
 //! A session which allows HTTP applications to associate data with visitors.
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display},
     hash::Hash,
     result,
@@ -55,6 +55,11 @@ struct Inner {
     // Sync lock, see: https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use
     expiry: parking_lot::Mutex<Option<Expiry>>,
 
+    // Session IDs that should be deleted after a successful save. This is used
+    // by `cycle_id` so we don't destroy the last persisted session before the
+    // replacement session has been created.
+    pending_deletions: parking_lot::Mutex<HashSet<Id>>,
+
     is_modified: AtomicBool,
 }
 
@@ -91,6 +96,7 @@ impl Session {
             session_id: parking_lot::Mutex::new(session_id),
             record: Mutex::new(None), // `None` indicates we have not loaded from store.
             expiry: parking_lot::Mutex::new(expiry),
+            pending_deletions: parking_lot::Mutex::new(HashSet::new()),
             is_modified: AtomicBool::new(false),
         };
 
@@ -635,6 +641,36 @@ impl Session {
         self.inner.is_modified.load(atomic::Ordering::Acquire)
     }
 
+    #[tracing::instrument(skip(self), err)]
+    async fn delete_pending_sessions(&self) -> Result<()> {
+        let current_session_id = *self.inner.session_id.lock();
+        let pending_session_ids = {
+            let pending_deletions = self.inner.pending_deletions.lock();
+            pending_deletions
+                .iter()
+                .copied()
+                .filter(|pending_session_id| Some(*pending_session_id) != current_session_id)
+                .collect::<Vec<_>>()
+        };
+
+        for pending_session_id in pending_session_ids {
+            self.store.delete(&pending_session_id).await?;
+            self.inner
+                .pending_deletions
+                .lock()
+                .remove(&pending_session_id);
+        }
+
+        if let Some(current_session_id) = current_session_id {
+            self.inner
+                .pending_deletions
+                .lock()
+                .remove(&current_session_id);
+        }
+
+        Ok(())
+    }
+
     /// Saves the session record to the store.
     ///
     /// Note that this method is generally not needed and is reserved for
@@ -682,6 +718,9 @@ impl Session {
         } else {
             self.store.save(&record_guard).await?;
         }
+
+        self.delete_pending_sessions().await?;
+
         Ok(())
     }
 
@@ -757,11 +796,20 @@ impl Session {
     #[tracing::instrument(skip(self), err)]
     pub async fn delete(&self) -> Result<()> {
         let session_id = *self.inner.session_id.lock();
+        let has_pending_deletions = !self.inner.pending_deletions.lock().is_empty();
         let Some(ref session_id) = session_id else {
-            tracing::warn!("called delete with no session id");
+            if has_pending_deletions {
+                self.delete_pending_sessions().await?;
+            } else {
+                tracing::warn!("called delete with no session id");
+            }
             return Ok(());
         };
+
         self.store.delete(session_id).await.map_err(Error::Store)?;
+        self.inner.pending_deletions.lock().remove(session_id);
+        self.delete_pending_sessions().await?;
+
         Ok(())
     }
 
@@ -799,6 +847,7 @@ impl Session {
         self.clear().await;
         self.delete().await?;
         *self.inner.session_id.lock() = None;
+        self.inner.pending_deletions.lock().clear();
         Ok(())
     }
 
@@ -845,15 +894,13 @@ impl Session {
     pub async fn cycle_id(&self) -> Result<()> {
         let mut record_guard = self.get_record().await?;
 
-        let old_session_id = record_guard.id;
+        if let Some(session_id) = *self.inner.session_id.lock() {
+            self.inner.pending_deletions.lock().insert(session_id);
+        }
+
         record_guard.id = Id::default();
         *self.inner.session_id.lock() = None; // Setting `None` ensures `save` invokes the store's
                                               // `create` method.
-
-        self.store
-            .delete(&old_session_id)
-            .await
-            .map_err(Error::Store)?;
 
         self.inner
             .is_modified
@@ -974,11 +1021,20 @@ pub enum Expiry {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::HashMap,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    };
+
     use async_trait::async_trait;
     use mockall::{
         mock,
         predicate::{self, always},
     };
+    use tokio::sync::Mutex;
 
     use super::*;
 
@@ -992,6 +1048,49 @@ mod tests {
             async fn save(&self, record: &Record) -> session_store::Result<()>;
             async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>>;
             async fn delete(&self, session_id: &Id) -> session_store::Result<()>;
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FailableCreateStore {
+        records: Mutex<HashMap<Id, Record>>,
+        fail_create: AtomicBool,
+    }
+
+    impl FailableCreateStore {
+        fn fail_next_create(&self) {
+            self.fail_create.store(true, Ordering::Release);
+        }
+    }
+
+    #[async_trait]
+    impl SessionStore for FailableCreateStore {
+        async fn create(&self, record: &mut Record) -> session_store::Result<()> {
+            if self.fail_create.swap(false, Ordering::AcqRel) {
+                return Err(session_store::Error::Backend("create failed".into()));
+            }
+
+            let mut records = self.records.lock().await;
+            while records.contains_key(&record.id) {
+                record.id = Id::default();
+            }
+            records.insert(record.id, record.clone());
+
+            Ok(())
+        }
+
+        async fn save(&self, record: &Record) -> session_store::Result<()> {
+            self.records.lock().await.insert(record.id, record.clone());
+            Ok(())
+        }
+
+        async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
+            Ok(self.records.lock().await.get(session_id).cloned())
+        }
+
+        async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
+            self.records.lock().await.remove(session_id);
+            Ok(())
         }
     }
 
@@ -1050,5 +1149,39 @@ mod tests {
         // Save the session to update the ID in the session object
         session.save().await.unwrap();
         assert_eq!(session.id(), Some(new_id));
+    }
+
+    #[tokio::test]
+    async fn test_cycle_id_create_failure_preserves_previous_record() {
+        let store = Arc::new(FailableCreateStore::default());
+
+        let session = Session::new(None, store.clone(), None);
+        session.insert("foo", 42).await.unwrap();
+        session.save().await.unwrap();
+
+        let old_id = session.id().unwrap();
+
+        let session = Session::new(Some(old_id), store.clone(), None);
+        session.cycle_id().await.unwrap();
+
+        store.fail_next_create();
+        let err = session.save().await.unwrap_err();
+        assert!(matches!(
+            err,
+            Error::Store(session_store::Error::Backend(message)) if message == "create failed"
+        ));
+
+        // The current request still sees its in-memory state.
+        assert_eq!(session.get::<usize>("foo").await.unwrap(), Some(42));
+        assert!(session.id().is_none());
+
+        // Regression contract: a failed ID rotation must not destroy the
+        // previously persisted session record.
+        let reloaded_session = Session::new(Some(old_id), store.clone(), None);
+        assert_eq!(
+            reloaded_session.get::<usize>("foo").await.unwrap(),
+            Some(42)
+        );
+        assert!(store.load(&old_id).await.unwrap().is_some());
     }
 }

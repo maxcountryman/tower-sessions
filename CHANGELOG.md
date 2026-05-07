@@ -1,5 +1,7 @@
 # Unreleased
 
+- Preserve the previously persisted session if `cycle_id` cannot create the replacement session.
+
 # 0.15.0
 
 - Update rand to v0.9. #238
