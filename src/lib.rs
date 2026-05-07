@@ -63,14 +63,14 @@
 //! use axum::{response::IntoResponse, routing::get, Router};
 //! use serde::{Deserialize, Serialize};
 //! use time::Duration;
-//! use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
+//! use tower_sessions::{Expiry, MemoryStore, SesId, Session, SessionManagerLayer};
 //!
 //! const COUNTER_KEY: &str = "counter";
 //!
 //! #[derive(Default, Deserialize, Serialize)]
 //! struct Counter(usize);
 //!
-//! async fn handler(session: Session) -> impl IntoResponse {
+//! async fn handler(session: Session<SesId>) -> impl IntoResponse {
 //!     let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
 //!     session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!     format!("Current count: {}", counter.0)
@@ -78,7 +78,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let session_store = MemoryStore::default();
+//!     let session_store = MemoryStore::<SesId>::default();
 //!     let session_layer = SessionManagerLayer::new(session_store)
 //!         .with_secure(false)
 //!         .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
@@ -130,7 +130,7 @@
 //! # use axum::extract::FromRequestParts;
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
-//! # use tower_sessions::{SessionStore, Session, MemoryStore};
+//! # use tower_sessions::{SesId, SessionStore, Session, MemoryStore};
 //! const COUNTER_KEY: &str = "counter";
 //!
 //! #[derive(Default, Deserialize, Serialize)]
@@ -143,7 +143,7 @@
 //!     type Rejection = (http::StatusCode, &'static str);
 //!
 //!     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-//!         let session = Session::from_request_parts(req, state).await?;
+//!         let session = Session::<SesId>::from_request_parts(req, state).await?;
 //!         let counter: Counter = session.get(COUNTER_KEY).await.unwrap().unwrap_or_default();
 //!         session.insert(COUNTER_KEY, counter.0 + 1).await.unwrap();
 //!
@@ -169,7 +169,7 @@
 //! # use http::{request::Parts, StatusCode};
 //! # use serde::{Deserialize, Serialize};
 //! # use time::OffsetDateTime;
-//! # use tower_sessions::{SessionStore, Session};
+//! # use tower_sessions::{SesId, SessionStore, Session};
 //! #[derive(Clone, Deserialize, Serialize)]
 //! struct GuestData {
 //!     pageviews: usize,
@@ -188,7 +188,7 @@
 //! }
 //!
 //! struct Guest {
-//!     session: Session,
+//!     session: Session<SesId>,
 //!     guest_data: GuestData,
 //! }
 //!
@@ -212,7 +212,7 @@
 //!         Self::update_session(&self.session, &self.guest_data).await
 //!     }
 //!
-//!     async fn update_session(session: &Session, guest_data: &GuestData) {
+//!     async fn update_session(session: &Session<SesId>, guest_data: &GuestData) {
 //!         session
 //!             .insert(Self::GUEST_DATA_KEY, guest_data.clone())
 //!             .await
@@ -440,7 +440,7 @@ pub use tower_cookies::cookie;
 pub use tower_sessions_core::{session, session_store};
 #[doc(inline)]
 pub use tower_sessions_core::{
-    session::{Expiry, Session},
+    session::{Expiry, GenId, SesId, Session},
     session_store::{CachingSessionStore, ExpiredDeletion, SessionStore},
 };
 #[cfg(feature = "memory-store")]

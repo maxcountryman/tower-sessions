@@ -1,8 +1,11 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
     borrow::Cow,
+    fmt::{Debug, Display},
     future::Future,
+    hash::Hash,
     pin::Pin,
+    str::FromStr,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -16,10 +19,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 use tracing::Instrument;
 
-use crate::{
-    session::{self, Expiry},
-    Session, SessionStore,
-};
+use crate::{session::Expiry, GenId, Session, SessionStore};
 
 #[doc(hidden)]
 pub trait CookieController: Clone + Send + 'static {
@@ -103,7 +103,10 @@ struct SessionConfig<'a> {
 }
 
 impl<'a> SessionConfig<'a> {
-    fn build_cookie(self, session_id: session::Id, expiry: Option<Expiry>) -> Cookie<'a> {
+    fn build_cookie<I>(self, session_id: I, expiry: Option<Expiry>) -> Cookie<'a>
+    where
+        I: Display,
+    {
         let mut cookie_builder = Cookie::build((self.name, session_id.to_string()))
             .http_only(self.http_only)
             .same_site(self.same_site)
@@ -143,14 +146,15 @@ impl Default for SessionConfig<'_> {
 
 /// A middleware that provides [`Session`] as a request extension.
 #[derive(Debug, Clone)]
-pub struct SessionManager<S, Store: SessionStore, C: CookieController = PlaintextCookie> {
+pub struct SessionManager<I, S, Store: SessionStore<Id = I>, C: CookieController = PlaintextCookie>
+{
     inner: S,
     session_store: Arc<Store>,
     session_config: SessionConfig<'static>,
     cookie_controller: C,
 }
 
-impl<S, Store: SessionStore> SessionManager<S, Store> {
+impl<I, S, Store: SessionStore<Id = I>> SessionManager<I, S, Store> {
     /// Create a new [`SessionManager`].
     pub fn new(inner: S, session_store: Store) -> Self {
         Self {
@@ -162,9 +166,11 @@ impl<S, Store: SessionStore> SessionManager<S, Store> {
     }
 }
 
-impl<ReqBody, ResBody, S, Store: SessionStore, C: CookieController> Service<Request<ReqBody>>
-    for SessionManager<S, Store, C>
+impl<I, ReqBody, ResBody, S, Store: SessionStore<Id = I>, C: CookieController>
+    Service<Request<ReqBody>> for SessionManager<I, S, Store, C>
 where
+    I: Clone + Debug + Default + Display + Eq + FromStr + GenId + Hash + Send + Sync + 'static,
+    <I as FromStr>::Err: Display,
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send,
     ReqBody: Send + 'static,
@@ -206,7 +212,7 @@ where
                 let session_id = session_cookie.as_ref().and_then(|cookie| {
                     cookie
                         .value()
-                        .parse::<session::Id>()
+                        .parse::<I>()
                         .map_err(|err| {
                             tracing::warn!(
                                 err = %err,
@@ -301,9 +307,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_name("my.sid");
     /// ```
     pub fn with_name<N: Into<Cow<'static, str>>>(mut self, name: N) -> Self {
@@ -323,9 +329,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_http_only(true);
     /// ```
     pub fn with_http_only(mut self, http_only: bool) -> Self {
@@ -340,9 +346,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{cookie::SameSite, MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
     /// ```
     pub fn with_same_site(mut self, same_site: SameSite) -> Self {
@@ -357,9 +363,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     ///
     /// ```rust
     /// use time::Duration;
-    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{Expiry, MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
     /// let session_service = SessionManagerLayer::new(session_store).with_expiry(session_expiry);
     /// ```
@@ -374,9 +380,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_secure(true);
     /// ```
     pub fn with_secure(mut self, secure: bool) -> Self {
@@ -390,9 +396,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_path("/some/path");
     /// ```
     pub fn with_path<P: Into<Cow<'static, str>>>(mut self, path: P) -> Self {
@@ -406,9 +412,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_domain("localhost");
     /// ```
     pub fn with_domain<D: Into<Cow<'static, str>>>(mut self, domain: D) -> Self {
@@ -434,9 +440,9 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     ///
     /// ```rust
     /// use time::Duration;
-    /// use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{Expiry, MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_expiry = Expiry::OnInactivity(Duration::hours(1));
     /// let session_service = SessionManagerLayer::new(session_store)
     ///     .with_expiry(session_expiry)
@@ -452,7 +458,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// See [`SignedCookies`](tower_cookies::SignedCookies).
     ///
     /// ```rust
-    /// use tower_sessions::{cookie::Key, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{cookie::Key, MemoryStore, SesId, SessionManagerLayer};
     ///
     /// # /*
     /// let key = { /* a cryptographically random key >= 64 bytes */ };
@@ -461,7 +467,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # let key: &[u8] = &key[..];
     /// # let key = Key::try_from(key).unwrap();
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_signed(key);
     /// ```
     #[cfg(feature = "signed")]
@@ -478,7 +484,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// See [`PrivateCookies`](tower_cookies::PrivateCookies).
     ///
     /// ```rust
-    /// use tower_sessions::{cookie::Key, MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{cookie::Key, MemoryStore, SesId, SessionManagerLayer};
     ///
     /// # /*
     /// let key = { /* a cryptographically random key >= 64 bytes */ };
@@ -487,7 +493,7 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// # let key: &[u8] = &key[..];
     /// # let key = Key::try_from(key).unwrap();
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store).with_private(key);
     /// ```
     #[cfg(feature = "private")]
@@ -507,9 +513,9 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     /// # Examples
     ///
     /// ```rust
-    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    /// use tower_sessions::{MemoryStore, SesId, SessionManagerLayer};
     ///
-    /// let session_store = MemoryStore::default();
+    /// let session_store = MemoryStore::<SesId>::default();
     /// let session_service = SessionManagerLayer::new(session_store);
     /// ```
     pub fn new(session_store: Store) -> Self {
@@ -523,8 +529,10 @@ impl<Store: SessionStore> SessionManagerLayer<Store> {
     }
 }
 
-impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLayer<Store, C> {
-    type Service = CookieManager<SessionManager<S, Store, C>>;
+impl<I, S, Store: SessionStore<Id = I>, C: CookieController> Layer<S>
+    for SessionManagerLayer<Store, C>
+{
+    type Service = CookieManager<SessionManager<I, S, Store, C>>;
 
     fn layer(&self, inner: S) -> Self::Service {
         let session_manager = SessionManager {
@@ -540,7 +548,7 @@ impl<S, Store: SessionStore, C: CookieController> Layer<S> for SessionManagerLay
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{fmt::Debug, str::FromStr};
 
     use anyhow::anyhow;
     use axum::body::Body;
@@ -548,12 +556,15 @@ mod tests {
     use tower_sessions_memory_store::MemoryStore;
 
     use super::*;
-    use crate::session::{Id, Record};
+    use crate::session::{Record, SesId};
 
-    async fn handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+    async fn handler<I>(req: Request<Body>) -> anyhow::Result<Response<Body>>
+    where
+        I: Clone + Debug + Default + Display + GenId + Send + Sync + 'static,
+    {
         let session = req
             .extensions()
-            .get::<Session>()
+            .get::<Session<I>>()
             .ok_or(anyhow!("Missing session"))?;
 
         session.insert("foo", 42).await?;
@@ -567,11 +578,11 @@ mod tests {
 
     #[tokio::test]
     async fn basic_service_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.clone().oneshot(req).await?;
@@ -591,11 +602,11 @@ mod tests {
 
     #[tokio::test]
     async fn bogus_cookie_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.clone().oneshot(req).await?;
@@ -614,7 +625,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_set_cookie_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
@@ -630,11 +641,11 @@ mod tests {
 
     #[tokio::test]
     async fn name_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_name("my.sid");
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -646,22 +657,22 @@ mod tests {
 
     #[tokio::test]
     async fn http_only_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
         assert!(cookie_value_matches(&res, |s| s.contains("HttpOnly")));
 
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_http_only(false);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -673,12 +684,12 @@ mod tests {
 
     #[tokio::test]
     async fn same_site_strict_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_same_site(SameSite::Strict);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -690,11 +701,11 @@ mod tests {
 
     #[tokio::test]
     async fn same_site_lax_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::Lax);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -706,11 +717,11 @@ mod tests {
 
     #[tokio::test]
     async fn same_site_none_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_same_site(SameSite::None);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -722,12 +733,12 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_on_session_end_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer =
             SessionManagerLayer::new(session_store).with_expiry(Expiry::OnSessionEnd);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -739,13 +750,13 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_on_inactivity_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store)
             .with_expiry(Expiry::OnInactivity(inactivity_duration));
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -758,13 +769,13 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_at_date_time_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer =
             SessionManagerLayer::new(session_store).with_expiry(Expiry::AtDateTime(expiry_time));
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -777,13 +788,13 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_on_session_end_always_save_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store.clone())
             .with_expiry(Expiry::OnSessionEnd)
             .with_always_save(true);
         let mut svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req1 = Request::builder().body(Body::empty())?;
         let res1 = svc.call(req1).await?;
@@ -805,14 +816,14 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_on_inactivity_always_save_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store.clone())
             .with_expiry(Expiry::OnInactivity(inactivity_duration))
             .with_always_save(true);
         let mut svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req1 = Request::builder().body(Body::empty())?;
         let res1 = svc.call(req1).await?;
@@ -835,14 +846,14 @@ mod tests {
 
     #[tokio::test]
     async fn expiry_at_date_time_always_save_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer = SessionManagerLayer::new(session_store.clone())
             .with_expiry(Expiry::AtDateTime(expiry_time))
             .with_always_save(true);
         let mut svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req1 = Request::builder().body(Body::empty())?;
         let res1 = svc.call(req1).await?;
@@ -865,22 +876,22 @@ mod tests {
 
     #[tokio::test]
     async fn secure_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_secure(true);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
         assert!(cookie_value_matches(&res, |s| s.contains("Secure")));
 
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -892,11 +903,11 @@ mod tests {
 
     #[tokio::test]
     async fn path_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_path("/foo/bar");
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -908,11 +919,11 @@ mod tests {
 
     #[tokio::test]
     async fn domain_test() -> anyhow::Result<()> {
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_domain("example.com");
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -926,11 +937,11 @@ mod tests {
     #[tokio::test]
     async fn signed_test() -> anyhow::Result<()> {
         let key = Key::generate();
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_signed(key);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -944,11 +955,11 @@ mod tests {
     #[tokio::test]
     async fn private_test() -> anyhow::Result<()> {
         let key = Key::generate();
-        let session_store = MemoryStore::default();
+        let session_store = MemoryStore::<SesId>::default();
         let session_layer = SessionManagerLayer::new(session_store).with_private(key);
         let svc = ServiceBuilder::new()
             .layer(session_layer)
-            .service_fn(handler);
+            .service_fn(handler::<SesId>);
 
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
@@ -1001,9 +1012,9 @@ mod tests {
             .to_string()
     }
 
-    async fn get_record(store: &impl SessionStore, id: &str) -> Record {
+    async fn get_record(store: &impl SessionStore<Id = SesId>, id: &str) -> Record<SesId> {
         store
-            .load(&Id::from_str(id).unwrap())
+            .load(&SesId::from_str(id).unwrap())
             .await
             .unwrap()
             .unwrap()
