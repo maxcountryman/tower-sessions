@@ -1,6 +1,7 @@
 //! A middleware that provides [`Session`] as a request extension.
 use std::{
     borrow::Cow,
+    fmt::{self, Debug, Formatter},
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -8,7 +9,6 @@ use std::{
 };
 
 use http::{Request, Response};
-use time::OffsetDateTime;
 #[cfg(any(feature = "signed", feature = "private"))]
 use tower_cookies::Key;
 use tower_cookies::{cookie::SameSite, Cookie, CookieManager, Cookies};
@@ -100,6 +100,7 @@ struct SessionConfig<'a> {
     path: Cow<'a, str>,
     domain: Option<Cow<'a, str>>,
     always_save: bool,
+    can_save: CanSaveSessionFn<'a>,
 }
 
 impl<'a> SessionConfig<'a> {
@@ -113,7 +114,7 @@ impl<'a> SessionConfig<'a> {
         cookie_builder = match expiry {
             Some(Expiry::OnInactivity(duration)) => cookie_builder.max_age(duration),
             Some(Expiry::AtDateTime(datetime)) => {
-                cookie_builder.max_age(datetime - OffsetDateTime::now_utc())
+                cookie_builder.max_age(datetime - time::OffsetDateTime::now_utc())
             }
             Some(Expiry::OnSessionEnd) | None => cookie_builder,
         };
@@ -137,7 +138,29 @@ impl Default for SessionConfig<'_> {
             path: "/".into(),
             domain: None,
             always_save: false,
+            can_save: CanSaveSessionFn::new(|status_code| !status_code.is_server_error()),
         }
+    }
+}
+
+#[derive(Clone)]
+struct CanSaveSessionFn<'a>(Arc<dyn Fn(http::StatusCode) -> bool + Send + Sync + 'a>);
+
+impl<'a> CanSaveSessionFn<'a> {
+    fn new(can_save: impl Fn(http::StatusCode) -> bool + Send + Sync + 'a) -> Self {
+        Self(Arc::new(can_save))
+    }
+
+    fn call(&self, status_code: http::StatusCode) -> bool {
+        self.0(status_code)
+    }
+}
+
+impl Debug for CanSaveSessionFn<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CanSaveSessionFn")
+            .field(&"<callback>")
+            .finish()
     }
 }
 
@@ -224,11 +247,14 @@ where
 
                 let modified = session.is_modified();
                 let empty = session.is_empty().await;
+                let always_save = session_config.always_save;
+                let can_save = session_config.can_save.call(res.status());
 
                 tracing::trace!(
                     modified = modified,
                     empty = empty,
-                    always_save = session_config.always_save,
+                    always_save = always_save,
+                    can_save = can_save,
                     "session response state",
                 );
 
@@ -248,10 +274,7 @@ where
                         cookie_controller.remove(&cookies, cookie);
                     }
 
-                    _ if (modified || session_config.always_save)
-                        && !empty
-                        && !res.status().is_server_error() =>
-                    {
+                    _ if (modified || always_save) && !empty && can_save => {
                         tracing::debug!("saving session");
                         if let Err(err) = session.save().await {
                             tracing::error!(err = %err, "failed to save session");
@@ -444,6 +467,31 @@ impl<Store: SessionStore, C: CookieController> SessionManagerLayer<Store, C> {
     /// ```
     pub fn with_always_save(mut self, always_save: bool) -> Self {
         self.session_config.always_save = always_save;
+        self
+    }
+
+    /// Configures whether a session should be saved based on the response
+    /// status code.
+    ///
+    /// When `can_save` returns `true`, a session will be saved when modified,
+    /// and also when read if `always_save` is `true`.
+    ///
+    /// By default, sessions are not saved for HTTP 5xx responses.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use tower_sessions::{MemoryStore, SessionManagerLayer};
+    ///
+    /// let session_store = MemoryStore::default();
+    /// let session_service = SessionManagerLayer::new(session_store)
+    ///     .with_can_save(|status_code| !status_code.is_server_error());
+    /// ```
+    pub fn with_can_save(
+        mut self,
+        can_save: impl Fn(http::StatusCode) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.session_config.can_save = CanSaveSessionFn::new(can_save);
         self
     }
 
@@ -776,7 +824,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expiry_on_session_end_always_save_test() -> anyhow::Result<()> {
+    async fn expiry_on_session_end_always_save_true_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store.clone())
             .with_expiry(Expiry::OnSessionEnd)
@@ -797,14 +845,37 @@ mod tests {
         let rec2 = get_record(&session_store, &sid2).await;
 
         assert!(cookie_value_matches(&res2, |s| !s.contains("Max-Age")));
-        assert!(sid1 == sid2);
-        assert!(rec1.expiry_date < rec2.expiry_date);
+        assert_eq!(sid2, sid1);
+        assert!(rec2.expiry_date > rec1.expiry_date);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn expiry_on_inactivity_always_save_test() -> anyhow::Result<()> {
+    async fn expiry_on_session_end_always_save_default_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer =
+            SessionManagerLayer::new(session_store.clone()).with_expiry(Expiry::OnSessionEnd);
+        let mut svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req1 = Request::builder().body(Body::empty())?;
+        let res1 = svc.call(req1).await?;
+        let sid1 = get_session_id(&res1);
+        let req2 = Request::builder()
+            .header(http::header::COOKIE, format!("id={}", sid1))
+            .body(Body::empty())?;
+        let res2 = svc.call(req2).await?;
+        let sid2 = res2.headers().get(http::header::SET_COOKIE);
+
+        assert_eq!(sid2, None);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_on_inactivity_always_save_true_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let inactivity_duration = time::Duration::hours(2);
         let session_layer = SessionManagerLayer::new(session_store.clone())
@@ -827,14 +898,39 @@ mod tests {
 
         let expected_max_age = inactivity_duration.whole_seconds();
         assert!(cookie_has_expected_max_age(&res2, expected_max_age));
-        assert!(sid1 == sid2);
-        assert!(rec1.expiry_date < rec2.expiry_date);
+        assert_eq!(sid2, sid1);
+        assert!(rec2.expiry_date > rec1.expiry_date);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn expiry_at_date_time_always_save_test() -> anyhow::Result<()> {
+    async fn expiry_on_inactivity_always_save_false_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let inactivity_duration = time::Duration::hours(2);
+        let session_layer = SessionManagerLayer::new(session_store.clone())
+            .with_expiry(Expiry::OnInactivity(inactivity_duration))
+            .with_always_save(false);
+        let mut svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req1 = Request::builder().body(Body::empty())?;
+        let res1 = svc.call(req1).await?;
+        let sid1 = get_session_id(&res1);
+        let req2 = Request::builder()
+            .header(http::header::COOKIE, format!("id={}", sid1))
+            .body(Body::empty())?;
+        let res2 = svc.call(req2).await?;
+        let sid2 = res2.headers().get(http::header::SET_COOKIE);
+
+        assert_eq!(sid2, None);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expiry_at_date_time_always_save_true_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let expiry_time = time::OffsetDateTime::now_utc() + time::Duration::weeks(1);
         let session_layer = SessionManagerLayer::new(session_store.clone())
@@ -857,8 +953,44 @@ mod tests {
 
         let expected_max_age = (expiry_time - time::OffsetDateTime::now_utc()).whole_seconds();
         assert!(cookie_has_expected_max_age(&res2, expected_max_age));
-        assert!(sid1 == sid2);
-        assert!(rec1.expiry_date == rec2.expiry_date);
+        assert_eq!(sid2, sid1);
+        assert_eq!(rec2.expiry_date, rec1.expiry_date);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_save_true_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store)
+            .with_name("my.sid")
+            .with_can_save(|status_code| !status_code.is_server_error());
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        assert!(cookie_value_matches(&res, |s| s.starts_with("my.sid=")));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_save_false_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store)
+            .with_can_save(|status_code| !status_code.is_success());
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+        let sid = res.headers().get(http::header::SET_COOKIE);
+
+        assert_eq!(sid, None);
 
         Ok(())
     }
