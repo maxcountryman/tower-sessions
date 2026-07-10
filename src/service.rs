@@ -245,6 +245,11 @@ where
                             cookie.set_domain(domain);
                         }
 
+                        // Secure must be set because the removal is a Set-Cookie,
+                        // and browsers reject `__Host-`/`__Secure-`-prefixed cookies without
+                        // Secure.
+                        cookie.set_secure(session_config.secure);
+
                         cookie_controller.remove(&cookies, cookie);
                     }
 
@@ -562,6 +567,17 @@ mod tests {
     }
 
     async fn noop_handler(_: Request<Body>) -> anyhow::Result<Response<Body>> {
+        Ok(Response::new(Body::empty()))
+    }
+
+    async fn flush_handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+        let session = req
+            .extensions()
+            .get::<Session>()
+            .ok_or(anyhow!("Missing session"))?;
+
+        session.flush().await?;
+
         Ok(Response::new(Body::empty()))
     }
 
@@ -886,6 +902,37 @@ mod tests {
         let res = svc.oneshot(req).await?;
 
         assert!(cookie_value_matches(&res, |s| !s.contains("Secure")));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn secure_removal_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store.clone()).with_secure(true);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        let session_cookie = res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .ok_or(anyhow!("Missing session cookie"))?;
+
+        let flush_layer = SessionManagerLayer::new(session_store).with_secure(true);
+        let flush_svc = ServiceBuilder::new()
+            .layer(flush_layer)
+            .service_fn(flush_handler);
+
+        let req = Request::builder()
+            .header(http::header::COOKIE, session_cookie)
+            .body(Body::empty())?;
+        let res = flush_svc.oneshot(req).await?;
+
+        assert!(cookie_value_matches(&res, |s| s.contains("Secure")));
 
         Ok(())
     }
