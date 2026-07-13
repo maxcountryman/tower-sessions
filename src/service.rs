@@ -937,6 +937,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn insecure_removal_test() -> anyhow::Result<()> {
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store.clone()).with_secure(false);
+        let svc = ServiceBuilder::new()
+            .layer(session_layer)
+            .service_fn(handler);
+
+        let req = Request::builder().body(Body::empty())?;
+        let res = svc.oneshot(req).await?;
+
+        let session_cookie = res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .ok_or(anyhow!("Missing session cookie"))?;
+
+        let flush_layer = SessionManagerLayer::new(session_store).with_secure(false);
+        let flush_svc = ServiceBuilder::new()
+            .layer(flush_layer)
+            .service_fn(flush_handler);
+
+        let req = Request::builder()
+            .header(http::header::COOKIE, session_cookie)
+            .body(Body::empty())?;
+        let res = flush_svc.oneshot(req).await?;
+
+        let removal_cookie = res
+            .headers()
+            .get(http::header::SET_COOKIE)
+            .ok_or(anyhow!("Missing removal cookie"))?;
+        let removal_cookie = Cookie::parse(removal_cookie.to_str()?)?;
+
+        assert_eq!(removal_cookie.secure(), Some(false));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn path_test() -> anyhow::Result<()> {
         let session_store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(session_store).with_path("/foo/bar");
