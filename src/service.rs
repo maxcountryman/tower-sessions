@@ -245,9 +245,8 @@ where
                             cookie.set_domain(domain);
                         }
 
-                        // Secure must be set because the removal is a Set-Cookie,
-                        // and browsers reject `__Host-`/`__Secure-`-prefixed cookies without
-                        // Secure.
+                        // Preserve the configured Secure attribute. Otherwise
+                        // `__Host-`/`__Secure-`-prefixed cookies without Secure may be rejected.
                         cookie.set_secure(session_config.secure);
 
                         cookie_controller.remove(&cookies, cookie);
