@@ -917,10 +917,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        let session_cookie = res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .ok_or(anyhow!("Missing session cookie"))?;
+        let session_cookie = response_cookie(&res)?;
 
         let flush_layer = SessionManagerLayer::new(session_store).with_secure(true);
         let flush_svc = ServiceBuilder::new()
@@ -928,11 +925,12 @@ mod tests {
             .service_fn(flush_handler);
 
         let req = Request::builder()
-            .header(http::header::COOKIE, session_cookie)
+            .header(http::header::COOKIE, cookie_request_value(&session_cookie))
             .body(Body::empty())?;
         let res = flush_svc.oneshot(req).await?;
 
-        assert!(cookie_value_matches(&res, |s| s.contains("Secure")));
+        let removal_cookie = response_cookie(&res)?;
+        assert_eq!(removal_cookie.secure(), Some(true));
 
         Ok(())
     }
@@ -1004,10 +1002,7 @@ mod tests {
         let req = Request::builder().body(Body::empty())?;
         let res = svc.oneshot(req).await?;
 
-        let session_cookie = res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .ok_or(anyhow!("Missing session cookie"))?;
+        let session_cookie = response_cookie(&res)?;
 
         let flush_layer = SessionManagerLayer::new(session_store).with_secure(false);
         let flush_svc = ServiceBuilder::new()
@@ -1015,17 +1010,13 @@ mod tests {
             .service_fn(flush_handler);
 
         let req = Request::builder()
-            .header(http::header::COOKIE, session_cookie)
+            .header(http::header::COOKIE, cookie_request_value(&session_cookie))
             .body(Body::empty())?;
         let res = flush_svc.oneshot(req).await?;
 
-        let removal_cookie = res
-            .headers()
-            .get(http::header::SET_COOKIE)
-            .ok_or(anyhow!("Missing removal cookie"))?;
-        let removal_cookie = Cookie::parse(removal_cookie.to_str()?)?;
+        let removal_cookie = response_cookie(&res)?;
 
-        assert_eq!(removal_cookie.secure(), Some(false));
+        assert_eq!(removal_cookie.secure(), None);
 
         Ok(())
     }
