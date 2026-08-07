@@ -1,10 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    hash::Hash,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 use tower_sessions_core::{
-    session::{Id, Record},
+    session::{GenId, Record},
     session_store, SessionStore,
 };
 
@@ -19,26 +24,34 @@ use tower_sessions_core::{
 /// MemoryStore::default();
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore(Arc<Mutex<HashMap<Id, Record>>>);
+pub struct MemoryStore<I>(Arc<Mutex<HashMap<I, Record<I>>>>);
 
 #[async_trait]
-impl SessionStore for MemoryStore {
-    async fn create(&self, record: &mut Record) -> session_store::Result<()> {
+impl<I> SessionStore for MemoryStore<I>
+where
+    I: Clone + Debug + Default + Display + Eq + GenId + Hash + Send + Sync + 'static,
+{
+    type Id = I;
+
+    async fn create(&self, record: &mut Record<I>) -> session_store::Result<()> {
         let mut store_guard = self.0.lock().await;
         while store_guard.contains_key(&record.id) {
             // Session ID collision mitigation.
-            record.id = Id::default();
+            record.id = I::gen_id();
         }
-        store_guard.insert(record.id, record.clone());
+        store_guard.insert(record.id.clone(), record.clone());
         Ok(())
     }
 
-    async fn save(&self, record: &Record) -> session_store::Result<()> {
-        self.0.lock().await.insert(record.id, record.clone());
+    async fn save(&self, record: &Record<I>) -> session_store::Result<()> {
+        self.0
+            .lock()
+            .await
+            .insert(record.id.clone(), record.clone());
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
+    async fn load(&self, session_id: &I) -> session_store::Result<Option<Record<I>>> {
         Ok(self
             .0
             .lock()
@@ -48,7 +61,7 @@ impl SessionStore for MemoryStore {
             .cloned())
     }
 
-    async fn delete(&self, session_id: &Id) -> session_store::Result<()> {
+    async fn delete(&self, session_id: &I) -> session_store::Result<()> {
         self.0.lock().await.remove(session_id);
         Ok(())
     }
@@ -61,12 +74,13 @@ fn is_active(expiry_date: OffsetDateTime) -> bool {
 #[cfg(test)]
 mod tests {
     use time::Duration;
+    use tower_sessions_core::SesId;
 
     use super::*;
 
     #[tokio::test]
     async fn test_create() {
-        let store = MemoryStore::default();
+        let store = MemoryStore::<SesId>::default();
         let mut record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -77,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_save() {
-        let store = MemoryStore::default();
+        let store = MemoryStore::<SesId>::default();
         let record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -88,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load() {
-        let store = MemoryStore::default();
+        let store = MemoryStore::<SesId>::default();
         let mut record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -101,7 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete() {
-        let store = MemoryStore::default();
+        let store = MemoryStore::<SesId>::default();
         let mut record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -114,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_id_collision() {
-        let store = MemoryStore::default();
+        let store = MemoryStore::<SesId>::default();
         let expiry_date = OffsetDateTime::now_utc() + Duration::minutes(30);
         let mut record1 = Record {
             id: Default::default(),

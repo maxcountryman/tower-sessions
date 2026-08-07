@@ -81,11 +81,11 @@
 //! The [`ExpiredDeletion`] trait provides a method for deleting expired
 //! sessions. Implementations can optionally provide a method for continuously
 //! deleting expired sessions at a specified interval.
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use async_trait::async_trait;
 
-use crate::session::{Id, Record};
+use crate::session::Record;
 
 /// Stores must map any errors that might occur during their use to this type.
 #[derive(thiserror::Error, Debug)]
@@ -107,6 +107,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// See [`session_store`](crate::session_store) for more details.
 #[async_trait]
 pub trait SessionStore: Debug + Send + Sync + 'static {
+    type Id: Debug + Display + Send + Sync + 'static;
+
     /// Creates a new session in the store with the provided session record.
     ///
     /// Implementers must decide how to handle potential ID collisions. For
@@ -114,31 +116,31 @@ pub trait SessionStore: Debug + Send + Sync + 'static {
     ///
     /// The record is given as an exclusive reference to allow modifications,
     /// such as assigning a new ID, during the creation process.
-    async fn create(&self, session_record: &mut Record) -> Result<()> {
+    async fn create(&self, session_record: &mut Record<Self::Id>) -> Result<()> {
         default_create(self, session_record).await
     }
 
     /// Saves the provided session record to the store.
     ///
     /// This method is intended for updating the state of an existing session.
-    async fn save(&self, session_record: &Record) -> Result<()>;
+    async fn save(&self, session_record: &Record<Self::Id>) -> Result<()>;
 
     /// Loads an existing session record from the store using the provided ID.
     ///
     /// If a session with the given ID exists, it is returned. If the session
     /// does not exist or has been invalidated (e.g., expired), `None` is
     /// returned.
-    async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
+    async fn load(&self, session_id: &Self::Id) -> Result<Option<Record<Self::Id>>>;
 
     /// Deletes a session record from the store using the provided ID.
     ///
     /// If the session exists, it is removed from the store.
-    async fn delete(&self, session_id: &Id) -> Result<()>;
+    async fn delete(&self, session_id: &Self::Id) -> Result<()>;
 }
 
 async fn default_create<S: SessionStore + ?Sized>(
     store: &S,
-    session_record: &mut Record,
+    session_record: &mut Record<S::Id>,
 ) -> Result<()> {
     tracing::warn!(
         "The default implementation of `SessionStore::create` is being used, which relies on \
@@ -186,18 +188,21 @@ impl<Cache: SessionStore, Store: SessionStore> CachingSessionStore<Cache, Store>
 }
 
 #[async_trait]
-impl<Cache, Store> SessionStore for CachingSessionStore<Cache, Store>
+impl<Cache, Store, I> SessionStore for CachingSessionStore<Cache, Store>
 where
-    Cache: SessionStore,
-    Store: SessionStore,
+    Cache: SessionStore<Id = I>,
+    Store: SessionStore<Id = I>,
+    I: Debug + Display + Send + Sync + 'static,
 {
-    async fn create(&self, record: &mut Record) -> Result<()> {
+    type Id = I;
+
+    async fn create(&self, record: &mut Record<Self::Id>) -> Result<()> {
         self.store.create(record).await?;
         self.cache.create(record).await?;
         Ok(())
     }
 
-    async fn save(&self, record: &Record) -> Result<()> {
+    async fn save(&self, record: &Record<Self::Id>) -> Result<()> {
         let store_save_fut = self.store.save(record);
         let cache_save_fut = self.cache.save(record);
 
@@ -206,7 +211,7 @@ where
         Ok(())
     }
 
-    async fn load(&self, session_id: &Id) -> Result<Option<Record>> {
+    async fn load(&self, session_id: &Self::Id) -> Result<Option<Record<Self::Id>>> {
         match self.cache.load(session_id).await {
             // We found a session in the cache, so let's use it.
             Ok(Some(session_record)) => Ok(Some(session_record)),
@@ -229,7 +234,7 @@ where
         }
     }
 
-    async fn delete(&self, session_id: &Id) -> Result<()> {
+    async fn delete(&self, session_id: &Self::Id) -> Result<()> {
         let store_delete_fut = self.store.delete(session_id);
         let cache_delete_fut = self.cache.delete(session_id);
 
@@ -298,6 +303,7 @@ mod tests {
     use time::{Duration, OffsetDateTime};
 
     use super::*;
+    use crate::session::SesId;
 
     mock! {
         #[derive(Debug)]
@@ -305,10 +311,11 @@ mod tests {
 
         #[async_trait]
         impl SessionStore for Cache {
-            async fn create(&self, record: &mut Record) -> Result<()>;
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
+            type Id = SesId;
+            async fn create(&self, record: &mut Record<SesId>) -> Result<()>;
+            async fn save(&self, record: &Record<SesId>) -> Result<()>;
+            async fn load(&self, session_id: &SesId) -> Result<Option<Record<SesId>>>;
+            async fn delete(&self, session_id: &SesId) -> Result<()>;
         }
     }
 
@@ -318,10 +325,11 @@ mod tests {
 
         #[async_trait]
         impl SessionStore for Store {
-            async fn create(&self, record: &mut Record) -> Result<()>;
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
+            type Id = SesId;
+            async fn create(&self, record: &mut Record<SesId>) -> Result<()>;
+            async fn save(&self, record: &Record<SesId>) -> Result<()>;
+            async fn load(&self, session_id: &SesId) -> Result<Option<Record<SesId>>>;
+            async fn delete(&self, session_id: &SesId) -> Result<()>;
         }
     }
 
@@ -331,9 +339,10 @@ mod tests {
 
         #[async_trait]
         impl SessionStore for CollidingStore {
-            async fn save(&self, record: &Record) -> Result<()>;
-            async fn load(&self, session_id: &Id) -> Result<Option<Record>>;
-            async fn delete(&self, session_id: &Id) -> Result<()>;
+            type Id = SesId;
+            async fn save(&self, record: &Record<SesId>) -> Result<()>;
+            async fn load(&self, session_id: &SesId) -> Result<Option<Record<SesId>>>;
+            async fn delete(&self, session_id: &SesId) -> Result<()>;
         }
     }
 
@@ -376,7 +385,7 @@ mod tests {
     #[tokio::test]
     async fn test_load() {
         let mut store = MockStore::new();
-        let session_id = Id::default();
+        let session_id = SesId::default();
         let record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -398,7 +407,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete() {
         let mut store = MockStore::new();
-        let session_id = Id::default();
+        let session_id = SesId::default();
 
         store
             .expect_delete()
@@ -458,7 +467,7 @@ mod tests {
     async fn test_caching_store_load() {
         let mut cache = MockCache::new();
         let mut store = MockStore::new();
-        let session_id = Id::default();
+        let session_id = SesId::default();
         let record = Record {
             id: Default::default(),
             data: Default::default(),
@@ -484,7 +493,7 @@ mod tests {
     async fn test_caching_store_delete() {
         let mut cache = MockCache::new();
         let mut store = MockStore::new();
-        let session_id = Id::default();
+        let session_id = SesId::default();
 
         cache
             .expect_delete()
