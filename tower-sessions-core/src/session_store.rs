@@ -201,7 +201,7 @@ where
         let store_save_fut = self.store.save(record);
         let cache_save_fut = self.cache.save(record);
 
-        futures::try_join!(store_save_fut, cache_save_fut)?;
+        futures_util::try_join!(store_save_fut, cache_save_fut)?;
 
         Ok(())
     }
@@ -233,7 +233,7 @@ where
         let store_delete_fut = self.store.delete(session_id);
         let cache_delete_fut = self.cache.delete(session_id);
 
-        futures::try_join!(store_delete_fut, cache_delete_fut)?;
+        futures_util::try_join!(store_delete_fut, cache_delete_fut)?;
 
         Ok(())
     }
